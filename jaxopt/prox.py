@@ -19,7 +19,13 @@ import jax.numpy as jnp
 
 
 def prox_l1(x, alpha=1.0):
-  """Proximal operator for the l1 norm, i.e., soft-thresholding operator.
+  r"""Proximal operator for the l1 norm, i.e., soft-thresholding operator.
+
+  If alpha is a scalar:
+    prox_l1(x, alpha) = argmin_y 0.5 ||y - x||^2 + alpha ||y||_1
+
+  If alpha is an array:
+    prox_l1(x, alpha) = argmin_y 0.5 ||y - x||^2 + \sum_i alpha[i] |y[i]|
 
   Args:
     x: input, shape = (size,).
