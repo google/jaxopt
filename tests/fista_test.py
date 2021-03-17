@@ -20,6 +20,7 @@ from jax import test_util as jtu
 import jax.numpy as jnp
 
 from jaxopt import fista
+from jaxopt.implicit_diff import prox_fixed_point_jvp
 from jaxopt.implicit_diff import prox_fixed_point_vjp
 from jaxopt import loss
 from jaxopt import prox
@@ -87,7 +88,7 @@ class FISTATest(jtu.JaxTestCase):
   def test_lasso_implicit_diff(self):
     """Test implicit differentiation of a single lambda parameter."""
     X, y = datasets.load_boston(return_X_y=True)
-    lam = 1.0
+    lam = 1.5
     eps = 1e-5
     fun_f = _make_lasso_objective(X, y)
 
@@ -100,7 +101,7 @@ class FISTATest(jtu.JaxTestCase):
     w_skl = _lasso_skl(X, y, lam)
     I = jnp.eye(len(w_skl))
     fun = lambda g: prox_fixed_point_vjp(fun_f=fun_f, sol=w_skl, params_f=lam,
-                                         prox_g=prox.prox_l1, params_g=None,
+                                         prox_g=prox.prox_l1, params_g=1.0,
                                          cotangent=g)[0]
     jac_params_f = jax.vmap(fun)(I)
     self.assertArraysAllClose(jac_num, jac_params_f, atol=1e-3)
@@ -112,22 +113,35 @@ class FISTATest(jtu.JaxTestCase):
     jac_params_g = jax.vmap(fun)(I)
     self.assertArraysAllClose(jac_num, jac_params_g, atol=1e-3)
 
-    # Make sure the custom VJP works.
+    # Compute the Jacobian w.r.t. lam (params_f) using JVPs.
+    jac_params_f = prox_fixed_point_jvp(fun_f=fun_f, sol=w_skl, params_f=lam,
+                                        prox_g=prox.prox_l1, params_g=1.0,
+                                        tangents=(1.0, 1.0))[0]
+    self.assertArraysAllClose(jac_num, jac_params_f, atol=1e-3)
+
+    # Same but now w.r.t. params_g.
+    jac_params_g = prox_fixed_point_jvp(fun_f=fun_f, sol=w_skl, params_f=1.0,
+                                        prox_g=prox.prox_l1, params_g=lam,
+                                        tangents=(1.0, 1.0))[1]
+    self.assertArraysAllClose(jac_num, jac_params_g, atol=1e-3)
+
+    # Make sure the decorator works.
     w_init = jnp.zeros(X.shape[1])
     tol = 1e-3
     max_iter = 200
 
     jac_fun = jax.jacrev(fista.fista, argnums=2)
-    jac_cust_vjp = jac_fun(fun_f, w_init, lam, prox_g=prox.prox_l1,
-                           tol=tol, max_iter=max_iter, acceleration=True,
-                           implicit_diff=True)
-    self.assertArraysAllClose(jac_num, jac_cust_vjp, atol=1e-2)
+    jac_custom = jac_fun(fun_f, w_skl, lam, prox.prox_l1, 1.0,
+                         tol=tol, max_iter=max_iter, acceleration=True,
+                         implicit_diff=True)
+    self.assertArraysAllClose(jac_num, jac_custom, atol=1e-3)
+
 
     jac_fun = jax.jacrev(fista.fista, argnums=4)
-    jac_cust_vjp = jac_fun(fun_f, w_init, 1.0, prox.prox_l1, lam,
-                           tol=tol, max_iter=max_iter, acceleration=True,
-                           implicit_diff=True)
-    self.assertArraysAllClose(jac_num, jac_cust_vjp, atol=1e-2)
+    jac_custom = jac_fun(fun_f, w_skl, 1.0, prox.prox_l1, lam,
+                         tol=tol, max_iter=max_iter, acceleration=True,
+                         implicit_diff=True)
+    self.assertArraysAllClose(jac_num, jac_custom, atol=1e-3)
 
   def test_lasso_implicit_diff_multi(self):
     """Test implicit differentiation of multiple lambda parameters."""
@@ -160,12 +174,20 @@ class FISTATest(jtu.JaxTestCase):
     self.assertArraysEqual(jac_params_g.shape, (n_features, n_features))
     self.assertArraysAllClose(jac_num, jac_params_g, atol=5e-2)
 
-    # Make sure the custom VJP works.
+    # Compute the Jacobian w.r.t. lam (params_g) using JVPs.
+    fun = lambda g: prox_fixed_point_jvp(fun_f=fun_f, sol=sol, params_f=1.0,
+                                         prox_g=prox.prox_l1, params_g=lam,
+                                         tangents=(1.0, g))[1]
+    jac_params_g = jax.vmap(fun)(I)
+    self.assertArraysEqual(jac_params_g.shape, (n_features, n_features))
+    self.assertArraysAllClose(jac_num, jac_params_g, atol=5e-2)
+
+    # Make sure the decorator works.
     jac_fun = jax.jacrev(fista.fista, argnums=4)
-    jac_cust_vjp = jac_fun(fun_f, w_init, 1.0, prox.prox_l1, lam,
-                           tol=tol, max_iter=max_iter, acceleration=True,
-                           implicit_diff=True)
-    self.assertArraysAllClose(jac_num, jac_cust_vjp, atol=5e-2)
+    jac_custom = jac_fun(fun_f, w_init, 1.0, prox.prox_l1, lam,
+                         tol=tol, max_iter=max_iter, acceleration=True,
+                         implicit_diff=True)
+    self.assertArraysAllClose(jac_num, jac_custom, atol=5e-2)
 
   @parameterized.product(acceleration=[True, False])
   def test_lasso_forward_diff(self, acceleration):
@@ -216,26 +238,33 @@ class FISTATest(jtu.JaxTestCase):
 
     # Jacobian w.r.t. lam using finite central finite difference.
     # We use the sklearn solver for precision, as it operates on float64.
-    jac_lam = (_logreg_skl(X, y, lam + eps) -
+    jac_num = (_logreg_skl(X, y, lam + eps) -
                _logreg_skl(X, y, lam - eps)) / (2 * eps)
 
-    # Compute the Jacobian w.r.t. lam via implicit differentiation.
+    # Compute the Jacobian w.r.t. lam (params_f) via implicit VJPs.
     W_skl = _logreg_skl(X, y, lam)
     I = jnp.eye(W_skl.size)
     I = I.reshape(-1, *W_skl.shape)
     fun = lambda g: prox_fixed_point_vjp(fun_f=fun_f, sol=W_skl, cotangent=g,
                                          params_f=lam)[0]
     jac_lam2 = jax.vmap(fun)(I).reshape(*W_skl.shape)
-    self.assertArraysAllClose(jac_lam, jac_lam2, atol=1e-3)
+    self.assertArraysAllClose(jac_num, jac_lam2, atol=1e-3)
 
-    # Make sure the custom VJP works.
+    # Make sure the decorator works.
     W_init = jnp.zeros_like(W_skl)
     tol = 1e-3
     max_iter = 200
+
     jac_fun = jax.jacrev(fista.fista, argnums=2)
-    jac_lam3 = jac_fun(fun_f, W_init, lam, prox_g=None, tol=tol,
-                       max_iter=max_iter, acceleration=True, implicit_diff=True)
-    self.assertArraysAllClose(jac_lam, jac_lam3, atol=1e-2)
+    jac_custom = jac_fun(fun_f, W_init, lam, prox_g=None, tol=tol,
+                         max_iter=max_iter, acceleration=True,
+                         implicit_diff=True)
+    self.assertArraysAllClose(jac_num, jac_custom, atol=1e-2)
+
+    # Compute the Jacobian w.r.t. lam (params_f) using JVPs.
+    jac_params_f = prox_fixed_point_jvp(fun_f=fun_f, sol=W_skl, params_f=lam,
+                                        tangents=(1.0, None))[0]
+    self.assertArraysAllClose(jac_num, jac_params_f, atol=1e-3)
 
   @parameterized.product(acceleration=[True, False])
   def test_logreg_forward_diff(self, acceleration):
