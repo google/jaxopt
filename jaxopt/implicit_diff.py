@@ -14,6 +14,9 @@
 
 """Implicit differentiation of fixed point iterations."""
 
+import functools
+
+from typing import Any
 from typing import Callable
 from typing import Optional
 from typing import Tuple
@@ -22,14 +25,19 @@ import jax
 import jax.numpy as jnp
 from jax.scipy.sparse import linalg as sparse_linalg
 
+from jaxopt.tree_util import tree_add
+from jaxopt.tree_util import tree_scalar_mul
+from jaxopt.tree_util import tree_sub
+from jaxopt.tree_util import tree_vdot
+
 
 def prox_fixed_point_vjp(
-    cotangent: jnp.ndarray,
+    cotangent: Any,
     fun_f: Callable,
-    sol: jnp.ndarray,
-    params_f: jnp.ndarray,
+    sol: Any,
+    params_f: Any,
     prox_g: Optional[Callable] = None,
-    params_g: Optional[jnp.ndarray] = None) -> Tuple[jnp.ndarray, jnp.ndarray]:
+    params_g: Optional[Any] = None) -> Tuple[Any, Any]:
   """Vector-Jacobian product for the proximity operator based fixed point.
 
   The fixed point is:
@@ -51,15 +59,17 @@ def prox_fixed_point_vjp(
     `params_f` and `params_g`, respectively.
   """
   grad_fun = jax.grad(fun_f)
-  pt = sol - grad_fun(sol, params_f)
+  pt = tree_sub(sol, grad_fun(sol, params_f))
 
   if prox_g is not None:
+    prox_g = functools.partial(prox_g, scaling=1.0)
+
     _, vjp_prox_g = jax.vjp(prox_g, pt, params_g)
 
   _, vjp_grad_f = jax.vjp(grad_fun, sol, params_f)
 
   def f_hvp(u):
-    dir_deriv = lambda x: jnp.vdot(grad_fun(x, params_f), u)
+    dir_deriv = lambda x: tree_vdot(grad_fun(x, params_f), u)
     return jax.grad(dir_deriv)(sol)
 
   if prox_g is None:
@@ -72,7 +82,7 @@ def prox_fixed_point_vjp(
       # where M = AB + I - A and A = Jacobian of prox_g in first argument.
       uA = vjp_prox_g(u)[0]
       uAB = f_hvp(uA)
-      return jnp.transpose(uAB + u - uA)
+      return tree_sub(tree_add(uAB, u), uA)
 
   # The Jacobian satisfies M J = N. Computing v^T J is equivalent to
   # 1) solve M^T u = v
@@ -84,14 +94,14 @@ def prox_fixed_point_vjp(
 
     # Compute u^T N = -u^T AC = - uA^T C,
     # where C = Jacobian of grad_f in params_f.
-    vjp_params_f = -vjp_grad_f(uA)[1]
+    vjp_params_f = tree_scalar_mul(-1, vjp_grad_f(uA)[1])
 
     # Compute u^T N = u^T D,
     # where D = Jacobian of prox_g in params_g.
     vjp_params_g = uD
   else:
     # Compute u^T N = -u^T AC = -u^T C.
-    vjp_params_f = -vjp_grad_f(u)[1]
+    vjp_params_f = tree_scalar_mul(-1, vjp_grad_f(u)[1])
     vjp_params_g = None
 
   return vjp_params_f, vjp_params_g
@@ -110,12 +120,12 @@ def _jvp2(f, primals, tangent):
 
 
 def prox_fixed_point_jvp(
-    tangents: Tuple[jnp.ndarray, Optional[jnp.ndarray]],
+    tangents: Tuple[Any, Optional[Any]],
     fun_f: Callable,
-    sol: jnp.ndarray,
-    params_f: jnp.ndarray,
+    sol: Any,
+    params_f: Any,
     prox_g: Optional[Callable] = None,
-    params_g: Optional[jnp.ndarray] = None) -> Tuple[jnp.ndarray, jnp.ndarray]:
+    params_g: Optional[Any] = None) -> Tuple[Any, Any]:
   """Vector-Jacobian product using the proximal gradient fixed point.
 
   The fixed point is:
@@ -140,26 +150,29 @@ def prox_fixed_point_jvp(
     have the same pytree structure as `sol`.
   """
   grad_fun = jax.grad(fun_f)
-  pt = sol - grad_fun(sol, params_f)
+  pt = tree_sub(sol, grad_fun(sol, params_f))
 
   def f_hvp(u):
-    dir_deriv = lambda x: jnp.vdot(grad_fun(x, params_f), u)
+    dir_deriv = lambda x: tree_vdot(grad_fun(x, params_f), u)
     return jax.grad(dir_deriv)(sol)
 
   if prox_g is not None:
+    prox_g = functools.partial(prox_g, scaling=1.0)
+
     def matvec(u):
       # Multiply with M u
       # where M = AB + I - A and A = Jacobian of prox_g in first argument.
       Bu = f_hvp(u)
       ABu = _jvp1(prox_g, (pt, params_g), Bu)
       Au = _jvp1(prox_g, (pt, params_g), u)
-      return ABu + u - Au
+      return tree_sub(tree_add(ABu, u), Au)
 
     # Compute Nv = -AC v = - A Cv,
     # where C = Jacobian of grad_f in params_f.
     Cv = _jvp2(grad_fun, (sol, params_f), tangents[0])
     ACv = _jvp1(prox_g, (pt, params_g), Cv)
-    jvp_params_f = sparse_linalg.cg(matvec, -ACv)[0]
+    minus_ACv = tree_scalar_mul(-1, ACv)
+    jvp_params_f = sparse_linalg.cg(matvec, minus_ACv)[0]
 
     # Compute Nv = Dv,
     # where D = Jacobian of prox_g in params_g.
@@ -173,7 +186,8 @@ def prox_fixed_point_jvp(
 
     # Compute Nv = -AC v = -Cv.
     Cv = _jvp2(grad_fun, (sol, params_f), tangents[0])
-    jvp_params_f = sparse_linalg.cg(matvec, -Cv)[0]
+    minus_Cv = tree_scalar_mul(-1, Cv)
+    jvp_params_f = sparse_linalg.cg(matvec, minus_Cv)[0]
     jvp_params_g = None
 
   return jvp_params_f, jvp_params_g

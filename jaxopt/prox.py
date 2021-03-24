@@ -17,20 +17,44 @@
 import jax
 import jax.numpy as jnp
 
+from jaxopt import tree_util
 
-def prox_l1(x, alpha=1.0):
+
+def prox_lasso(x, params, scaling=1.0):
   r"""Proximal operator for the l1 norm, i.e., soft-thresholding operator.
 
-  If alpha is a scalar:
-    prox_l1(x, alpha) = argmin_y 0.5 ||y - x||^2 + alpha ||y||_1
-
-  If alpha is an array:
-    prox_l1(x, alpha) = argmin_y 0.5 ||y - x||^2 + \sum_i alpha[i] |y[i]|
+  The output is:
+    argmin_y 0.5 ||y - x||^2 + scaling * params ||y||_1.
+  When params is a pytree, the weights are applied coordinate-wise.
 
   Args:
-    x: input, shape = (size,).
-    alpha: regularization strength, float or array of shape (size,).
+    x: input pytree.
+    params: regularization strength, float or pytree (same structure as x).
+    scaling: a scaling factor.
   Returns:
-    output, shape = (size,).
+    y: output pytree with same structure as x.
   """
-  return jnp.sign(x) * jnp.maximum(jnp.abs(x) - alpha, 0)
+  fun = lambda u, v: jnp.sign(u) * jax.nn.relu(jnp.abs(u) - v * scaling)
+  return tree_util.tree_multimap(fun, x, params)
+
+
+def prox_elastic_net(x, params, scaling=1.0):
+  r"""Proximal operator for the elastic net.
+
+  The output is:
+    argmin_y 0.5 ||y - x||^2 + scaling * params[0] * g(y)
+
+  where g(y) = ||y||_1 + params[1] * 0.5 * ||y||_2^2.
+
+  Args:
+    x: input pytree.
+    params: a tuple, where both params[0] and params[1] can be either floats
+      or pytrees with the same structure as x.
+    scaling: a scaling factor.
+  Returns:
+    y: output pytree with same structure as x.
+  """
+  prox_l1 = lambda u, lam: jnp.sign(u) * jax.nn.relu(jnp.abs(u) - lam)
+  fun = lambda u, lam, gamma: (prox_l1(u, scaling * lam) /
+                               (1.0 + scaling * lam * gamma))
+  return tree_util.tree_multimap(fun, x, params[0], params[1])

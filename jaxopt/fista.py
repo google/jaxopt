@@ -14,14 +14,20 @@
 
 """FISTA implementation in JAX."""
 
+from typing import Any
 from typing import Callable
 from typing import Optional
 
 import jax
 import jax.numpy as jnp
 
-from jaxopt import loop
 from jaxopt import implicit_diff
+from jaxopt import loop
+from jaxopt.tree_util import tree_add_scalar_mul
+from jaxopt.tree_util import tree_l2_norm
+from jaxopt.tree_util import tree_scalar_mul
+from jaxopt.tree_util import tree_sub
+from jaxopt.tree_util import tree_vdot
 
 
 def _linesearch(curr_x,
@@ -31,17 +37,20 @@ def _linesearch(curr_x,
                 grad_f,
                 fun_f,
                 prox_g,
+                params_g,
                 max_iter,
                 unroll,
                 stepfactor):
   """Backtracking line search."""
 
   def cond_fun(stepsize):
-    next_x = prox_g(curr_x - stepsize * grad_f, stepsize)
-    diff = next_x - curr_x
-    sqdist = jnp.sum(diff ** 2)
+    next_x = prox_g(tree_add_scalar_mul(curr_x, -stepsize, grad_f),
+                    params_g,
+                    stepsize)
+    diff_x = tree_sub(next_x, curr_x)
+    sqdist = tree_l2_norm(diff_x, squared=True)
     value_F = fun_f(next_x, params_f)
-    value_Q = value_f + jnp.sum(diff * grad_f) + 0.5 / stepsize * sqdist
+    value_Q = value_f + tree_vdot(diff_x, grad_f) + 0.5 / stepsize * sqdist
     return value_F > value_Q
 
   def body_fun(stepsize):
@@ -58,9 +67,9 @@ def _linesearch(curr_x,
 
 
 def make_fista_body_fun(fun_f: Callable,
-                        params_f: Optional[jnp.ndarray] = None,
+                        params_f: Optional[Any] = None,
                         prox_g: Optional[Callable] = None,
-                        params_g: Optional[jnp.ndarray] = None,
+                        params_g: Optional[Any] = None,
                         max_iter_linesearch: int = 10,
                         acceleration: bool = True,
                         unroll_linesearch: bool = False,
@@ -68,25 +77,26 @@ def make_fista_body_fun(fun_f: Callable,
   """Create a body_fun for performing one iteration of FISTA."""
 
   if prox_g is None:
-    prox_g = lambda x, alpha: x
-
-  if params_g is None:
-    params_g = 1.0
+    prox_g = lambda x, params, scaling=1.0: x
 
   value_and_grad_fun = jax.value_and_grad(fun_f)
   grad_fun = jax.grad(fun_f)
 
   def error_fun(curr_x, params_f):
     grad_f = grad_fun(curr_x, params_f)
-    diff_x = prox_g(curr_x - grad_f, params_g) - curr_x
-    return jnp.sqrt(jnp.sum(diff_x ** 2))
+    next_x = prox_g(tree_sub(curr_x, grad_f), params_g)
+    diff_x = tree_sub(next_x, curr_x)
+    return tree_l2_norm(diff_x)
 
   def _iter(curr_x, curr_stepsize):
     value_f, grad_f = value_and_grad_fun(curr_x, params_f)
     next_stepsize = _linesearch(curr_x, curr_stepsize, params_f, value_f,
-                                grad_f, fun_f, prox_g, max_iter_linesearch,
-                                unroll_linesearch, stepfactor)
-    next_x = prox_g(curr_x - next_stepsize * grad_f, next_stepsize * params_g)
+                                grad_f, fun_f, prox_g, params_g,
+                                max_iter_linesearch, unroll_linesearch,
+                                stepfactor)
+    next_x = prox_g(tree_add_scalar_mul(curr_x, -next_stepsize, grad_f),
+                    params_g,
+                    next_stepsize)
 
     # If step size becomes too small, we restart it to 1.0.
     # Otherwise, we attempt to increase it.
@@ -106,7 +116,8 @@ def make_fista_body_fun(fun_f: Callable,
     curr_x, curr_y, curr_t, curr_stepsize, _ = args
     next_x, next_stepsize = _iter(curr_y, curr_stepsize)
     next_t = 0.5 * (1 + jnp.sqrt(1 + 4 * curr_t ** 2))
-    next_y = next_x + (curr_t - 1) / next_t * (next_x - curr_x)
+    diff_x = tree_sub(next_x, curr_x)
+    next_y = tree_add_scalar_mul(next_x, (curr_t - 1) / next_t, diff_x)
     next_error = error_fun(next_x, params_f)
     return next_x, next_y, next_t, next_stepsize, next_error
 
@@ -165,16 +176,16 @@ def _fista_bwd(fun_f, prox_g, max_iter, max_iter_linesearch, tol, acceleration,
 
 
 def fista(fun_f: Callable,
-          init: jnp.ndarray,
-          params_f: Optional[jnp.ndarray] = None,
+          init: Any,
+          params_f: Optional[Any] = None,
           prox_g: Optional[Callable] = None,
-          params_g: Optional[jnp.ndarray] = None,
+          params_g: Optional[Any] = None,
           max_iter: int = 500,
           max_iter_linesearch: int = 10,
           tol: float = 1e-3,
           acceleration: bool = True,
           verbose: int = 0,
-          implicit_diff: bool = False) -> jnp.ndarray:
+          implicit_diff: bool = False) -> Any:
   """Solves argmin_x fun_f(x, params_f) + fun_g(x, params_g) using FISTA.
 
   The stopping criterion is
@@ -183,10 +194,10 @@ def fista(fun_f: Callable,
 
   Args:
     fun_f: a smooth function of the form fun_f(x, params_f).
-    init: initialization to use for x (jnp.ndarray).
-    params_f: parameters to use for fun_f above.
+    init: initialization to use for x (pytree).
+    params_f: parameters to use for fun_f above (pytree).
     prox_g: proximity operator associated with the function g.
-    params_g: parameters to use for prox_g above.
+    params_g: parameters to use for prox_g above (pytree).
     max_iter: maximum number of FISTA iterations.
     max_iter_linesearch: maximum number of iterations to use in the line search.
     tol: tolerance to use.
@@ -195,7 +206,7 @@ def fista(fun_f: Callable,
     implicit_diff: whether to use implicit differentiation or not.
       implicit_diff=False will trigger loop unrolling.
   Returns:
-    Approximate solution to the argmin problem (jnp.ndarray).
+    Approximate solution to the problem (same pytree structure as `init`).
   """
   if implicit_diff:
     # We use implicit differentiation.
