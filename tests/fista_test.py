@@ -23,12 +23,14 @@ from jaxopt import fista
 from jaxopt.implicit_diff import prox_fixed_point_jvp
 from jaxopt.implicit_diff import prox_fixed_point_vjp
 from jaxopt import loss
+from jaxopt import projection
 from jaxopt import prox
 from jaxopt import tree_util as tu
 
 from sklearn import datasets
 from sklearn import preprocessing
 from sklearn import linear_model
+from sklearn import svm
 
 
 def _lasso_skl(X, y, lam, tol=1e-5, fit_intercept=False):
@@ -438,6 +440,41 @@ class FISTATest(jtu.JaxTestCase):
                        max_iter=max_iter, implicit_diff=False,
                        acceleration=acceleration)
     self.assertArraysAllClose(jac_lam, jac_lam2, atol=atol)
+
+  def test_multiclass_svm_dual(self):
+    X, y = datasets.load_digits(return_X_y=True)
+    # Transform labels to a one-hot representation.
+    # Y has shape (n_samples, n_classes).
+    Y = preprocessing.LabelBinarizer().fit_transform(y)
+    lam = 1e5
+    tol = 1e-2
+    max_iter = 200
+    atol = 1e-3
+
+    def fun_f(beta, lam):
+      dual_obj = jnp.vdot(beta, 1 - Y)
+      V = jnp.dot(X.T, (Y - beta))
+      dual_obj = dual_obj - 0.5 / lam * jnp.vdot(V, V)
+      return -dual_obj  # We want to maximize the dual objective
+
+    proj_vmap = jax.vmap(projection.projection_simplex)
+    prox_g = lambda x, params_g, scaling=1.0: proj_vmap(x)
+
+    n_samples, n_classes = Y.shape
+    beta_init = jnp.ones((n_samples, n_classes)) / n_classes
+    beta_fit = fista.fista(fun_f, beta_init, params_f=lam, prox_g=prox_g,
+                           tol=tol)
+
+    # Check optimality conditions.
+    beta_fit2 = proj_vmap(beta_fit - jax.grad(fun_f)(beta_fit, lam))
+    self.assertLessEqual(jnp.sqrt(jnp.sum((beta_fit - beta_fit2) ** 2)), tol)
+
+    # Compare against sklearn.
+    svc = svm.LinearSVC(loss="hinge", dual=True, multi_class="crammer_singer",
+                        C=1.0 / lam, fit_intercept=False)
+    W_skl = svc.fit(X, y).coef_.T
+    W_fit = jnp.dot(X.T, (Y - beta_fit)) / lam
+    self.assertArraysAllClose(W_fit, W_skl, atol=atol)
 
 
 if __name__ == '__main__':

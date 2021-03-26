@@ -18,8 +18,10 @@ import jax
 import jax.numpy as jnp
 from jax.scipy.special import logsumexp
 
+from jaxopt.projection import projection_simplex
 
-def multiclass_logistic_loss(label: int, logits) -> float:
+
+def multiclass_logistic_loss(label: int, logits: jnp.ndarray) -> float:
   """Multiclass logistic loss.
 
   Args:
@@ -31,3 +33,21 @@ def multiclass_logistic_loss(label: int, logits) -> float:
   n_classes = logits.shape[0]
   one_hot = jax.nn.one_hot(label, n_classes)
   return logsumexp(logits) - jnp.dot(logits, one_hot)
+
+
+def multiclass_sparsemax_loss(label: int, logits: jnp.ndarray) -> float:
+  """Multiclass sparsemax loss.
+
+  Args:
+    label: ground-truth integer label, between 0 and n_classes - 1.
+    logits: scores produced by the model, shape = (n_classes, ).
+  Returns:
+    loss value (float)
+  """
+  n_classes = logits.shape[0]
+  one_hot = jax.nn.one_hot(label, n_classes)
+  proba = projection_simplex(logits)
+  # Fenchel conjugate of the Gini negentropy, defined by:
+  # cumulant = jnp.dot(proba, logits) + 0.5 * jnp.dot(proba, (1 - proba)).
+  cumulant = 0.5 + jnp.dot(proba , logits - 0.5 * proba)
+  return cumulant - jnp.dot(logits, one_hot)

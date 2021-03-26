@@ -16,34 +16,43 @@ from absl.testing import absltest
 
 import jax
 from jax import test_util as jtu
-import jax.numpy as jnp
-from jaxopt.loss import multiclass_logistic_loss
 from jax.nn import softmax
+import jax.numpy as jnp
+
+from jaxopt.loss import multiclass_logistic_loss
+from jaxopt.loss import multiclass_sparsemax_loss
+from jaxopt.projection import projection_simplex
 
 
 class LossTest(jtu.JaxTestCase):
 
-  def test_multiclass_logistic_loss(self):
+  def _test_multiclass_loss_function(self, loss_fun, inv_link_fun):
     # Check that loss is zero when all weights goes to the correct label.
-    loss = multiclass_logistic_loss(0, jnp.array([1e5, 0, 0]))
+    loss = loss_fun(0, jnp.array([1e5, 0, 0]))
     self.assertEqual(loss, 0)
 
     # Check that gradient has the expected form.
     logits = jnp.array([1.2, 0.3, 2.3])
-    grad = jax.grad(multiclass_logistic_loss, argnums=1)(0, logits)
-    self.assertArraysAllClose(grad, softmax(logits) - jnp.array([1, 0, 0]))
+    grad = jax.grad(loss_fun, argnums=1)(0, logits)
+    self.assertArraysAllClose(grad, inv_link_fun(logits) - jnp.array([1, 0, 0]))
 
     # Check that vmaps works as expected.
     logits = jnp.array([[1.3, 2.5],
                         [1.7, -0.3],
                         [0.2, 1.2]])
     labels = jnp.array([0, 0, 1])
-    losses = jax.vmap(multiclass_logistic_loss)(labels, logits)
-    losses2 = jnp.array([multiclass_logistic_loss(labels[0], logits[0]),
-                         multiclass_logistic_loss(labels[1], logits[1]),
-                         multiclass_logistic_loss(labels[2], logits[2])])
+    losses = jax.vmap(loss_fun)(labels, logits)
+    losses2 = jnp.array([loss_fun(labels[0], logits[0]),
+                         loss_fun(labels[1], logits[1]),
+                         loss_fun(labels[2], logits[2])])
     self.assertArraysAllClose(losses, losses2)
 
+  def test_multiclass_logistic_loss(self):
+    self._test_multiclass_loss_function(multiclass_logistic_loss, softmax)
+
+  def test_multiclass_sparsemax_loss(self):
+    self._test_multiclass_loss_function(multiclass_sparsemax_loss,
+                                        projection_simplex)
 
 if __name__ == '__main__':
   absltest.main(testLoader=jtu.JaxTestLoader())
