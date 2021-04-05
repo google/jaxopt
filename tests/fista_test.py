@@ -24,7 +24,7 @@ from jaxopt.implicit_diff import prox_fixed_point_jvp
 from jaxopt.implicit_diff import prox_fixed_point_vjp
 from jaxopt import loss
 from jaxopt import projection
-from jaxopt import prox
+from jaxopt.prox import prox_lasso, prox_elastic_net
 from jaxopt import tree_util as tu
 
 from sklearn import datasets
@@ -59,17 +59,17 @@ def _enet_skl(X, y, lam, gamma, tol=1e-5, fit_intercept=False):
 def _make_lasso_objective(X, y, fit_intercept=False):
   X = preprocessing.Normalizer().fit_transform(X)
   if fit_intercept:
-    def fun_f(pytree, lam):
+    def fun(pytree, lam):
       w, b = pytree
       y_pred = jnp.dot(X, w) + b
       diff = y_pred - y
       return 0.5 / (lam * X.shape[0]) * jnp.dot(diff, diff)
   else:
-    def fun_f(w, lam):
+    def fun(w, lam):
       y_pred = jnp.dot(X, w)
       diff = y_pred - y
       return 0.5 / (lam * X.shape[0]) * jnp.dot(diff, diff)
-  return fun_f
+  return fun
 
 
 def _logreg_skl(X, y, lam, tol=1e-5, fit_intercept=False):
@@ -87,37 +87,36 @@ def _logreg_skl(X, y, lam, tol=1e-5, fit_intercept=False):
 def _make_logreg_objective(X, y, fit_intercept=False):
   X = preprocessing.Normalizer().fit_transform(X)
   if fit_intercept:
-    def fun_f(pytree, lam):
+    def fun(pytree, lam):
       W, b = pytree
       logits = jnp.dot(X, W) + b
       return (jnp.sum(jax.vmap(loss.multiclass_logistic_loss)(y, logits)) +
               0.5 * lam * jnp.sum(W ** 2))
   else:
-    def fun_f(W, lam):
+    def fun(W, lam):
       logits = jnp.dot(X, W)
       return (jnp.sum(jax.vmap(loss.multiclass_logistic_loss)(y, logits)) +
               0.5 * lam * jnp.sum(W ** 2))
-  return fun_f
+  return fun
 
 
 class FISTATest(jtu.JaxTestCase):
 
-  @parameterized.product(acceleration=[True, False],
-                         implicit_diff=[True, False])
-  def test_lasso(self, acceleration, implicit_diff):
+  @parameterized.product(acceleration=[True, False])
+  def test_lasso(self, acceleration):
     X, y = datasets.load_boston(return_X_y=True)
     lam = 1.0
     tol = 1e-3 if acceleration else 5e-3
-    max_iter = 200
+    maxiter = 200
     atol = 1e-2 if acceleration else 1e-1
-    fun_f = _make_lasso_objective(X, y)
+    fun = _make_lasso_objective(X, y)
 
     # Check optimality conditions.
     w_init = jnp.zeros(X.shape[1])
-    w_fit = fista.fista(fun_f, w_init, params_f=lam, prox_g=prox.prox_lasso,
-                        params_g=1.0, tol=tol, max_iter=max_iter,
-                        acceleration=acceleration, implicit_diff=implicit_diff)
-    w_fit2 = prox.prox_lasso(w_fit - jax.grad(fun_f)(w_fit, lam), 1.0)
+    w_fit = fista.fista(fun, w_init, params_fun=lam, prox=prox_lasso,
+                        params_prox=1.0, tol=tol, maxiter=maxiter,
+                        acceleration=acceleration)
+    w_fit2 = prox_lasso(w_fit - jax.grad(fun)(w_fit, lam), 1.0)
     self.assertLessEqual(jnp.sqrt(jnp.sum((w_fit - w_fit2) ** 2)), tol)
 
     # Compare against sklearn.
@@ -128,21 +127,21 @@ class FISTATest(jtu.JaxTestCase):
     X, y = datasets.load_boston(return_X_y=True)
     lam = 1.0
     tol = 1e-3
-    max_iter = 200
+    maxiter = 200
     atol = 1e-2
-    fun_f = _make_lasso_objective(X, y, fit_intercept=True)
+    fun = _make_lasso_objective(X, y, fit_intercept=True)
 
-    def prox_g(pytree, params, scaling=1.0):
+    def prox(pytree, params, scaling=1.0):
       w, b = pytree
-      return prox.prox_lasso(w, params, scaling), b
+      return prox_lasso(w, params, scaling), b
 
     # Check optimality conditions.
     pytree_init = (jnp.zeros(X.shape[1]), 0.0)
-    pytree_fit = fista.fista(fun_f, pytree_init, params_f=lam, prox_g=prox_g,
-                             params_g=1.0, tol=tol, max_iter=max_iter,
+    pytree_fit = fista.fista(fun, pytree_init, params_fun=lam, prox=prox,
+                             params_prox=1.0, tol=tol, maxiter=maxiter,
                              acceleration=True)
-    pytree = tu.tree_sub(pytree_fit, jax.grad(fun_f)(pytree_fit, lam))
-    pytree_fit2 = prox_g(pytree, lam)
+    pytree = tu.tree_sub(pytree_fit, jax.grad(fun)(pytree_fit, lam))
+    pytree_fit2 = prox(pytree, lam)
     pytree_fit_diff = tu.tree_sub(pytree_fit, pytree_fit2)
     self.assertLessEqual(tu.tree_l2_norm(pytree_fit_diff), tol)
 
@@ -156,56 +155,55 @@ class FISTATest(jtu.JaxTestCase):
     X, y = datasets.load_boston(return_X_y=True)
     lam = 1.5
     eps = 1e-5
-    fun_f = _make_lasso_objective(X, y)
+    fun = _make_lasso_objective(X, y)
 
     # Jacobian w.r.t. lam using central finite difference.
     # We use the sklearn solver for precision, as it operates on float64.
     jac_num = (_lasso_skl(X, y, lam + eps) -
                _lasso_skl(X, y, lam - eps)) / (2 * eps)
 
-    # Compute the Jacobian w.r.t. lam (params_f) using VJPs.
+    # Compute the Jacobian w.r.t. lam (params_fun) using VJPs.
     w_skl = _lasso_skl(X, y, lam)
     I = jnp.eye(len(w_skl))
-    fun = lambda g: prox_fixed_point_vjp(fun_f=fun_f, sol=w_skl, params_f=lam,
-                                         prox_g=prox.prox_lasso, params_g=1.0,
-                                         cotangent=g)[0]
-    jac_params_f = jax.vmap(fun)(I)
-    self.assertArraysAllClose(jac_num, jac_params_f, atol=1e-3)
+    vjp_fun = lambda g: prox_fixed_point_vjp(fun=fun, sol=w_skl, params_fun=lam,
+                                             prox=prox_lasso, params_prox=1.0,
+                                             cotangent=g)[0]
+    jac_params_fun = jax.vmap(vjp_fun)(I)
+    self.assertArraysAllClose(jac_num, jac_params_fun, atol=1e-3)
 
-    # Same but now w.r.t. params_g.
-    fun = lambda g: prox_fixed_point_vjp(fun_f=fun_f, sol=w_skl, params_f=1.0,
-                                         prox_g=prox.prox_lasso, params_g=lam,
-                                         cotangent=g)[1]
-    jac_params_g = jax.vmap(fun)(I)
-    self.assertArraysAllClose(jac_num, jac_params_g, atol=1e-3)
+    # Same but now w.r.t. params_prox.
+    vjp_fun = lambda g: prox_fixed_point_vjp(fun=fun, sol=w_skl, params_fun=1.0,
+                                             prox=prox_lasso, params_prox=lam,
+                                             cotangent=g)[1]
+    jac_params_prox = jax.vmap(vjp_fun)(I)
+    self.assertArraysAllClose(jac_num, jac_params_prox, atol=1e-3)
 
-    # Compute the Jacobian w.r.t. lam (params_f) using JVPs.
-    jac_params_f = prox_fixed_point_jvp(fun_f=fun_f, sol=w_skl, params_f=lam,
-                                        prox_g=prox.prox_lasso, params_g=1.0,
-                                        tangents=(1.0, 1.0))[0]
-    self.assertArraysAllClose(jac_num, jac_params_f, atol=1e-3)
+    # Compute the Jacobian w.r.t. lam (params_fun) using JVPs.
+    jac_params_fun = prox_fixed_point_jvp(fun=fun, sol=w_skl, params_fun=lam,
+                                          prox=prox_lasso, params_prox=1.0,
+                                          tangents=(1.0, 1.0))[0]
+    self.assertArraysAllClose(jac_num, jac_params_fun, atol=1e-3)
 
-    # Same but now w.r.t. params_g.
-    jac_params_g = prox_fixed_point_jvp(fun_f=fun_f, sol=w_skl, params_f=1.0,
-                                        prox_g=prox.prox_lasso, params_g=lam,
-                                        tangents=(1.0, 1.0))[1]
-    self.assertArraysAllClose(jac_num, jac_params_g, atol=1e-3)
+    # Same but now w.r.t. params_prox.
+    jac_params_prox = prox_fixed_point_jvp(fun=fun, sol=w_skl, params_fun=1.0,
+                                           prox=prox_lasso, params_prox=lam,
+                                           tangents=(1.0, 1.0))[1]
+    self.assertArraysAllClose(jac_num, jac_params_prox, atol=1e-3)
 
     # Make sure the decorator works.
     w_init = jnp.zeros(X.shape[1])
     tol = 1e-3
-    max_iter = 200
+    maxiter = 200
 
     jac_fun = jax.jacrev(fista.fista, argnums=2)
-    jac_custom = jac_fun(fun_f, w_skl, lam, prox.prox_lasso, 1.0,
-                         tol=tol, max_iter=max_iter, acceleration=True,
+    jac_custom = jac_fun(fun, w_skl, lam, prox_lasso, 1.0,
+                         tol=tol, maxiter=maxiter, acceleration=True,
                          implicit_diff=True)
     self.assertArraysAllClose(jac_num, jac_custom, atol=1e-3)
 
-
     jac_fun = jax.jacrev(fista.fista, argnums=4)
-    jac_custom = jac_fun(fun_f, w_skl, 1.0, prox.prox_lasso, lam,
-                         tol=tol, max_iter=max_iter, acceleration=True,
+    jac_custom = jac_fun(fun, w_skl, 1.0, prox_lasso, lam,
+                         tol=tol, maxiter=maxiter, acceleration=True,
                          implicit_diff=True)
     self.assertArraysAllClose(jac_num, jac_custom, atol=1e-3)
 
@@ -216,42 +214,42 @@ class FISTATest(jtu.JaxTestCase):
     # Use one lambda per feature.
     n_features = X.shape[1]
     lam = jnp.array([1.0, 5.0, 10.0])
-    eps = 1e-4
-    fun_f = _make_lasso_objective(X, y)
+    fun = _make_lasso_objective(X, y)
 
     # Compute solution.
     w_init = jnp.zeros_like(lam)
     tol = 1e-3
-    max_iter = 200
+    maxiter = 200
     I = jnp.eye(n_features)
-    fista_fun = lambda lam_: fista.fista(fun_f=fun_f, init=w_init, params_f=1.0,
-                                         prox_g=prox.prox_lasso, params_g=lam_,
-                                         tol=tol, max_iter=max_iter,
+    fista_fun = lambda lam_: fista.fista(fun=fun, init=w_init, params_fun=1.0,
+                                         prox=prox_lasso, params_prox=lam_,
+                                         tol=tol, maxiter=maxiter,
                                          acceleration=True, implicit_diff=True)
     sol = fista_fun(lam)
 
-    # Compute the Jacobian w.r.t. lam (params_g) using VJPs.
-    fun = lambda g: prox_fixed_point_vjp(fun_f=fun_f, sol=sol, params_f=1.0,
-                                         prox_g=prox.prox_lasso, params_g=lam,
-                                         cotangent=g)[1]
-    jac_params_g_from_vjp = jax.vmap(fun)(I)
-    self.assertArraysEqual(jac_params_g_from_vjp.shape,
+    # Compute the Jacobian w.r.t. lam (params_prox) using VJPs.
+    vjp_fun = lambda g: prox_fixed_point_vjp(fun=fun, sol=sol, params_fun=1.0,
+                                             prox=prox_lasso, params_prox=lam,
+                                             cotangent=g)[1]
+    jac_params_prox_from_vjp = jax.vmap(vjp_fun)(I)
+    self.assertArraysEqual(jac_params_prox_from_vjp.shape,
                            (n_features, n_features))
 
-    # Compute the Jacobian w.r.t. lam (params_g) using JVPs.
-    fun = lambda g: prox_fixed_point_jvp(fun_f=fun_f, sol=sol, params_f=1.0,
-                                         prox_g=prox.prox_lasso, params_g=lam,
-                                         tangents=(1.0, g))[1]
-    jac_params_g_from_jvp = jax.vmap(fun)(I)
-    self.assertArraysAllClose(jac_params_g_from_jvp, jac_params_g_from_vjp,
+    # Compute the Jacobian w.r.t. lam (params_prox) using JVPs.
+    jvp_fun = lambda g: prox_fixed_point_jvp(fun=fun, sol=sol, params_fun=1.0,
+                                             prox=prox_lasso, params_prox=lam,
+                                             tangents=(1.0, g))[1]
+    jac_params_prox_from_jvp = jax.vmap(jvp_fun)(I)
+    self.assertArraysAllClose(jac_params_prox_from_jvp,
+                              jac_params_prox_from_vjp,
                               atol=tol)
 
     # Make sure the decorator works.
     jac_fun = jax.jacrev(fista.fista, argnums=4)
-    jac_custom = jac_fun(fun_f, w_init, 1.0, prox.prox_lasso, lam,
-                         tol=tol, max_iter=max_iter, acceleration=True,
+    jac_custom = jac_fun(fun, w_init, 1.0, prox_lasso, lam,
+                         tol=tol, maxiter=maxiter, acceleration=True,
                          implicit_diff=True)
-    self.assertArraysAllClose(jac_params_g_from_vjp, jac_custom, atol=tol)
+    self.assertArraysAllClose(jac_params_prox_from_vjp, jac_custom, atol=tol)
 
   @parameterized.product(acceleration=[True, False])
   def test_lasso_forward_diff(self, acceleration):
@@ -259,9 +257,9 @@ class FISTATest(jtu.JaxTestCase):
     X, y = datasets.load_boston(return_X_y=True)
     lam = 1.0
     tol = 1e-4 if acceleration else 5e-3
-    max_iter = 200
+    maxiter = 200
     eps = 1e-5
-    fun_f = _make_lasso_objective(X, y)
+    fun = _make_lasso_objective(X, y)
 
     jac_lam = (_lasso_skl(X, y, lam + eps) -
                _lasso_skl(X, y, lam - eps)) / (2 * eps)
@@ -269,94 +267,92 @@ class FISTATest(jtu.JaxTestCase):
     # Compute the Jacobian w.r.t. lam via forward differentiation.
     w_init = jnp.zeros(X.shape[1])
     jac_fun = jax.jacfwd(fista.fista, argnums=2)
-    jac_lam2 = jac_fun(fun_f, w_init, lam, prox_g=prox.prox_lasso, tol=tol,
-                       max_iter=max_iter, implicit_diff=False,
+    jac_lam2 = jac_fun(fun, w_init, lam, prox=prox_lasso, tol=tol,
+                       maxiter=maxiter, implicit_diff=False,
                        acceleration=acceleration)
     self.assertArraysAllClose(jac_lam, jac_lam2, atol=1e-3)
 
   def test_elastic_net(self):
     X, y = datasets.load_boston(return_X_y=True)
-    params_g = (2.0, 0.8)
+    params_prox = (2.0, 0.8)
     tol = 1e-3
-    max_iter = 200
+    maxiter = 200
     atol = 1e-3
-    fun_f = _make_lasso_objective(X, y)
-    prox_g = prox.prox_elastic_net
+    fun = _make_lasso_objective(X, y)
+    prox = prox_elastic_net
 
     # Check optimality conditions.
     w_init = jnp.zeros(X.shape[1])
-    w_fit = fista.fista(fun_f, w_init, params_f=1.0, prox_g=prox_g,
-                        params_g=params_g, tol=tol,
-                        implicit_diff=False, verbose=0,
-                        max_iter=max_iter)
-    w_fit2 = prox_g(w_fit - jax.grad(fun_f)(w_fit, 1.0), params_g)
+    w_fit = fista.fista(fun, w_init, params_fun=1.0, prox=prox,
+                        params_prox=params_prox, tol=tol, maxiter=maxiter)
+    w_fit2 = prox(w_fit - jax.grad(fun)(w_fit, 1.0), params_prox)
     w_diff = tu.tree_sub(w_fit, w_fit2)
     self.assertLessEqual(jnp.sqrt(jnp.sum(w_diff ** 2)), tol)
 
     # Compare against sklearn.
-    w_skl = _enet_skl(X, y, lam=params_g[0], gamma=params_g[1])
+    w_skl = _enet_skl(X, y, lam=params_prox[0], gamma=params_prox[1])
     self.assertArraysAllClose(w_fit, w_skl, atol=atol)
 
   def test_elastic_net_implicit_diff(self):
     """Test implicit differentiation of a single lambda parameter."""
     X, y = datasets.load_boston(return_X_y=True)
-    params_g = (2.0, 0.8)
+    params_prox = (2.0, 0.8)
     eps = 1e-5
-    fun_f = _make_lasso_objective(X, y)
-    prox_g = prox.prox_elastic_net
+    fun = _make_lasso_objective(X, y)
+    prox = prox_elastic_net
 
     # Jacobian w.r.t. lam using central finite difference.
     # We use the sklearn solver for precision, as it operates on float64.
-    jac_num_lam = (_enet_skl(X, y, params_g[0] + eps, params_g[1]) -
-                   _enet_skl(X, y, params_g[0] - eps, params_g[1])) / (2 * eps)
-    jac_num_gam = (_enet_skl(X, y, params_g[0], params_g[1] + eps) -
-                   _enet_skl(X, y, params_g[0], params_g[1] - eps)) / (2 * eps)
+    jac_num_lam = (_enet_skl(X, y, params_prox[0] + eps, params_prox[1]) -
+              _enet_skl(X, y, params_prox[0] - eps, params_prox[1])) / (2 * eps)
+    jac_num_gam = (_enet_skl(X, y, params_prox[0], params_prox[1] + eps) -
+              _enet_skl(X, y, params_prox[0], params_prox[1] - eps)) / (2 * eps)
 
-    w_skl = _enet_skl(X, y, params_g[0], params_g[1])
+    w_skl = _enet_skl(X, y, params_prox[0], params_prox[1])
 
-    # Compute the Jacobian w.r.t. params_g using VJPS.
-    fun = lambda g: prox_fixed_point_vjp(fun_f=fun_f, sol=w_skl, params_f=1.0,
-                                         prox_g=prox_g, params_g=params_g,
-                                         cotangent=g)[1]
+    # Compute the Jacobian w.r.t. params_prox using VJPS.
+    vjp_fun = lambda g: prox_fixed_point_vjp(fun=fun, sol=w_skl, params_fun=1.0,
+                                             prox=prox, params_prox=params_prox,
+                                             cotangent=g)[1]
     I = jnp.eye(len(w_skl))
-    jac_params_g = jax.vmap(fun)(I)
-    self.assertArraysAllClose(jac_num_lam, jac_params_g[0], atol=1e-3)
-    self.assertArraysAllClose(jac_num_gam, jac_params_g[1], atol=1e-3)
+    jac_params_prox = jax.vmap(vjp_fun)(I)
+    self.assertArraysAllClose(jac_num_lam, jac_params_prox[0], atol=1e-3)
+    self.assertArraysAllClose(jac_num_gam, jac_params_prox[1], atol=1e-3)
 
-    # Compute the Jacobian w.r.t. params_g using JVPs.
-    fun = lambda g: prox_fixed_point_jvp(fun_f=fun_f, sol=w_skl, params_f=1.0,
-                                         prox_g=prox_g, params_g=params_g,
-                                         tangents=(1.0, g))[1]
-    jac_lam = fun((1.0, 0.0))
-    jac_gam = fun((0.0, 1.0))
+    # Compute the Jacobian w.r.t. params_prox using JVPs.
+    jvp_fun = lambda g: prox_fixed_point_jvp(fun=fun, sol=w_skl, params_fun=1.0,
+                                             prox=prox, params_prox=params_prox,
+                                             tangents=(1.0, g))[1]
+    jac_lam = jvp_fun((1.0, 0.0))
+    jac_gam = jvp_fun((0.0, 1.0))
     self.assertArraysAllClose(jac_num_lam, jac_lam, atol=1e-3)
     self.assertArraysAllClose(jac_num_gam, jac_gam, atol=1e-3)
 
     # Make sure the decorator works.
     w_init = jnp.zeros(X.shape[1])
     tol = 1e-3
-    max_iter = 200
+    maxiter = 200
 
     jac_fun = jax.jacrev(fista.fista, argnums=4)
-    jac_custom = jac_fun(fun_f, w_skl, 1.0, prox_g, params_g,
-                         tol=tol, max_iter=max_iter, acceleration=True,
+    jac_custom = jac_fun(fun, w_skl, 1.0, prox, params_prox,
+                         tol=tol, maxiter=maxiter, acceleration=True,
                          implicit_diff=True)
     self.assertArraysAllClose(jac_num_lam, jac_custom[0], atol=1e-3)
     self.assertArraysAllClose(jac_num_gam, jac_custom[1], atol=1e-3)
 
   def test_logreg(self):
     X, y = datasets.load_digits(return_X_y=True)
-    lam = float(X.shape[0])
+    lam = 1e2
     tol = 1e-3
-    max_iter = 200
+    maxiter = 200
     atol = 1e-3
-    fun_f = _make_logreg_objective(X, y)
+    fun = _make_logreg_objective(X, y)
 
     W_init = jnp.zeros((X.shape[1], 10))
-    W_fit = fista.fista(fun_f, W_init, params_f=lam, prox_g=None, tol=tol)
+    W_fit = fista.fista(fun, W_init, params_fun=lam, prox=None, tol=tol)
 
     # Check optimality conditions.
-    W_grad = jax.grad(fun_f)(W_fit, lam)
+    W_grad = jax.grad(fun)(W_fit, lam)
     self.assertLessEqual(jnp.sqrt(jnp.sum(W_grad ** 2)), tol)
 
     # Compare against sklearn.
@@ -365,18 +361,18 @@ class FISTATest(jtu.JaxTestCase):
 
   def test_logreg_with_intercept(self):
     X, y = datasets.load_digits(return_X_y=True)
-    lam = float(X.shape[0])
+    lam = 1e2
     tol = 1e-3
-    max_iter = 200
+    maxiter = 200
     atol = 1e-3
-    fun_f = _make_logreg_objective(X, y, fit_intercept=True)
+    fun = _make_logreg_objective(X, y, fit_intercept=True)
 
     pytree_init = (jnp.zeros((X.shape[1], 10)), jnp.zeros(10))
-    pytree_fit = fista.fista(fun_f, pytree_init, params_f=lam, prox_g=None,
-                             tol=tol)
+    pytree_fit = fista.fista(fun, pytree_init, params_fun=lam, prox=None,
+                             tol=tol, maxiter=maxiter)
 
     # Check optimality conditions.
-    pytree_grad = jax.grad(fun_f)(pytree_fit, lam)
+    pytree_grad = jax.grad(fun)(pytree_fit, lam)
     self.assertLessEqual(tu.tree_l2_norm(pytree_grad), tol)
 
     # Compare against sklearn.
@@ -388,37 +384,37 @@ class FISTATest(jtu.JaxTestCase):
     X, y = datasets.load_digits(return_X_y=True)
     lam = float(X.shape[0])
     eps = 1e-5
-    fun_f = _make_logreg_objective(X, y)
+    fun = _make_logreg_objective(X, y)
 
     # Jacobian w.r.t. lam using finite central finite difference.
     # We use the sklearn solver for precision, as it operates on float64.
     jac_num = (_logreg_skl(X, y, lam + eps) -
                _logreg_skl(X, y, lam - eps)) / (2 * eps)
 
-    # Compute the Jacobian w.r.t. lam (params_f) via implicit VJPs.
+    # Compute the Jacobian w.r.t. lam (params_fun) via implicit VJPs.
     W_skl = _logreg_skl(X, y, lam)
     I = jnp.eye(W_skl.size)
     I = I.reshape(-1, *W_skl.shape)
-    fun = lambda g: prox_fixed_point_vjp(fun_f=fun_f, sol=W_skl, cotangent=g,
-                                         params_f=lam)[0]
-    jac_lam2 = jax.vmap(fun)(I).reshape(*W_skl.shape)
+    vjp_fun = lambda g: prox_fixed_point_vjp(fun=fun, sol=W_skl, cotangent=g,
+                                             params_fun=lam)[0]
+    jac_lam2 = jax.vmap(vjp_fun)(I).reshape(*W_skl.shape)
     self.assertArraysAllClose(jac_num, jac_lam2, atol=1e-3)
 
     # Make sure the decorator works.
     W_init = jnp.zeros_like(W_skl)
     tol = 1e-3
-    max_iter = 200
+    maxiter = 200
 
     jac_fun = jax.jacrev(fista.fista, argnums=2)
-    jac_custom = jac_fun(fun_f, W_init, lam, prox_g=None, tol=tol,
-                         max_iter=max_iter, acceleration=True,
+    jac_custom = jac_fun(fun, W_init, lam, prox=None, tol=tol,
+                         maxiter=maxiter, acceleration=True,
                          implicit_diff=True)
     self.assertArraysAllClose(jac_num, jac_custom, atol=1e-2)
 
-    # Compute the Jacobian w.r.t. lam (params_f) using JVPs.
-    jac_params_f = prox_fixed_point_jvp(fun_f=fun_f, sol=W_skl, params_f=lam,
-                                        tangents=(1.0, None))[0]
-    self.assertArraysAllClose(jac_num, jac_params_f, atol=1e-3)
+    # Compute the Jacobian w.r.t. lam (params_fun) using JVPs.
+    jac_params_fun = prox_fixed_point_jvp(fun=fun, sol=W_skl, params_fun=lam,
+                                          tangents=(1.0, None))[0]
+    self.assertArraysAllClose(jac_num, jac_params_fun, atol=1e-3)
 
   @parameterized.product(acceleration=[True, False])
   def test_logreg_forward_diff(self, acceleration):
@@ -426,9 +422,9 @@ class FISTATest(jtu.JaxTestCase):
     lam = float(X.shape[0])
     tol = 1e-3 if acceleration else 5e-3
     eps = 1e-5
-    max_iter = 200
+    maxiter = 200
     atol = 1e-3 if acceleration else 1e-1
-    fun_f = _make_logreg_objective(X, y)
+    fun = _make_logreg_objective(X, y)
 
     jac_lam = (_logreg_skl(X, y, lam + eps) -
                _logreg_skl(X, y, lam - eps)) / (2 * eps)
@@ -436,8 +432,8 @@ class FISTATest(jtu.JaxTestCase):
     # Compute the Jacobian w.r.t. lam via forward differentiation.
     W_init = jnp.zeros((X.shape[1], 10))
     jac_fun = jax.jacfwd(fista.fista, argnums=2)
-    jac_lam2 = jac_fun(fun_f, W_init, lam, prox_g=None, tol=tol,
-                       max_iter=max_iter, implicit_diff=False,
+    jac_lam2 = jac_fun(fun, W_init, lam, prox=None, tol=tol,
+                       maxiter=maxiter, implicit_diff=False,
                        acceleration=acceleration)
     self.assertArraysAllClose(jac_lam, jac_lam2, atol=atol)
 
@@ -448,25 +444,25 @@ class FISTATest(jtu.JaxTestCase):
     Y = preprocessing.LabelBinarizer().fit_transform(y)
     lam = 1e5
     tol = 1e-2
-    max_iter = 200
+    maxiter = 500
     atol = 1e-3
 
-    def fun_f(beta, lam):
+    def fun(beta, lam):
       dual_obj = jnp.vdot(beta, 1 - Y)
       V = jnp.dot(X.T, (Y - beta))
       dual_obj = dual_obj - 0.5 / lam * jnp.vdot(V, V)
       return -dual_obj  # We want to maximize the dual objective
 
     proj_vmap = jax.vmap(projection.projection_simplex)
-    prox_g = lambda x, params_g, scaling=1.0: proj_vmap(x)
+    prox = lambda x, params_prox, scaling=1.0: proj_vmap(x)
 
     n_samples, n_classes = Y.shape
     beta_init = jnp.ones((n_samples, n_classes)) / n_classes
-    beta_fit = fista.fista(fun_f, beta_init, params_f=lam, prox_g=prox_g,
-                           tol=tol)
+    beta_fit = fista.fista(fun, beta_init, params_fun=lam, prox=prox,
+                           tol=tol, maxiter=maxiter)
 
     # Check optimality conditions.
-    beta_fit2 = proj_vmap(beta_fit - jax.grad(fun_f)(beta_fit, lam))
+    beta_fit2 = proj_vmap(beta_fit - jax.grad(fun)(beta_fit, lam))
     self.assertLessEqual(jnp.sqrt(jnp.sum((beta_fit - beta_fit2) ** 2)), tol)
 
     # Compare against sklearn.
@@ -478,4 +474,6 @@ class FISTATest(jtu.JaxTestCase):
 
 
 if __name__ == '__main__':
+  # Uncomment the line below in order to run in float64.
+  # jax.config.update("jax_enable_x64", True)
   absltest.main(testLoader=jtu.JaxTestLoader())

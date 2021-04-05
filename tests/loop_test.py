@@ -31,7 +31,7 @@ class LoopTest(jtu.JaxTestCase):
       def cond_fun(val):
         return True
       return while_loop(cond_fun=cond_fun, body_fun=body_fun, init_val=1.0,
-                        max_iter=y, unroll=unroll, jit=jit)
+                        maxiter=y, unroll=unroll, jit=jit)
 
     if not unroll and not jit:
       self.assertRaises(ValueError, my_pow, 3, 4)
@@ -52,7 +52,7 @@ class LoopTest(jtu.JaxTestCase):
       def cond_fun(val):
         return val < max_val
       return while_loop(cond_fun=cond_fun, body_fun=body_fun, init_val=1.0,
-                        max_iter=y, unroll=unroll, jit=jit)
+                        maxiter=y, unroll=unroll, jit=jit)
 
     if not unroll and not jit:
       self.assertRaises(ValueError, my_pow, 3, 4, max_val=81)

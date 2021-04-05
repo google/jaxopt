@@ -18,7 +18,7 @@ import jax
 import jax.numpy as jnp
 
 
-def _while_loop_unrolled_jit(cond_fun, body_fun, init_val, max_iter):
+def _while_loop_unrolled_jit(cond_fun, body_fun, init_val, maxiter):
   def _iter(val):
     next_val = body_fun(val)
     next_cond = cond_fun(next_val)
@@ -26,15 +26,15 @@ def _while_loop_unrolled_jit(cond_fun, body_fun, init_val, max_iter):
 
   val = init_val
   cond = cond_fun(val)
-  for _ in range(max_iter):
+  for _ in range(maxiter):
     # When condition is met, start doing noops.
     val, cond = jax.lax.cond(cond, _iter, lambda x: (x, False), val)
   return val
 
 
-def _while_loop_unrolled_nojit(cond_fun, body_fun, init_val, max_iter):
+def _while_loop_unrolled_nojit(cond_fun, body_fun, init_val, maxiter):
   val = init_val
-  for _ in range(max_iter):
+  for _ in range(maxiter):
     cond = cond_fun(val)
     if not cond:
       # When condition is met, break (not jittable).
@@ -43,10 +43,10 @@ def _while_loop_unrolled_nojit(cond_fun, body_fun, init_val, max_iter):
   return val
 
 
-def _while_loop_lax(cond_fun, body_fun, init_val, max_iter):
+def _while_loop_lax(cond_fun, body_fun, init_val, maxiter):
   def _cond_fun(_val):
     it, val = _val
-    return jnp.logical_and(cond_fun(val), it <= max_iter - 1)
+    return jnp.logical_and(cond_fun(val), it <= maxiter - 1)
 
   def _body_fun(_val):
     it, val = _val
@@ -56,7 +56,7 @@ def _while_loop_lax(cond_fun, body_fun, init_val, max_iter):
   return jax.lax.while_loop(_cond_fun, _body_fun, (0, init_val))[1]
 
 
-def while_loop(cond_fun, body_fun, init_val, max_iter, unroll=False, jit=False):
+def while_loop(cond_fun, body_fun, init_val, maxiter, unroll=False, jit=False):
   """A while loop with a bounded number of iterations."""
 
   if unroll:
@@ -73,4 +73,4 @@ def while_loop(cond_fun, body_fun, init_val, max_iter, unroll=False, jit=False):
   if jit:
     fun = jax.jit(fun, static_argnums=(0, 1, 3))
 
-  return fun(cond_fun, body_fun, init_val, max_iter)
+  return fun(cond_fun, body_fun, init_val, maxiter)

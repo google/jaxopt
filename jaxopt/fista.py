@@ -16,6 +16,7 @@
 
 from typing import Any
 from typing import Callable
+from typing import NamedTuple
 from typing import Optional
 
 import jax
@@ -25,101 +26,124 @@ from jaxopt import implicit_diff
 from jaxopt import loop
 from jaxopt.tree_util import tree_add_scalar_mul
 from jaxopt.tree_util import tree_l2_norm
-from jaxopt.tree_util import tree_scalar_mul
 from jaxopt.tree_util import tree_sub
 from jaxopt.tree_util import tree_vdot
 
 
-def _linesearch(curr_x,
-                curr_stepsize,
-                params_f,
-                value_f,
-                grad_f,
-                fun_f,
-                prox_g,
-                params_g,
-                max_iter,
-                unroll,
-                stepfactor):
-  """Backtracking line search."""
+class OptimizeResults(NamedTuple):
+  error: float
+  nit: int
+  x: Any
 
-  def cond_fun(stepsize):
-    next_x = prox_g(tree_add_scalar_mul(curr_x, -stepsize, grad_f),
-                    params_g,
-                    stepsize)
-    diff_x = tree_sub(next_x, curr_x)
-    sqdist = tree_l2_norm(diff_x, squared=True)
-    value_F = fun_f(next_x, params_f)
-    value_Q = value_f + tree_vdot(diff_x, grad_f) + 0.5 / stepsize * sqdist
-    return value_F > value_Q
 
-  def body_fun(stepsize):
-    return stepsize * stepfactor
+def _make_prox_grad(prox, params_prox):
+  """Make the update function:
+    prox(curr_x - curr_stepsize * curr_x_fun_grad, params_prox, curr_stepsize)
+  """
+  def prox_grad(curr_x, curr_x_fun_grad, curr_stepsize):
+    update = tree_add_scalar_mul(curr_x, -curr_stepsize, curr_x_fun_grad)
+    return prox(update, params_prox, curr_stepsize)
+  return prox_grad
+
+
+def _make_linesearch(fun, params_fun, prox_grad, maxls, stepfactor, unroll):
+  """Make the backtracking line search."""
 
   # Currently, we never jit when unrolling, since jitting a huge graph is slow.
   # In the future, we will improve loop.while_loop similarly to
   # https://github.com/google-research/ott/blob/master/ott/core/fixed_point_loop.py
   jit = not unroll
 
-  return loop.while_loop(cond_fun=cond_fun, body_fun=body_fun,
-                         init_val=curr_stepsize, max_iter=max_iter,
-                         unroll=unroll, jit=jit)
+  def linesearch(curr_x, curr_x_fun_val, curr_x_fun_grad, curr_stepsize):
+    def cond_fun(args):
+      next_x, stepsize = args
+      diff_x = tree_sub(next_x, curr_x)
+      sqdist = tree_l2_norm(diff_x, squared=True)
+      value_F = fun(next_x, params_fun)
+      value_Q = (curr_x_fun_val + tree_vdot(diff_x, curr_x_fun_grad)  +
+                 0.5 / stepsize * sqdist)
+      return value_F > value_Q
+
+    def body_fun(args):
+      stepsize = args[1]
+      next_stepsize = stepsize * stepfactor
+      next_x = prox_grad(curr_x, curr_x_fun_grad, next_stepsize)
+      return next_x, next_stepsize
+
+    init_x = prox_grad(curr_x, curr_x_fun_grad, curr_stepsize)
+    init_val = (init_x, curr_stepsize)
+
+    return loop.while_loop(cond_fun=cond_fun, body_fun=body_fun,
+                           init_val=init_val, maxiter=maxls,
+                           unroll=unroll, jit=jit)
+  return linesearch
 
 
-def make_fista_body_fun(fun_f: Callable,
-                        params_f: Optional[Any] = None,
-                        prox_g: Optional[Callable] = None,
-                        params_g: Optional[Any] = None,
-                        max_iter_linesearch: int = 10,
+def make_fista_body_fun(fun: Callable,
+                        params_fun: Optional[Any] = None,
+                        prox: Optional[Callable] = None,
+                        params_prox: Optional[Any] = None,
+                        stepsize: float = 0.0,
+                        maxls: int = 15,
                         acceleration: bool = True,
-                        unroll_linesearch: bool = False,
-                        stepfactor: float = 0.5):
+                        unroll_ls: bool = False,
+                        stepfactor: float = 0.5) -> Callable:
   """Create a body_fun for performing one iteration of FISTA."""
 
-  if prox_g is None:
-    prox_g = lambda x, params, scaling=1.0: x
+  if prox is None:
+    prox = lambda x, params, scaling=1.0: x
 
-  value_and_grad_fun = jax.value_and_grad(fun_f)
-  grad_fun = jax.grad(fun_f)
+  fun = jax.jit(fun)
+  value_and_grad_fun = jax.jit(jax.value_and_grad(fun))
+  grad_fun = jax.jit(jax.grad(fun))
+  prox_grad = _make_prox_grad(prox, params_prox)
+  linesearch = _make_linesearch(fun=fun, params_fun=params_fun,
+                                prox_grad=prox_grad, maxls=maxls,
+                                stepfactor=stepfactor,
+                                unroll=unroll_ls)
 
-  def error_fun(curr_x, params_f):
-    grad_f = grad_fun(curr_x, params_f)
-    next_x = prox_g(tree_sub(curr_x, grad_f), params_g)
+  def error_fun(curr_x, curr_x_fun_grad):
+    next_x = prox_grad(curr_x, curr_x_fun_grad, 1.0)
     diff_x = tree_sub(next_x, curr_x)
     return tree_l2_norm(diff_x)
 
-  def _iter(curr_x, curr_stepsize):
-    value_f, grad_f = value_and_grad_fun(curr_x, params_f)
-    next_stepsize = _linesearch(curr_x, curr_stepsize, params_f, value_f,
-                                grad_f, fun_f, prox_g, params_g,
-                                max_iter_linesearch, unroll_linesearch,
-                                stepfactor)
-    next_x = prox_g(tree_add_scalar_mul(curr_x, -next_stepsize, grad_f),
-                    params_g,
-                    next_stepsize)
+  def _iter(curr_x, curr_x_fun_val, curr_x_fun_grad, curr_stepsize):
+    if stepsize <= 0:
+      # With line search.
+      next_x, next_stepsize = linesearch(curr_x, curr_x_fun_val,
+                                         curr_x_fun_grad, curr_stepsize)
 
-    # If step size becomes too small, we restart it to 1.0.
-    # Otherwise, we attempt to increase it.
-    next_stepsize = jnp.where(next_stepsize <= 1e-6,
-                              1.0,
-                              next_stepsize / stepfactor)
+      # If step size becomes too small, we restart it to 1.0.
+      # Otherwise, we attempt to increase it.
+      next_stepsize = jnp.where(next_stepsize <= 1e-6,
+                                1.0,
+                                next_stepsize / stepfactor)
 
-    return next_x, next_stepsize
+      return next_x, next_stepsize
+    else:
+      # Without line search.
+      next_x = prox_grad(curr_x, curr_x_fun_grad, stepsize)
+      return next_x, stepsize
 
   def body_fun_ista(args):
-    curr_x, curr_stepsize, _ = args
-    next_x, next_stepsize = _iter(curr_x, curr_stepsize)
-    next_error = error_fun(next_x, params_f)
-    return next_x, next_stepsize, next_error
+    iter_num, curr_x, curr_stepsize, _ = args
+    curr_x_fun_val, curr_x_fun_grad = value_and_grad_fun(curr_x, params_fun)
+    next_x, next_stepsize = _iter(curr_x, curr_x_fun_val, curr_x_fun_grad,
+                                  curr_stepsize)
+    curr_error = error_fun(curr_x, curr_x_fun_grad)
+    return iter_num + 1, next_x, next_stepsize, curr_error
 
   def body_fun_fista(args):
-    curr_x, curr_y, curr_t, curr_stepsize, _ = args
-    next_x, next_stepsize = _iter(curr_y, curr_stepsize)
+    iter_num, curr_x, curr_y, curr_t, curr_stepsize, _ = args
+    curr_y_fun_val, curr_y_fun_grad = value_and_grad_fun(curr_y, params_fun)
+    next_x, next_stepsize = _iter(curr_y, curr_y_fun_val, curr_y_fun_grad,
+                                  curr_stepsize)
     next_t = 0.5 * (1 + jnp.sqrt(1 + 4 * curr_t ** 2))
     diff_x = tree_sub(next_x, curr_x)
     next_y = tree_add_scalar_mul(next_x, (curr_t - 1) / next_t, diff_x)
-    next_error = error_fun(next_x, params_f)
-    return next_x, next_y, next_t, next_stepsize, next_error
+    next_x_fun_grad = grad_fun(next_x, params_fun)
+    next_error = error_fun(next_x, next_x_fun_grad)
+    return iter_num + 1, next_x, next_y, next_t, next_stepsize, next_error
 
   if acceleration:
     return body_fun_fista
@@ -127,97 +151,117 @@ def make_fista_body_fun(fun_f: Callable,
     return body_fun_ista
 
 
-def _fista(fun_f, init, params_f, prox_g, params_g, max_iter,
-           max_iter_linesearch, tol, acceleration, verbose, unroll):
+def _fista(fun, init, params_fun, prox, params_prox, stepsize, maxiter,
+           maxls, tol, acceleration, verbose, unroll, ret_info):
 
   def cond_fun(args):
+    iter_num = args[0]
     error = args[-1]
     if verbose:
-      print(error)
+      print(iter_num, error)
     return error > tol
 
-  body_fun = make_fista_body_fun(fun_f=fun_f, params_f=params_f, prox_g=prox_g,
-                                 params_g=params_g,
-                                 max_iter_linesearch=max_iter_linesearch,
+  body_fun = make_fista_body_fun(fun=fun, params_fun=params_fun, prox=prox,
+                                 params_prox=params_prox, stepsize=stepsize,
+                                 maxls=maxls,
                                  acceleration=acceleration,
-                                 unroll_linesearch=unroll)
+                                 unroll_ls=unroll)
 
   if acceleration:
-    # curr_x, curr_y, curr_t, curr_stepsize, error
-    args = (init, init, 1.0, 1.0, 1e6)
+    # iter_num, curr_x, curr_y, curr_t, curr_stepsize, error
+    args = (0, init, init, 1.0, 1.0, 1e6)
   else:
-    # curr_x, curr_stepsize, error
-    args = (init, 1.0, 1e6)
+    # iter_num, curr_x, curr_stepsize, error
+    args = (0, init, 1.0, 1e6)
+
+  # Currently, we always unroll in verbose mode.
+  unroll = unroll or verbose
 
   # Currently, we never jit when unrolling, since jitting a huge graph is slow.
   # In the future, we will improve loop.while_loop similarly to
   # https://github.com/google-research/ott/blob/master/ott/core/fixed_point_loop.py
   jit = not unroll
 
-  return loop.while_loop(cond_fun=cond_fun, body_fun=body_fun, init_val=args,
-                         max_iter=max_iter, unroll=unroll, jit=jit)[0]
+  res = loop.while_loop(cond_fun=cond_fun, body_fun=body_fun, init_val=args,
+                        maxiter=maxiter, unroll=unroll, jit=jit)
+
+  if ret_info:
+    return OptimizeResults(x=res[1], nit=res[0], error=res[-1])
+  else:
+    return res[1]
 
 
-def _fista_fwd(fun_f, init, params_f, prox_g, params_g, max_iter,
-               max_iter_linesearch, tol, acceleration, verbose, unroll):
-  sol = _fista(fun_f, init, params_f, prox_g, params_g, max_iter,
-               max_iter_linesearch, tol, acceleration, verbose, unroll)
-  return sol, (params_f, params_g, sol)
+def _fista_fwd(fun, init, params_fun, prox, params_prox, stepsize, maxiter,
+               maxls, tol, acceleration, verbose, unroll, ret_info):
+  sol = _fista(fun, init, params_fun, prox, params_prox, stepsize, maxiter,
+               maxls, tol, acceleration, verbose, unroll, ret_info)
+  return sol, (params_fun, params_prox, sol)
 
 
-def _fista_bwd(fun_f, prox_g, max_iter, max_iter_linesearch, tol, acceleration,
-               verbose, unroll, res, cotangent):
-  params_f, params_g, sol = res
+def _fista_bwd(fun, prox, stepsize, maxiter, maxls, tol, acceleration,
+               verbose, unroll, ret_info, res, cotangent):
+  params_fun, params_prox, sol = res
   vjp_fun = implicit_diff.prox_fixed_point_vjp
-  vjp_params_f, vjp_params_g = vjp_fun(fun_f=fun_f, sol=sol, params_f=params_f,
-                                       prox_g=prox_g, params_g=params_g,
-                                       cotangent=cotangent)
-  return (None, vjp_params_f, vjp_params_g)
+  vjp_params_fun, vjp_params_prox = vjp_fun(fun=fun, sol=sol,
+                                            params_fun=params_fun,
+                                            prox=prox, params_prox=params_prox,
+                                            cotangent=cotangent)
+  return (None, vjp_params_fun, vjp_params_prox)
 
 
-def fista(fun_f: Callable,
+def fista(fun: Callable,
           init: Any,
-          params_f: Optional[Any] = None,
-          prox_g: Optional[Callable] = None,
-          params_g: Optional[Any] = None,
-          max_iter: int = 500,
-          max_iter_linesearch: int = 10,
+          params_fun: Optional[Any] = None,
+          prox: Optional[Callable] = None,
+          params_prox: Optional[Any] = None,
+          stepsize: float = 0.0,
+          maxiter: int = 500,
+          maxls: int = 15,
           tol: float = 1e-3,
           acceleration: bool = True,
           verbose: int = 0,
-          implicit_diff: bool = False) -> Any:
-  """Solves argmin_x fun_f(x, params_f) + fun_g(x, params_g) using FISTA.
+          implicit_diff: bool = True,
+          ret_info: bool = False) -> Any:
+  """Solves argmin_x fun(x, params_fun) + g(x, params_prox),
+    where fun is smooth and g is possibly non-smooth, using FISTA.
 
   The stopping criterion is
 
-  ||x - prox_g(x - grad(f)(x, params_f), params_g)||_2 <= tol.
+  ||x - prox(x - grad(fun)(x, params_fun), params_prox)||_2 <= tol.
 
   Args:
-    fun_f: a smooth function of the form fun_f(x, params_f).
+    fun: a smooth function of the form fun(x, params_fun).
     init: initialization to use for x (pytree).
-    params_f: parameters to use for fun_f above (pytree).
-    prox_g: proximity operator associated with the function g.
-    params_g: parameters to use for prox_g above (pytree).
-    max_iter: maximum number of FISTA iterations.
-    max_iter_linesearch: maximum number of iterations to use in the line search.
+    params_fun: parameters to use for fun above (pytree).
+    prox: proximity operator associated with the function g.
+    params_prox: parameters to use for prox above (pytree).
+    stepsize: a stepsize to use (if <= 0, use backtracking line search).
+    maxiter: maximum number of FISTA iterations.
+    maxls: maximum number of iterations to use in the line search.
     tol: tolerance to use.
     acceleration: whether to use acceleration (FISTA) or not (ISTA).
-    verbose: verbosity level.
+    verbose: whether to print error on every iteration or not.
+      verbose=True will automatically disable jit.
     implicit_diff: whether to use implicit differentiation or not.
       implicit_diff=False will trigger loop unrolling.
+    ret_info: whether to return an OptimizeResults object containing additional
+      information regarding the solution
   Returns:
-    Approximate solution to the problem (same pytree structure as `init`).
+    If ret_info:
+      An OptimizeResults object.
+    Otherwise:
+      Approximate solution to the problem (same pytree structure as `init`).
   """
   if implicit_diff:
     # We use implicit differentiation.
-    fun = jax.custom_vjp(_fista, nondiff_argnums=(0, 3, 5, 6, 7, 8, 9, 10))
-    fun.defvjp(_fista_fwd, _fista_bwd)
+    _fun = jax.custom_vjp(_fista,
+                          nondiff_argnums=(0, 3, 5, 6, 7, 8, 9, 10, 11, 12))
+    _fun.defvjp(_fista_fwd, _fista_bwd)
   else:
     # We leave differentiation to JAX.
-    fun = _fista
+    _fun = _fista
 
-  return fun(fun_f=fun_f, init=init, params_f=params_f, prox_g=prox_g,
-             params_g=params_g, max_iter=max_iter,
-             max_iter_linesearch=max_iter_linesearch,
-             tol=tol, acceleration=acceleration, verbose=verbose,
-             unroll=not implicit_diff)
+  return _fun(fun=fun, init=init, params_fun=params_fun, prox=prox,
+              params_prox=params_prox, stepsize=stepsize, maxiter=maxiter,
+              maxls=maxls, tol=tol, acceleration=acceleration, verbose=verbose,
+              unroll=not implicit_diff, ret_info=ret_info)
