@@ -55,14 +55,19 @@ def _make_linesearch(fun, params_fun, prox_grad, maxls, stepfactor, unroll):
   jit = not unroll
 
   def linesearch(curr_x, curr_x_fun_val, curr_x_fun_grad, curr_stepsize):
+    # epsilon of current dtype for robust checking of
+    # sufficient decrease condition
+    eps = jnp.finfo(curr_x_fun_val.dtype).eps
     def cond_fun(args):
       next_x, stepsize = args
       diff_x = tree_sub(next_x, curr_x)
       sqdist = tree_l2_norm(diff_x, squared=True)
-      value_F = fun(next_x, params_fun)
-      value_Q = (curr_x_fun_val + tree_vdot(diff_x, curr_x_fun_grad)  +
-                 0.5 / stepsize * sqdist)
-      return value_F > value_Q
+      # the expression below checks the sufficient decrease condition
+      # f(next_x) < f(x) + dot(grad_f(x), diff_x) + (0.5/stepsize) ||diff_x||^2
+      # where the terms have been reordered for numerical stability
+      fun_decrease = stepsize * (fun(next_x, params_fun) - curr_x_fun_val)
+      condition = stepsize * tree_vdot(diff_x, curr_x_fun_grad) + 0.5 * sqdist
+      return  fun_decrease > condition + eps
 
     def body_fun(args):
       stepsize = args[1]
