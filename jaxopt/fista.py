@@ -206,12 +206,17 @@ def _fista_fwd(fun, init, params_fun, prox, params_prox, stepsize, maxiter,
 def _fista_bwd(fun, prox, stepsize, maxiter, maxls, tol, acceleration,
                verbose, unroll, ret_info, res, cotangent):
   params_fun, params_prox, sol = res
-  vjp_fun = implicit_diff.prox_fixed_point_vjp
-  vjp_params_fun, vjp_params_prox = vjp_fun(fun=fun, sol=sol,
+  if prox is None:
+    vjp = implicit_diff.gd_fixed_point_vjp(fun=fun, sol=sol,
+                                           params_fun=params_fun,
+                                           cotangent=cotangent)
+    return (None, vjp, None)
+  else:
+    vjps = implicit_diff.pg_fixed_point_vjp(fun=fun, sol=sol,
                                             params_fun=params_fun,
                                             prox=prox, params_prox=params_prox,
                                             cotangent=cotangent)
-  return (None, vjp_params_fun, vjp_params_prox)
+    return (None, vjps[0], vjps[1])
 
 
 def fista(fun: Callable,
