@@ -18,18 +18,15 @@ import jax
 from jax import test_util as jtu
 import jax.numpy as jnp
 
-from jaxopt import fista
 from jaxopt.implicit_diff import gd_fixed_point_jvp
 from jaxopt.implicit_diff import gd_fixed_point_vjp
 from jaxopt.implicit_diff import pg_fixed_point_jvp
 from jaxopt.implicit_diff import pg_fixed_point_vjp
-from jaxopt.projection import projection_simplex
 from jaxopt.prox import prox_elastic_net
 from jaxopt.prox import prox_lasso
 from jaxopt import test_util
 
 from sklearn import datasets
-from sklearn import preprocessing
 
 
 class ImplicitDiffTest(jtu.JaxTestCase):

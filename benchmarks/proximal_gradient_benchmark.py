@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Benchmark JAX implementation vs. NumPy implementation of FISTA."""
+"""Benchmark JAX implementation vs. NumPy implementation of proximal gradient."""
 
 import time
 
@@ -30,7 +30,7 @@ import numpy as onp
 import jax
 import jax.numpy as jnp
 
-from jaxopt.fista import fista as fista_jaxopt
+from jaxopt.proximal_gradient import proximal_gradient as proximal_gradient_jaxopt
 from jaxopt.prox import prox_lasso
 
 
@@ -62,7 +62,6 @@ def _make_linesearch(fun, prox, maxls):
       value_Q = (curr_x_fun_val + onp.vdot(diff, curr_x_fun_grad) +
                  0.5 * sqdist / curr_stepsize)
       if value_F <= value_Q:
-        # print("accepted at stepsize=", curr_stepsize)
         return next_x, curr_stepsize
       curr_stepsize *= 0.5
 
@@ -73,9 +72,9 @@ def _make_linesearch(fun, prox, maxls):
   return linesearch
 
 
-def ista_onp(fun, init, prox, stepsize, maxiter=200, maxls=15, tol=1e-3,
+def proximal_gradient_onp(fun, init, prox, stepsize, maxiter=200, maxls=15, tol=1e-3,
              verbose=0):
-  """A pure NumPy re-implementation of ISTA for benchmarking reasons."""
+  """A pure NumPy re-implementation of proximal gradient for benchmarking."""
   curr_x = init
   curr_stepsize = 1.0
   linesearch = _make_linesearch(fun, prox, maxls)
@@ -104,9 +103,9 @@ def ista_onp(fun, init, prox, stepsize, maxiter=200, maxls=15, tol=1e-3,
   return OptimizeResults(x=curr_x, nit=iter_num, error=curr_error)
 
 
-def fista_onp(fun, init, prox, stepsize, maxiter=200, maxls=15, tol=1e-3,
+def proximal_gradient_accel_onp(fun, init, prox, stepsize, maxiter=200, maxls=15, tol=1e-3,
               verbose=0):
-  """A pure NumPy re-implementation of FISTA for benchmarking reasons."""
+  """A pure NumPy re-implementation of proximal gradient with acceleration."""
   curr_x = init
   curr_y = init
   curr_t = 1.0
@@ -160,7 +159,7 @@ def lasso_onp(X, y, lam, stepsize, tol, maxiter, acceleration, verbose):
     return onp.sign(w) * onp.maximum(onp.abs(w) - lam * stepsize, 0)
 
   init = onp.zeros(X.shape[1], dtype=X.dtype)
-  solver_fun = fista_onp if acceleration else ista_onp
+  solver_fun = proximal_gradient_accel_onp if acceleration else proximal_gradient_onp
   return solver_fun(fun=fun, init=init, prox=prox, stepsize=stepsize,
                     maxiter=maxiter, tol=tol, verbose=verbose)
 
@@ -172,16 +171,16 @@ def lasso_jnp(X, y, lam, stepsize, tol, maxiter, acceleration, verbose):
     return 0.5 * jnp.dot(diff, diff)
 
   init = jnp.zeros(X.shape[1], dtype=X.dtype)
-  return fista_jaxopt(fun=fun, init=init, prox=prox_lasso, params_prox=lam,
+  return proximal_gradient_jaxopt(fun=fun, init=init, prox=prox_lasso, params_prox=lam,
                       tol=tol, stepsize=stepsize, maxiter=maxiter,
                       acceleration=acceleration, verbose=verbose, ret_info=True)
 
 
-def run_ista(X, y, lam, stepsize, maxiter, verbose):
+def run_proximal_gradient(X, y, lam, stepsize, maxiter, verbose):
   if stepsize <= 0:
-    print("ISTA (line search)")
+    print("proximal gradient (line search)")
   else:
-    print("ISTA (constant step size)")
+    print("proximal gradient (constant step size)")
   print("-" * 50)
   start = time.time()
   res_onp = lasso_onp(X=X, y=y, lam=lam, stepsize=stepsize, tol=1e-3,
@@ -200,11 +199,11 @@ def run_ista(X, y, lam, stepsize, maxiter, verbose):
   print(flush=True)
 
 
-def run_fista(X, y, lam, stepsize, maxiter, verbose):
+def run_accelerated_proximal_gradient(X, y, lam, stepsize, maxiter, verbose):
   if stepsize <= 0:
-    print("FISTA (line search)")
+    print("accelerated proximal gradient descent (line search)")
   else:
-    print("FISTA (constant step size)")
+    print("accelerated proximal gradient descent (constant step size)")
   print("-" * 50)
   start = time.time()
   res_onp = lasso_onp(X=X, y=y, lam=lam, stepsize=stepsize, tol=1e-3,
@@ -261,10 +260,10 @@ def main(argv: Sequence[str]) -> None:
   print()
 
   kw = dict(lam=FLAGS.lam, maxiter=FLAGS.maxiter, verbose=FLAGS.verbose)
-  run_ista(X, y, stepsize=1e-3, **kw)
-  run_ista(X, y, stepsize=0, **kw)
-  run_fista(X, y, stepsize=1e-3, **kw)
-  run_fista(X, y, stepsize=0, **kw)
+  run_proximal_gradient(X, y, stepsize=1e-3, **kw)
+  run_proximal_gradient(X, y, stepsize=0, **kw)
+  run_accelerated_proximal_gradient(X, y, stepsize=1e-3, **kw)
+  run_accelerated_proximal_gradient(X, y, stepsize=0, **kw)
 
 
 if __name__ == '__main__':
