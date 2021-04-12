@@ -294,7 +294,7 @@ class ProximalGradientTest(jtu.JaxTestCase):
   def test_logreg_with_intercept(self):
     X, y = datasets.load_digits(return_X_y=True)
     lam = 1e2
-    tol = 1e-4
+    tol = 1e-3
     maxiter = 200
     atol = 1e-3
     fun = test_util.make_logreg_objective(X, y, fit_intercept=True)
