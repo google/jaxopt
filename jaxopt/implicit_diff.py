@@ -222,3 +222,95 @@ def pg_fixed_point_jvp(fun: Callable,
   jvp1 = fixed_point_jvp(fp_fun1, params_fun, sol, tangents[0])
   jvp2 = fixed_point_jvp(fp_fun2, params_prox, sol, tangents[1])
   return jvp1, jvp2
+
+
+def _gd_fixed_point(solver_fun, fun):
+  def solver_fun_fwd(params_fun):
+    sol = solver_fun(params_fun)
+    return sol, (params_fun, sol)
+
+  def solver_fun_bwd(res, cotangent):
+    params_fun, sol = res
+    return (gd_fixed_point_vjp(fun=fun, sol=sol, params_fun=params_fun,
+                               cotangent=cotangent),)
+
+  wrapped_solver_fun = jax.custom_vjp(solver_fun)
+  wrapped_solver_fun.defvjp(solver_fun_fwd, solver_fun_bwd)
+
+  return wrapped_solver_fun
+
+
+def gd_fixed_point(fun):
+  """Decorator for adding implicit differentiation to a solver.
+
+  Args:
+    fun: a smooth function of the form fun(x, params_fun).
+
+  Returns:
+    solver function wrapped with implicit differentiation.
+
+  Example::
+
+    def fun(W, lam):
+      logits = jnp.dot(X, W)
+      return (jnp.sum(jax.vmap(loss.multiclass_logistic_loss)(y, logits)) +
+              0.5 * lam * jnp.sum(W ** 2))
+
+    @gd_fixed_point(fun)
+    def solver_fun(lam):
+      return your_favorite_logreg_solver(X, y, lam)
+
+    jac_lam = jax.jacrev(solver_fun)(10.0)
+  """
+  def wrapper(solver_fun):
+    return _gd_fixed_point(solver_fun, fun)
+  return wrapper
+
+
+def _pg_fixed_point(solver_fun, fun, prox):
+  def solver_fun_fwd(params_fun, params_prox):
+    sol = solver_fun(params_fun, params_prox)
+    return sol, (params_fun, params_prox, sol)
+
+  def solver_fun_bwd(res, cotangent):
+    params_fun, params_prox, sol = res
+    if prox is None:
+      return (gd_fixed_point_vjp(fun=fun, sol=sol, params_fun=params_fun,
+                                 cotangent=cotangent),)
+    else:
+      return pg_fixed_point_vjp(fun=fun, sol=sol, params_fun=params_fun,
+                                prox=prox, params_prox=params_prox,
+                                cotangent=cotangent)
+
+  wrapped_solver_fun = jax.custom_vjp(solver_fun)
+  wrapped_solver_fun.defvjp(solver_fun_fwd, solver_fun_bwd)
+
+  return wrapped_solver_fun
+
+
+def pg_fixed_point(fun, prox):
+  """Decorator for adding implicit differentiation to a solver.
+
+  Args:
+    fun: a smooth function of the form fun(x, params_fun).
+    prox: proximity operator to use.
+
+  Return:
+    solver function wrapped with implicit differentiation.
+
+  Example::
+
+    def fun(w, params_fun):
+      y_pred = jnp.dot(X, w)
+      diff = y_pred - y
+      return 0.5 / (params_fun * X.shape[0]) * jnp.dot(diff, diff)
+
+    @pg_fixed_point(fun, prox_lasso)
+    def solver_fun(params_fun, params_prox):
+      return your_favorite_lasso_solver(X, y, params_prox)
+
+    jac_params_prox = jax.jacrev(solver_fun, argnums=1)(1.0, 10.0)
+  """
+  def wrapper(solver_fun):
+    return _pg_fixed_point(solver_fun, fun, prox)
+  return wrapper

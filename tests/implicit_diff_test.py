@@ -18,9 +18,14 @@ import jax
 from jax import test_util as jtu
 import jax.numpy as jnp
 
+
+from jaxopt.implicit_diff import gd_fixed_point
 from jaxopt.implicit_diff import gd_fixed_point_jvp
 from jaxopt.implicit_diff import gd_fixed_point_vjp
+
+from jaxopt.implicit_diff import pg_fixed_point
 from jaxopt.implicit_diff import pg_fixed_point_jvp
+
 from jaxopt.implicit_diff import pg_fixed_point_vjp
 from jaxopt.prox import prox_elastic_net
 from jaxopt.prox import prox_lasso
@@ -64,6 +69,19 @@ class ImplicitDiffTest(jtu.JaxTestCase):
                                          prox=prox_lasso, params_prox=lam,
                                          tangents=(1.0, 1.0))[1]
     self.assertArraysAllClose(jac_num, jac_params_prox, atol=1e-4)
+
+  def test_lasso_wrapper(self):
+    X, y = datasets.make_regression(n_samples=50, n_features=10, random_state=0)
+    lam = 10.0
+    fun = test_util.make_least_squares_objective(X, y, fit_intercept=False)
+
+    @pg_fixed_point(fun, prox_lasso)
+    def solver_fun(params_fun, params_prox):
+      return test_util.lasso_skl(X, y, params_prox, fit_intercept=False)
+
+    jac_num = test_util.lasso_skl_jac(X, y, lam, fit_intercept=False)
+    jac_lam = jax.jacrev(solver_fun, argnums=1)(1.0, lam)
+    self.assertArraysAllClose(jac_num, jac_lam, atol=1e-4)
 
   def test_elastic_net(self):
     X, y = datasets.make_regression(n_samples=50, n_features=10, random_state=0)
@@ -118,6 +136,21 @@ class ImplicitDiffTest(jtu.JaxTestCase):
     jac_lam2 = gd_fixed_point_jvp(fun=fun, sol=W_skl, params_fun=lam,
                                   tangent=1.0)
     self.assertArraysAllClose(jac_num, jac_lam2, atol=1e-4)
+
+  def test_logreg_wrapper(self):
+    X, y = datasets.make_classification(n_samples=50, n_features=10,
+                                        n_informative=5, n_classes=3,
+                                        random_state=0)
+    lam = 1.0
+    fun = test_util.make_logreg_objective(X, y, fit_intercept=False)
+
+    @gd_fixed_point(fun)
+    def solver_fun(lam):
+      return test_util.logreg_skl(X, y, lam, fit_intercept=False)
+
+    jac_num = test_util.logreg_skl_jac(X, y, lam, fit_intercept=False)
+    jac_lam = jax.jacrev(solver_fun)(lam)
+    self.assertArraysAllClose(jac_num, jac_lam, atol=1e-4)
 
 if __name__ == '__main__':
   # Uncomment the line below in order to run in float64.
