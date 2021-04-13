@@ -18,6 +18,38 @@ import jax
 import jax.numpy as jnp
 
 
+@jax.custom_jvp
+def _projection_unit_simplex(x: jnp.ndarray) -> jnp.ndarray:
+  """Projection onto the unit simplex."""
+  s = 1.0
+  n_features = x.shape[0]
+  u = jnp.sort(x)[::-1]
+  cssv = jnp.cumsum(u) - s
+  ind = jnp.arange(n_features) + 1
+  cond = u - cssv / ind > 0
+  idx = jnp.count_nonzero(cond)
+  threshold = cssv[idx - 1] / idx.astype(x.dtype)
+  return jax.nn.relu(x - threshold)
+
+
+@_projection_unit_simplex.defjvp
+def _projection_unit_simplex_jvp(primals, tangents):
+  x, = primals
+  x_dot, = tangents
+  primal_out = _projection_unit_simplex(x)
+  supp = primal_out > 0
+  card = jnp.count_nonzero(supp)
+
+  Jacobian = jnp.diag(supp) - jnp.outer(supp, supp) / card
+  tangent_out = jnp.dot(Jacobian, x_dot)
+
+  # Uncomment when issue reported in https://github.com/google/jax/issues/6357
+  # is fixed.
+  # tangent_out = supp * x_dot - (jnp.dot(supp, x_dot) / card) * supp
+
+  return primal_out, tangent_out
+
+
 def projection_simplex(x: jnp.ndarray, s: float = 1.0) -> jnp.ndarray:
   """Projection onto the simplex.
 
@@ -29,11 +61,4 @@ def projection_simplex(x: jnp.ndarray, s: float = 1.0) -> jnp.ndarray:
   Returns:
     p: projected vector, an array of shape (n,).
   """
-  n_features = x.shape[0]
-  u = jnp.sort(x)[::-1]
-  cssv = jnp.cumsum(u) - s
-  ind = jnp.arange(n_features) + 1
-  cond = u - cssv / ind > 0
-  idx = jnp.count_nonzero(cond)
-  threshold = cssv[idx - 1] / idx.astype(x.dtype)
-  return jax.nn.relu(x - threshold)
+  return s * _projection_unit_simplex(x / s)
