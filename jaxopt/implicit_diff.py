@@ -24,49 +24,35 @@ from jax.scipy.sparse import linalg as sparse_linalg
 from jaxopt.tree_util import tree_sub
 
 
-def _precompute_fixed_point_vjp(vjp_fun: Callable, cotangent: Any) -> Any:
-  """Pre-computes the solution of the linear system needed for the
-  vector-Jacobian product of a fixed point.
+def fixed_point_vjp(fixed_point_fun: Callable,
+                    sol: Any,
+                    params: Any,
+                    cotangent: Any) -> Any:
+  """Vector-Jacobian product of a fixed point.
 
-  This function allows to solve the linear system only once when the fixed
-  point has several parameters that need to be differentiated (e.g.,
-  params_fun and params_prox in the proximal gradient fixed point).
+  The fixed point is `sol = fixed_point_fun(sol, params)`.
 
   Args:
-    vjp_fun: the vjp operator for fixed_point_fun.
+    fixed_point_fun: the fixed point function to use.
+    sol: solution of the fixed point (pytree).
+    params: parameters to use for `fixed_point_fun` above (pytree).
     cotangent: vector to left-multiply the Jacobian with
-      (same pytree structure as `sol`).
+      (pytree, same structure as `sol`).
   Returns:
-    The solution of A^T u = v, where A = Id - J, v = cotangent, and
-    J = jacobian(fixed_point_fun, argnums=0).
+    Vector-Jacobian product w.r.t. `params` of `sol` with cotangent.
+    It has the same pytree  structure as `params`.
   """
+  _, vjp_fun = jax.vjp(fixed_point_fun, sol, params)
+
   def matvec(u):
     # Compute the multiplication A^T u = (u^T A)^T = (u^T (Id - J))^T.
     uJ = vjp_fun(u)[0]
     return tree_sub(u, uJ)
-  return sparse_linalg.cg(matvec, cotangent)[0]
 
+  # The solution of A^T u = v, where A = Id - J, v = cotangent, and
+  # J = jacobian(fixed_point_fun, argnums=0).
+  u = sparse_linalg.cg(matvec, cotangent)[0]
 
-def fixed_point_vjp(fixed_point_fun: Callable,
-                    params_fun: Any,
-                    sol: Any,
-                    cotangent: Any) -> Any:
-  """Vector-Jacobian product of a fixed point function.
-
-  The fixed point is x = fixed_point_fun(x, params_fun).
-
-  Args:
-    fixed_point_fun: the fixed point function to use.
-    params_fun: parameters to use for fixed_point_fun above.
-    sol: solution of the fixed point.
-    cotangent: vector to left-multiply the Jacobian with
-      (same pytree structure as `sol`).
-  Returns:
-    Vector-Jacobian product w.r.t. `params_fun` of `sol` with cotangent,
-    which has the same pytree  structure as `params_fun`.
-  """
-  _, vjp_fun = jax.vjp(fixed_point_fun, sol, params_fun)
-  u = _precompute_fixed_point_vjp(vjp_fun, cotangent)
   return vjp_fun(u)[1]
 
 
@@ -83,156 +69,112 @@ def _jvp2(f, primals, tangent):
 
 
 def fixed_point_jvp(fixed_point_fun: Callable,
-                    params_fun: Any,
                     sol: Any,
+                    params: Any,
                     tangent: Any) -> Any:
-  """Jacobian-vector product using a fixed point function.
+  """Jacobian-vector product of a fixed point.
 
-  The fixed point is x = fixed_point_fun(x, params_fun).
+  The fixed point is `sol = fixed_point_fun(sol, params)`.
 
   Args:
     fixed_point_fun: the fixed point function to use.
-    params_fun: parameters to use for fixed_point_fun above.
-    sol: solution of the fixed point.
+    sol: solution of the fixed point (pytree).
+    params: parameters to use for `fixed_point_fun` above (pytree).
     tangent: a pytree to right-multiply the Jacobian with, with the same pytree
-      structure as `params_fun`.
+      structure as `params`.
   Returns:
-    Jacobian-vector product w.r.t. `params_fun` of `sol` with `tangent`.
+    Jacobian-vector product w.r.t. `params` of `sol` with `tangent`.
     It has the same pytree structure as `sol`.
   """
   def matvec(u):
     # Compute the multiplication Au = (Id - J)u,
     # where A = jacobian(fixed_point_fun, argnums=0).
-    Ju = _jvp1(fixed_point_fun, (sol, params_fun), u)
+    Ju = _jvp1(fixed_point_fun, (sol, params), u)
     return tree_sub(u, Ju)
 
-  Jv = _jvp2(fixed_point_fun, (sol, params_fun), tangent)
+  Jv = _jvp2(fixed_point_fun, (sol, params), tangent)
   return sparse_linalg.cg(matvec, Jv)[0]
 
 
-def gd_fixed_point_vjp(fun: Callable,
-                       params_fun: Any,
-                       sol: Any,
-                       cotangent: Any) -> Any:
-  """Vector-Jacobian product of the gradient descent fixed point.
+def make_gradient_descent_fixed_point_fun(fun):
+  """Makes a gradient descent fixed point function.
 
-  The fixed point is x = x - grad(fun)(x, params_fun).
+  The fixed point function is `sol = fixed_point_fun(sol, params_fun)`,
+    where `sol = sol - grad(fun)(sol, params_fun)`.
 
   Args:
-    fun: a smooth function of the form fun(x, params_fun).
-    params_fun: parameters to use for fun above.
-    sol: solution of the fixed point.
-    cotangent: vector to left-multiply the Jacobian with
-      (same pytree structure as `sol`).
+    fun: an objective function of the form `fun(x, params_fun)`.
   Returns:
-    vjp_params_fun, which is the vector-Jacobian product of `sol` with cotangent
-      and has the same pytree structure as `params_fun`.
+    fixed_point_fun
   """
   grad_fun = jax.grad(fun)
-  fixed_point_fun = lambda x, params: tree_sub(x, grad_fun(x, params))
-  return fixed_point_vjp(fixed_point_fun, params_fun, sol, cotangent)
+  return lambda x, params: tree_sub(x, grad_fun(x, params))
 
 
-def gd_fixed_point_jvp(fun: Callable,
-                       params_fun: Any,
-                       sol: Any,
-                       tangent: Any) -> Any:
-  """Jacobian-vector product of the gradient descent fixed point.
+def make_proximal_gradient_fixed_point_fun(fun, prox):
+  """Makes a proximal gradient fixed point function.
 
-  The fixed point is x = x - grad(fun)(x, params_fun).
+  The fixed point function is `sol = fixed_point_fun(sol, params)`, where
+
+      `sol = prox(sol - grad(fun)(sol, params_fun), params_prox)` and
+
+      `params = (params_fun, params_prox)`.
 
   Args:
-    fun: a smooth function of the form fun(x, params_fun).
-    params_fun: parameters to use for fun above.
-    sol: solution of the fixed point.
-    tangent: a pytree to right-multiply the Jacobian with, with the same pytree
-      structure as `params_fun`.
+    fun: a smooth function of the form `fun(x, params_fun)`.
+    prox: proximity operator of the form `prox(x, params_prox, scaling=1.0)`.
   Returns:
-    Jacobian-vector product w.r.t. `params_fun` of `sol` with `tangent`.
-    It has the same pytree structure as `sol`.
+    fixed_point_fun
   """
   grad_fun = jax.grad(fun)
-  fixed_point_fun = lambda x, params: tree_sub(x, grad_fun(x, params))
-  return fixed_point_jvp(fixed_point_fun, params_fun, sol, tangent)
+  def fixed_point_fun(sol, params):
+    params_fun, params_prox = params
+    return prox(tree_sub(sol, grad_fun(sol, params_fun)), params_prox)
+  return fixed_point_fun
 
 
-def pg_fixed_point_vjp(fun: Callable,
-                       params_fun: Any,
-                       prox: Callable,
-                       params_prox: Any,
-                       sol: Any,
-                       cotangent: Any) -> Tuple[Any, Any]:
-  """Vector-Jacobian product of the proximal gradient fixed point.
+def make_mirror_descent_fixed_point_fun(fun, projection, mapping_fun):
+  """Makes a gradient descent fixed point function.
 
-  The fixed point is:
-    x = prox(x - grad(fun)(x, params_fun), params_prox)
+  The fixed point function is `sol = fixed_point_fun(sol, params)`, where::
+
+    x_hat = mapping_fun(sol)
+    y = x_hat - grad(fun)(sol, params_fun)
+    sol = projection(y, params_proj)
+
+  and `params = (params_fun, params_proj)`.
+
+  Typically, `mapping_fun = grad(gen_fun)`, where `gen_fun` is the generating
+  function of the Bregman divergence.
 
   Args:
-    fun: a smooth function of the form fun(x, params_fun).
-    params_fun: parameters to use for fun above.
-    prox: proximity operator to use.
-    params_prox: parameters to use for prox above.
-    sol: solution of the fixed point.
-    cotangent: vector to left-multiply the Jacobian with
-      (same pytree structure as `sol`).
+    fun: a smooth function of the form `fun(x, params_fun)`.
+    projection: projection operator of the form
+      `projection(x, params_proj)`.
   Returns:
-    (vjp_params_fun, vjp_params_prox), which have the same pytree structure as
-    `params_fun` and `params_prox`, respectively.
+    fixed_point_fun
   """
   grad_fun = jax.grad(fun)
-  fixed_point_fun = lambda x, pf, pp: prox(tree_sub(x, grad_fun(x, pf)), pp)
 
-  _, vjp_fun = jax.vjp(fixed_point_fun, sol, params_fun, params_prox)
-  u = _precompute_fixed_point_vjp(vjp_fun, cotangent)
-  vjp = vjp_fun(u)
-  return vjp[1], vjp[2]
+  def fixed_point_fun(x, params):
+    params_fun, params_proj = params
+    x_hat = mapping_fun(x)
+    y = tree_sub(x_hat, grad_fun(x, params_fun))
+    return projection(y, params_proj)
 
-
-def pg_fixed_point_jvp(fun: Callable,
-                       params_fun: Any,
-                       prox: Callable,
-                       params_prox: Any,
-                       sol: Any,
-                       tangents: Any) -> Tuple[Any, Any]:
-  """Jacobian-vector product of the proximal gradient fixed point.
-
-  The fixed point is:
-    x = prox(x - grad(fun)(x, params_fun), params_prox)
-
-  Args:
-    fun: a smooth function of the form fun(x, params_fun).
-    params_fun: parameters to use for fun above.
-    prox: proximity operator to use.
-    params_prox: parameters to use for prox above.
-    sol: solution of the fixed point.
-    tangents: a tuple containing the vectors to right-multiply the Jacobian
-      with, where tangents[0] has the same pytree structure as `params_fun` and
-      tangents[1] has the same pytree structure as `params_prox`.
-  Returns:
-    (jvp_params_fun, jvp_params_prox)
-
-    where `jvp_params_fun` and `jvp_params_prox` are the Jacobian-vector product
-    of `sol` with `tangents[0]` and `tangents[1]`, respectively. Both have the
-    same pytree structure as `sol`.
-  """
-  grad_fun = jax.grad(fun)
-  fp_fun1 = lambda x, pf: prox(tree_sub(x, grad_fun(x, pf)), params_prox)
-  fp_fun2 = lambda x, pp: prox(tree_sub(x, grad_fun(x, params_fun)), pp)
-
-  jvp1 = fixed_point_jvp(fp_fun1, params_fun, sol, tangents[0])
-  jvp2 = fixed_point_jvp(fp_fun2, params_prox, sol, tangents[1])
-  return jvp1, jvp2
+  return fixed_point_fun
 
 
-def _gd_fixed_point(solver_fun, fun):
-  def solver_fun_fwd(params_fun):
-    sol = solver_fun(params_fun)
-    return sol, (params_fun, sol)
+def _custom_fixed_point(solver_fun, fixed_point_fun):
+  def solver_fun_fwd(params):
+    sol = solver_fun(params)
+    return sol, (params, sol)
 
   def solver_fun_bwd(res, cotangent):
-    params_fun, sol = res
-    return (gd_fixed_point_vjp(fun=fun, sol=sol, params_fun=params_fun,
-                               cotangent=cotangent),)
+    params, sol = res
+    vjp = fixed_point_vjp(fixed_point_fun=fixed_point_fun,
+                          sol=sol, params=params, cotangent=cotangent)
+    return (vjp,)
 
   wrapped_solver_fun = jax.custom_vjp(solver_fun)
   wrapped_solver_fun.defvjp(solver_fun_fwd, solver_fun_bwd)
@@ -240,77 +182,48 @@ def _gd_fixed_point(solver_fun, fun):
   return wrapped_solver_fun
 
 
-def gd_fixed_point(fun):
+def custom_fixed_point(fixed_point_fun):
   """Decorator for adding implicit differentiation to a solver.
 
   Args:
-    fun: a smooth function of the form fun(x, params_fun).
+    fixed_point_fun: a fixed point function, `fixed_point_fun(x, params)`.
+      The invariant is `sol == fixed_point_fun(sol, params)` at the fixed point
+      `sol`.
 
   Returns:
     solver function wrapped with implicit differentiation.
 
   Example::
 
+    from jaxopt.implicit_diff import custom_fixed_point
+    from jaxopt.implicit_diff import make_gradient_descent_fixed_point_fun
+    from jaxopt import loss
+
+    from sklearn import datasets
+    from sklearn import linear_model
+
+    X, y = datasets.make_classification(n_samples=50, n_features=10,
+                                        n_informative=5, n_classes=3,
+                                        random_state=0)
+
     def fun(W, lam):
+      # Objective function solved by the logistic regression solver.
       logits = jnp.dot(X, W)
       return (jnp.sum(jax.vmap(loss.multiclass_logistic_loss)(y, logits)) +
               0.5 * lam * jnp.sum(W ** 2))
 
-    @gd_fixed_point(fun)
-    def solver_fun(lam):
-      return your_favorite_logreg_solver(X, y, lam)
+    fixed_point_fun = make_gradient_descent_fixed_point_fun(fun)
 
+    @custom_fixed_point(fixed_point_fun)
+    def solver_fun(lam):
+      logreg = linear_model.LogisticRegression(fit_intercept=False,
+                                               C=1. / lam,
+                                               multi_class="multinomial")
+      return logreg.fit(X, y).coef_.T
+
+    # Jacobian of solver_fun w.r.t. lam evaluated at lam = 10.0.
     jac_lam = jax.jacrev(solver_fun)(10.0)
   """
   def wrapper(solver_fun):
-    return _gd_fixed_point(solver_fun, fun)
-  return wrapper
-
-
-def _pg_fixed_point(solver_fun, fun, prox):
-  def solver_fun_fwd(params_fun, params_prox):
-    sol = solver_fun(params_fun, params_prox)
-    return sol, (params_fun, params_prox, sol)
-
-  def solver_fun_bwd(res, cotangent):
-    params_fun, params_prox, sol = res
-    if prox is None:
-      return (gd_fixed_point_vjp(fun=fun, sol=sol, params_fun=params_fun,
-                                 cotangent=cotangent),)
-    else:
-      return pg_fixed_point_vjp(fun=fun, sol=sol, params_fun=params_fun,
-                                prox=prox, params_prox=params_prox,
-                                cotangent=cotangent)
-
-  wrapped_solver_fun = jax.custom_vjp(solver_fun)
-  wrapped_solver_fun.defvjp(solver_fun_fwd, solver_fun_bwd)
-
-  return wrapped_solver_fun
-
-
-def pg_fixed_point(fun, prox):
-  """Decorator for adding implicit differentiation to a solver.
-
-  Args:
-    fun: a smooth function of the form fun(x, params_fun).
-    prox: proximity operator to use.
-
-  Return:
-    solver function wrapped with implicit differentiation.
-
-  Example::
-
-    def fun(w, params_fun):
-      y_pred = jnp.dot(X, w)
-      diff = y_pred - y
-      return 0.5 / (params_fun * X.shape[0]) * jnp.dot(diff, diff)
-
-    @pg_fixed_point(fun, prox_lasso)
-    def solver_fun(params_fun, params_prox):
-      return your_favorite_lasso_solver(X, y, params_prox)
-
-    jac_params_prox = jax.jacrev(solver_fun, argnums=1)(1.0, 10.0)
-  """
-  def wrapper(solver_fun):
-    return _pg_fixed_point(solver_fun, fun, prox)
+    return _custom_fixed_point(solver_fun, fixed_point_fun)
   return wrapper

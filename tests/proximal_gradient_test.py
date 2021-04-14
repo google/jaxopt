@@ -157,25 +157,24 @@ class ProximalGradientTest(jtu.JaxTestCase):
     sol = proximal_gradient_fun(lam)
 
     # Compute the Jacobian w.r.t. lam (params_prox) using VJPs.
-    vjp_fun = lambda g: implicit_diff.pg_fixed_point_vjp(
-        fun=fun,
+    fixed_point_fun = implicit_diff.make_proximal_gradient_fixed_point_fun(
+        fun, prox_lasso)
+    vjp_fun = lambda g: implicit_diff.fixed_point_vjp(
+        fixed_point_fun=fixed_point_fun,
         sol=sol,
-        params_fun=1.0,
-        prox=prox_lasso,
-        params_prox=lam,
+        params=(1.0, lam),
         cotangent=g)[1]
     jac_params_prox_from_vjp = jax.vmap(vjp_fun)(I)
     self.assertArraysEqual(jac_params_prox_from_vjp.shape,
                            (n_features, n_features))
 
     # Compute the Jacobian w.r.t. lam (params_prox) using JVPs.
-    jvp_fun = lambda g: implicit_diff.pg_fixed_point_jvp(
-        fun=fun,
+    fixed_point_fun2 = lambda sol, pp: fixed_point_fun(sol, (1.0, pp))
+    jvp_fun = lambda g: implicit_diff.fixed_point_jvp(
+        fixed_point_fun=fixed_point_fun2,
         sol=sol,
-        params_fun=1.0,
-        prox=prox_lasso,
-        params_prox=lam,
-        tangents=(1.0, g))[1]
+        params=lam,
+        tangent=g)
     jac_params_prox_from_jvp = jax.vmap(jvp_fun)(I)
     self.assertArraysAllClose(
         jac_params_prox_from_jvp, jac_params_prox_from_vjp, atol=tol)
@@ -400,14 +399,13 @@ class ProximalGradientTest(jtu.JaxTestCase):
     self.assertArraysAllClose(W_fit, W_skl, atol=atol)
 
   def test_multiclass_svm_dual_implicit_diff(self):
-
-    raise absltest.SkipTest
     X, y = datasets.make_classification(
         n_samples=20,
         n_features=5,
         n_informative=3,
         n_classes=3,
         random_state=0)
+    X = preprocessing.Normalizer().fit_transform(X)
     # Transform labels to a one-hot representation.
     # Y has shape (n_samples, n_classes).
     Y = preprocessing.LabelBinarizer().fit_transform(y)
@@ -437,8 +435,8 @@ class ProximalGradientTest(jtu.JaxTestCase):
       return jnp.dot(X.T, (Y - beta_fit)) / lam
 
     jac_primal = jax.jacrev(proximal_gradient_fun_primal)(lam)
-    jac_num = test_util.multiclass_linear_svm_skl_jac(X, y, lam)
-    self.assertArraysAllClose(jac_num, jac_primal, atol=1e-3)
+    jac_num = test_util.multiclass_linear_svm_skl_jac(X, y, lam, eps=1e-3)
+    self.assertArraysAllClose(jac_num, jac_primal, atol=5e-3)
 
 
 if __name__ == '__main__':

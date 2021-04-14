@@ -21,7 +21,9 @@ from typing import Optional
 import jax
 import jax.numpy as jnp
 
-from jaxopt import implicit_diff
+from jaxopt.implicit_diff import make_gradient_descent_fixed_point_fun
+from jaxopt.implicit_diff import make_proximal_gradient_fixed_point_fun
+from jaxopt.implicit_diff import fixed_point_vjp
 from jaxopt import loop
 from jaxopt.tree_util import tree_add_scalar_mul
 from jaxopt.tree_util import tree_l2_norm
@@ -229,19 +231,23 @@ def _proximal_gradient_bwd(fun, prox, stepsize, maxiter, maxls, tol,
                            acceleration, verbose, unroll, ret_info, res,
                            cotangent):
   params_fun, params_prox, sol = res
+
+  # There is no way to compute the sensitivity to init.
+  # We therefore assume convergence to the fixed point and return zeros.
+
   if prox is None:
-    vjp = implicit_diff.gd_fixed_point_vjp(
-        fun=fun, sol=sol, params_fun=params_fun, cotangent=cotangent)
-    return (None, vjp, None)
+    fixed_point_fun = make_gradient_descent_fixed_point_fun(fun)
+    vjp = fixed_point_vjp(fixed_point_fun=fixed_point_fun, sol=sol,
+                          params=params_fun, cotangent=cotangent)
+    # vjp_init, vjp_params_fun, vjp_params_prox
+    return (jnp.zeros_like(sol), vjp, None)
   else:
-    vjps = implicit_diff.pg_fixed_point_vjp(
-        fun=fun,
-        sol=sol,
-        params_fun=params_fun,
-        prox=prox,
-        params_prox=params_prox,
-        cotangent=cotangent)
-    return (None, vjps[0], vjps[1])
+    fixed_point_fun = make_proximal_gradient_fixed_point_fun(fun, prox)
+    vjps = fixed_point_vjp(fixed_point_fun=fixed_point_fun, sol=sol,
+                           params=(params_fun, params_prox),
+                           cotangent=cotangent)
+    # vjp_init, vjp_params_fun, vjp_params_prox
+    return (jnp.zeros_like(sol), vjps[0], vjps[1])
 
 
 def proximal_gradient(fun: Callable,
