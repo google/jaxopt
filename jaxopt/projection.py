@@ -39,14 +39,7 @@ def _projection_unit_simplex_jvp(primals, tangents):
   primal_out = _projection_unit_simplex(x)
   supp = primal_out > 0
   card = jnp.count_nonzero(supp)
-
-  Jacobian = jnp.diag(supp) - jnp.outer(supp, supp) / card
-  tangent_out = jnp.dot(Jacobian, x_dot)
-
-  # Uncomment when issue reported in https://github.com/google/jax/issues/6357
-  # is fixed.
-  # tangent_out = supp * x_dot - (jnp.dot(supp, x_dot) / card) * supp
-
+  tangent_out = supp * x_dot - (jnp.dot(supp, x_dot) / card) * supp
   return primal_out, tangent_out
 
 
