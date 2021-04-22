@@ -76,6 +76,30 @@ def lasso_skl(X, y, lam, tol=1e-5, fit_intercept=False):
 
 
 def make_least_squares_objective(X, y, fit_intercept=False):
+  """Constructs a least squares loss.
+
+  The returned callable takes as input a vector or pytree w and a scalar lam
+  and evaluates
+
+      fun(w, lam) = (0.5 / (lam * n_features)) || X w - y||^2
+
+  where X is normalized using sklearn.preprocessing.Normalizer and n_features
+  is the second dimension this matrix.
+
+  Args:
+    X: input dataset, of size (n_samples, n_features)
+    y: target values associated with X, of size (n_samples, n_tasks)
+    fit_intercept: if True, the loss is modified to be
+      (0.5 / (lam * n_features)) || X w + b - y||^2 and the
+      input to the callable is a pytree of the form (w, b)
+  Returns:
+    fun: least squares loss, callable that takes as argument
+      a vector w of size (n_features, n_tasks) if
+      fit_intercept=False or a pytree (w, b) with
+      w of size (n_features, n_tasks) and b
+      of size (n_tasks,).
+  """
+
   X = preprocessing.Normalizer().fit_transform(X)
   if fit_intercept:
     def fun(pytree, lam):
