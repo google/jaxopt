@@ -19,12 +19,16 @@ from jax import test_util as jtu
 import jax.numpy as jnp
 
 from jaxopt import prox
-from jaxopt import tree_util
 
 import numpy as onp
 
 
 class ProxTest(jtu.JaxTestCase):
+
+  def test_prox_none(self):
+    rng = onp.random.RandomState(0)
+    x = rng.rand(20) * 2 - 1
+    self.assertArraysAllClose(prox.prox_none(x), x)
 
   # A scalar implementation for check purposes.
   def _prox_l1(self, x, alpha):

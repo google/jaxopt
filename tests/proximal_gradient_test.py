@@ -19,13 +19,12 @@ import jax
 from jax import test_util as jtu
 import jax.numpy as jnp
 
-from jaxopt import proximal_gradient
 from jaxopt import implicit_diff
 from jaxopt import projection
+from jaxopt import prox
+from jaxopt import proximal_gradient
 from jaxopt import test_util
 from jaxopt import tree_util as tu
-from jaxopt.prox import prox_elastic_net
-from jaxopt.prox import prox_lasso
 
 from sklearn import datasets
 from sklearn import preprocessing
@@ -44,16 +43,12 @@ class ProximalGradientTest(jtu.JaxTestCase):
 
     # Check optimality conditions.
     w_init = jnp.zeros(X.shape[1])
-    w_fit = proximal_gradient.proximal_gradient(
-        fun,
-        w_init,
-        params_fun=lam,
-        prox=prox_lasso,
-        params_prox=1.0,
-        tol=tol,
-        maxiter=maxiter,
-        acceleration=acceleration)
-    w_fit2 = prox_lasso(w_fit - jax.grad(fun)(w_fit, lam), 1.0)
+    solver_fun = proximal_gradient.make_solver_fun(fun=fun, init=w_init,
+                                                   prox=prox.prox_lasso,
+                                                   tol=tol, maxiter=maxiter,
+                                                   acceleration=acceleration)
+    w_fit = solver_fun(params_fun=lam, params_prox=1.0)
+    w_fit2 = prox.prox_lasso(w_fit - jax.grad(fun)(w_fit, lam), 1.0)
     self.assertLessEqual(jnp.sqrt(jnp.sum((w_fit - w_fit2)**2)), tol)
 
     # Compare against sklearn.
@@ -68,23 +63,19 @@ class ProximalGradientTest(jtu.JaxTestCase):
     atol = 1e-2
     fun = test_util.make_least_squares_objective(X, y, fit_intercept=True)
 
-    def prox(pytree, params, scaling=1.0):
+    def _prox(pytree, params, scaling=1.0):
       w, b = pytree
-      return prox_lasso(w, params, scaling), b
+      return prox.prox_lasso(w, params, scaling), b
 
     # Check optimality conditions.
     pytree_init = (jnp.zeros(X.shape[1]), 0.0)
-    pytree_fit = proximal_gradient.proximal_gradient(
-        fun,
-        pytree_init,
-        params_fun=lam,
-        prox=prox,
-        params_prox=1.0,
-        tol=tol,
-        maxiter=maxiter,
-        acceleration=True)
-    pytree = tu.tree_sub(pytree_fit, jax.grad(fun)(pytree_fit, lam))
-    pytree_fit2 = prox(pytree, lam)
+    solver_fun = proximal_gradient.make_solver_fun(fun=fun, init=pytree_init,
+                                                   prox=_prox, tol=tol,
+                                                   maxiter=maxiter,
+                                                   acceleration=True)
+    pytree_fit = solver_fun(params_fun=1.0, params_prox=lam)
+    pytree = tu.tree_sub(pytree_fit, jax.grad(fun)(pytree_fit, 1.0))
+    pytree_fit2 = _prox(pytree, lam)
     pytree_fit_diff = tu.tree_sub(pytree_fit, pytree_fit2)
     self.assertLessEqual(tu.tree_l2_norm(pytree_fit_diff), tol)
 
@@ -104,30 +95,15 @@ class ProximalGradientTest(jtu.JaxTestCase):
     jac_num = test_util.lasso_skl_jac(X, y, lam)
     w_skl = test_util.lasso_skl(X, y, lam)
 
-    jac_fun = jax.jacrev(proximal_gradient.proximal_gradient, argnums=2)
-    jac_custom = jac_fun(
-        fun,
-        w_skl,
-        lam,
-        prox_lasso,
-        1.0,
-        tol=tol,
-        maxiter=maxiter,
-        acceleration=True,
-        implicit_diff=True)
+    solver_fun = proximal_gradient.make_solver_fun(fun=fun, init=w_skl,
+                                                   prox=prox.prox_lasso,
+                                                   tol=tol, maxiter=maxiter,
+                                                   acceleration=True,
+                                                   implicit_diff=True)
+    jac_custom = jax.jacrev(solver_fun)(lam, 1.0)
     self.assertArraysAllClose(jac_num, jac_custom, atol=1e-3)
 
-    jac_fun = jax.jacrev(proximal_gradient.proximal_gradient, argnums=4)
-    jac_custom = jac_fun(
-        fun,
-        w_skl,
-        1.0,
-        prox_lasso,
-        lam,
-        tol=tol,
-        maxiter=maxiter,
-        acceleration=True,
-        implicit_diff=True)
+    jac_custom = jax.jacrev(solver_fun, argnums=1)(1.0, lam)
     self.assertArraysAllClose(jac_num, jac_custom, atol=1e-3)
 
   def test_lasso_implicit_diff_multi(self):
@@ -144,21 +120,16 @@ class ProximalGradientTest(jtu.JaxTestCase):
     tol = 1e-3
     maxiter = 200
     I = jnp.eye(n_features)
-    proximal_gradient_fun = lambda lam_: proximal_gradient.proximal_gradient(
-        fun=fun,
-        init=w_init,
-        params_fun=1.0,
-        prox=prox_lasso,
-        params_prox=lam_,
-        tol=tol,
-        maxiter=maxiter,
-        acceleration=True,
-        implicit_diff=True)
-    sol = proximal_gradient_fun(lam)
+    solver_fun = proximal_gradient.make_solver_fun(fun=fun, init=w_init,
+                                                   prox=prox.prox_lasso,
+                                                   tol=tol, maxiter=maxiter,
+                                                   acceleration=True,
+                                                   implicit_diff=True)
+    sol = solver_fun(1.0, lam)
 
     # Compute the Jacobian w.r.t. lam (params_prox) using VJPs.
     fixed_point_fun = implicit_diff.make_proximal_gradient_fixed_point_fun(
-        fun, prox_lasso)
+        fun, prox.prox_lasso)
     vjp_fun = lambda g: implicit_diff.fixed_point_vjp(
         fixed_point_fun=fixed_point_fun,
         sol=sol,
@@ -180,17 +151,7 @@ class ProximalGradientTest(jtu.JaxTestCase):
         jac_params_prox_from_jvp, jac_params_prox_from_vjp, atol=tol)
 
     # Make sure the decorator works.
-    jac_fun = jax.jacrev(proximal_gradient.proximal_gradient, argnums=4)
-    jac_custom = jac_fun(
-        fun,
-        w_init,
-        1.0,
-        prox_lasso,
-        lam,
-        tol=tol,
-        maxiter=maxiter,
-        acceleration=True,
-        implicit_diff=True)
+    jac_custom = jax.jacrev(solver_fun, argnums=1)(1.0, lam)
     self.assertArraysAllClose(jac_params_prox_from_vjp, jac_custom, atol=tol)
 
   @parameterized.product(acceleration=[True, False])
@@ -206,16 +167,12 @@ class ProximalGradientTest(jtu.JaxTestCase):
 
     # Compute the Jacobian w.r.t. lam via forward differentiation.
     w_init = jnp.zeros(X.shape[1])
-    jac_fun = jax.jacfwd(proximal_gradient.proximal_gradient, argnums=2)
-    jac_lam2 = jac_fun(
-        fun,
-        w_init,
-        lam,
-        prox=prox_lasso,
-        tol=tol,
-        maxiter=maxiter,
-        implicit_diff=False,
-        acceleration=acceleration)
+    solver_fun = proximal_gradient.make_solver_fun(fun=fun, init=w_init,
+                                                   prox=prox.prox_lasso,
+                                                   tol=tol, maxiter=maxiter,
+                                                   implicit_diff=False,
+                                                   acceleration=acceleration)
+    jac_lam2 = jax.jacrev(solver_fun)(lam, 1.0)
     self.assertArraysAllClose(jac_lam, jac_lam2, atol=1e-3)
 
   def test_elastic_net(self):
@@ -225,19 +182,15 @@ class ProximalGradientTest(jtu.JaxTestCase):
     maxiter = 200
     atol = 1e-3
     fun = test_util.make_least_squares_objective(X, y)
-    prox = prox_elastic_net
 
     # Check optimality conditions.
     w_init = jnp.zeros(X.shape[1])
-    w_fit = proximal_gradient.proximal_gradient(
-        fun,
-        w_init,
-        params_fun=1.0,
-        prox=prox,
-        params_prox=params_prox,
-        tol=tol,
-        maxiter=maxiter)
-    w_fit2 = prox(w_fit - jax.grad(fun)(w_fit, 1.0), params_prox)
+    solver_fun = proximal_gradient.make_solver_fun(fun=fun, init=w_init,
+                                                   prox=prox.prox_elastic_net,
+                                                   tol=tol, maxiter=maxiter)
+    w_fit = solver_fun(params_fun=1.0, params_prox=params_prox)
+    w_fit2 = prox.prox_elastic_net(w_fit - jax.grad(fun)(w_fit, 1.0),
+                                   params_prox)
     w_diff = tu.tree_sub(w_fit, w_fit2)
     self.assertLessEqual(jnp.sqrt(jnp.sum(w_diff**2)), tol)
 
@@ -252,112 +205,17 @@ class ProximalGradientTest(jtu.JaxTestCase):
     tol = 1e-3
     maxiter = 200
     fun = test_util.make_least_squares_objective(X, y)
-    prox = prox_elastic_net
 
     jac_num_lam, jac_num_gam = test_util.enet_skl_jac(X, y, params_prox)
     w_skl = test_util.enet_skl(X, y, params_prox)
-    jac_fun = jax.jacrev(proximal_gradient.proximal_gradient, argnums=4)
-    jac_custom = jac_fun(
-        fun,
-        w_skl,
-        1.0,
-        prox,
-        params_prox,
-        tol=tol,
-        maxiter=maxiter,
-        acceleration=True,
-        implicit_diff=True)
+    solver_fun = proximal_gradient.make_solver_fun(fun=fun, init=w_skl,
+                                                   prox=prox.prox_elastic_net,
+                                                   tol=tol, maxiter=maxiter,
+                                                   acceleration=True,
+                                                   implicit_diff=True)
+    jac_custom = jax.jacrev(solver_fun, argnums=1)(1.0, params_prox)
     self.assertArraysAllClose(jac_num_lam, jac_custom[0], atol=1e-3)
     self.assertArraysAllClose(jac_num_gam, jac_custom[1], atol=1e-3)
-
-  def test_logreg(self):
-    X, y = datasets.load_digits(return_X_y=True)
-    lam = 1e2
-    tol = 1e-4
-    maxiter = 500
-    atol = 1e-3
-    fun = test_util.make_logreg_objective(X, y)
-
-    W_init = jnp.zeros((X.shape[1], 10))
-    W_fit = proximal_gradient.proximal_gradient(
-        fun, W_init, params_fun=lam, tol=tol, maxiter=maxiter)
-
-    # Check optimality conditions.
-    W_grad = jax.grad(fun)(W_fit, lam)
-    self.assertLessEqual(jnp.sqrt(jnp.sum(W_grad**2)), tol)
-
-    # Compare against sklearn.
-    W_skl = test_util.logreg_skl(X, y, lam)
-    self.assertArraysAllClose(W_fit, W_skl, atol=atol)
-
-  def test_logreg_with_intercept(self):
-    X, y = datasets.load_digits(return_X_y=True)
-    lam = 1e2
-    tol = 1e-3
-    maxiter = 200
-    atol = 1e-3
-    fun = test_util.make_logreg_objective(X, y, fit_intercept=True)
-
-    pytree_init = (jnp.zeros((X.shape[1], 10)), jnp.zeros(10))
-    pytree_fit = proximal_gradient.proximal_gradient(
-        fun, pytree_init, params_fun=lam, prox=None, tol=tol, maxiter=maxiter)
-
-    # Check optimality conditions.
-    pytree_grad = jax.grad(fun)(pytree_fit, lam)
-    self.assertLessEqual(tu.tree_l2_norm(pytree_grad), tol)
-
-    # Compare against sklearn.
-    W_skl, b_skl = test_util.logreg_skl(X, y, lam, fit_intercept=True)
-    self.assertArraysAllClose(pytree_fit[0], W_skl, atol=atol)
-    self.assertArraysAllClose(pytree_fit[1], b_skl, atol=atol)
-
-  def test_logreg_implicit_diff(self):
-    X, y = datasets.load_digits(return_X_y=True)
-    lam = float(X.shape[0])
-    tol = 1e-3
-    maxiter = 200
-    fun = test_util.make_logreg_objective(X, y)
-
-    jac_num = test_util.logreg_skl_jac(X, y, lam)
-    W_skl = test_util.logreg_skl(X, y, lam)
-
-    # Make sure the decorator works.
-    jac_fun = jax.jacrev(proximal_gradient.proximal_gradient, argnums=2)
-    jac_custom = jac_fun(
-        fun,
-        W_skl,
-        lam,
-        prox=None,
-        tol=tol,
-        maxiter=maxiter,
-        acceleration=True,
-        implicit_diff=True)
-    self.assertArraysAllClose(jac_num, jac_custom, atol=1e-2)
-
-  @parameterized.product(acceleration=[True, False])
-  def test_logreg_forward_diff(self, acceleration):
-    X, y = datasets.load_digits(return_X_y=True)
-    lam = float(X.shape[0])
-    tol = 1e-3 if acceleration else 5e-3
-    maxiter = 200
-    atol = 1e-3 if acceleration else 1e-1
-    fun = test_util.make_logreg_objective(X, y)
-
-    jac_lam = test_util.logreg_skl_jac(X, y, lam)
-
-    # Compute the Jacobian w.r.t. lam via forward differentiation.
-    W_init = jnp.zeros((X.shape[1], 10))
-    jac_fun = jax.jacfwd(proximal_gradient.proximal_gradient, argnums=2)
-    jac_lam2 = jac_fun(
-        fun,
-        W_init,
-        lam,
-        prox=None,
-        tol=tol,
-        maxiter=maxiter,
-        implicit_diff=False,
-        acceleration=acceleration)
-    self.assertArraysAllClose(jac_lam, jac_lam2, atol=atol)
 
   def test_multiclass_svm_dual(self):
     X, y = datasets.make_classification(
@@ -376,18 +234,14 @@ class ProximalGradientTest(jtu.JaxTestCase):
     fun = test_util.make_multiclass_linear_svm_objective(X, y)
 
     proj_vmap = jax.vmap(projection.projection_simplex)
-    prox = lambda x, params_prox, scaling=1.0: proj_vmap(x)
+    _prox = lambda x, params_prox, scaling=1.0: proj_vmap(x)
 
     n_samples, n_classes = Y.shape
     beta_init = jnp.ones((n_samples, n_classes)) / n_classes
-    beta_fit = proximal_gradient.proximal_gradient(
-        fun,
-        beta_init,
-        params_fun=lam,
-        prox=prox,
-        stepsize=1e-2,
-        tol=tol,
-        maxiter=maxiter)
+    solver_fun = proximal_gradient.make_solver_fun(fun=fun, init=beta_init,
+                                                   prox=_prox, stepsize=1e-2,
+                                                   tol=tol, maxiter=maxiter)
+    beta_fit = solver_fun(params_fun=lam)
 
     # Check optimality conditions.
     beta_fit2 = proj_vmap(beta_fit - jax.grad(fun)(beta_fit, lam))
@@ -416,19 +270,15 @@ class ProximalGradientTest(jtu.JaxTestCase):
     fun = test_util.make_multiclass_linear_svm_objective(X, y)
 
     proj_vmap = jax.vmap(projection.projection_simplex)
-    prox = lambda x, params_prox, scaling=1.0: proj_vmap(x)
+    _prox = lambda x, params_prox, scaling=1.0: proj_vmap(x)
 
     def proximal_gradient_fun_dual(lam):
       n_samples, n_classes = Y.shape
       beta_init = jnp.ones((n_samples, n_classes)) / n_classes
-      return proximal_gradient.proximal_gradient(
-          fun,
-          beta_init,
-          params_fun=lam,
-          prox=prox,
-          stepsize=1e-2,
-          tol=tol,
-          maxiter=maxiter)
+      solver_fun = proximal_gradient.make_solver_fun(fun=fun, init= beta_init,
+                                                     prox=_prox, stepsize=1e-2,
+                                                     tol=tol, maxiter=maxiter)
+      return solver_fun(params_fun=lam)
 
     def proximal_gradient_fun_primal(lam):
       beta_fit = proximal_gradient_fun_dual(lam)

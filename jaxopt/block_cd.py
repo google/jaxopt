@@ -58,7 +58,7 @@ def make_solver_fun(fun: base.CompositeLinearFunction,
                     maxiter: int = 500,
                     tol: float = 1e-3,
                     verbose: int = 0,
-                    implicit_diff: bool = True):
+                    implicit_diff: bool = True) -> Callable:
   """Creates a block coordinate descent solver function
   ``solver_fun(params_fun, params_prox)`` for solving::
 

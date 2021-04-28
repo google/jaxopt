@@ -28,7 +28,7 @@ from jaxopt.implicit_diff import make_mirror_descent_fixed_point_fun
 from jaxopt.implicit_diff import make_proximal_gradient_fixed_point_fun
 
 from jaxopt.projection import projection_simplex
-from jaxopt.proximal_gradient import proximal_gradient
+from jaxopt import proximal_gradient
 from jaxopt.prox import prox_elastic_net
 from jaxopt.prox import prox_lasso
 from jaxopt import test_util
@@ -194,8 +194,10 @@ class ImplicitDiffTest(jtu.JaxTestCase):
     # Commpute solution using proximal_gradient.
     n_samples, n_classes = Y.shape
     beta_init = jnp.ones((n_samples, n_classes)) / n_classes
-    beta_fit = proximal_gradient(fun, beta_init, params_fun=lam, prox=prox,
-                                 stepsize=1e-2, tol=tol, maxiter=maxiter)
+    solver_fun = proximal_gradient.make_solver_fun(fun=fun, init=beta_init,
+                                                   prox=prox, stepsize=1e-2,
+                                                   tol=tol, maxiter=maxiter)
+    beta_fit = solver_fun(params_fun=lam)
 
     # Compute the Jacobian w.r.t. lam (params_fun) using the PG fixed point.
     I = jnp.eye(beta_fit.size)

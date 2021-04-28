@@ -15,12 +15,28 @@
 """Proximity operators."""
 
 from typing import Any
+from typing import Optional
 from typing import Tuple
 
 import jax
 import jax.numpy as jnp
 
 from jaxopt import tree_util
+
+
+def prox_none(x: Any, params: Optional[Any] = None, scaling: float = 1.0):
+  r"""Proximal operator for g(x) = 0, i.e., the identity function.
+
+  Since g(x) = 0, the output is: ``argmin_y 0.5 ||y - x||^2 = Id(x)``.
+
+  Args:
+    x: input pytree.
+    params: ignored.
+    scaling: ignored.
+  Returns:
+    y: output pytree with same structure as x.
+  """
+  return x
 
 
 def prox_lasso(x: Any, params: Any, scaling: float = 1.0):
@@ -69,7 +85,7 @@ def prox_group_lasso(x: Any, param: float, scaling=1.0):
   The output is:
     argmin_y 0.5 ||y - x||^2 + scaling * param * ||y||_2.
 
-  Blocks can be grouped using ``jax.vmap`.
+  Blocks can be grouped using ``jax.vmap``.
 
   Args:
     x: input pytree.

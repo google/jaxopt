@@ -22,10 +22,8 @@ import jax
 import jax.numpy as jnp
 
 from jaxopt import base
+from jaxopt import implicit_diff as idf
 from jaxopt import loop
-from jaxopt.implicit_diff import fixed_point_vjp
-from jaxopt.implicit_diff import make_gradient_descent_fixed_point_fun
-from jaxopt.implicit_diff import make_proximal_gradient_fixed_point_fun
 from jaxopt.tree_util import tree_add_scalar_mul
 from jaxopt.tree_util import tree_l2_norm
 from jaxopt.tree_util import tree_sub
@@ -99,9 +97,6 @@ def _make_pg_body_fun(fun: Callable,
                       unroll_ls: bool = False,
                       stepfactor: float = 0.5) -> Callable:
   """Creates a body_fun for performing one iteration of proximal gradient."""
-
-  if prox is None:
-    prox = lambda x, params, scaling=1.0: x
 
   fun = jax.jit(fun)
   value_and_grad_fun = jax.jit(jax.value_and_grad(fun))
@@ -213,68 +208,34 @@ def _proximal_gradient(fun, init, params_fun, prox, params_prox, stepsize,
     return res[1]
 
 
-def _proximal_gradient_fwd(fun, init, params_fun, prox, params_prox, stepsize,
-                           maxiter, maxls, tol, acceleration, verbose, unroll,
-                           ret_info):
-  sol = _proximal_gradient(fun, init, params_fun, prox, params_prox, stepsize,
-                           maxiter, maxls, tol, acceleration, verbose, unroll,
-                           ret_info)
-  return sol, (params_fun, params_prox, sol)
+def make_solver_fun(fun: Callable,
+                    prox: Callable,
+                    init: Any,
+                    stepsize: float = 0.0,
+                    maxiter: int = 500,
+                    maxls: int = 15,
+                    tol: float = 1e-3,
+                    acceleration: bool = True,
+                    verbose: int = 0,
+                    implicit_diff: bool = True,
+                    ret_info: bool = False) -> Callable:
+  """Creates a proximal gradient (a.k.a. FISTA) solver function
+  ``solver_fun(params_fun, params_prox)`` for solving::
 
+    argmin_x fun(x, params_fun) + g(x, params_prox),
 
-def _proximal_gradient_bwd(fun, prox, stepsize, maxiter, maxls, tol,
-                           acceleration, verbose, unroll, ret_info, res,
-                           cotangent):
-  params_fun, params_prox, sol = res
+  where fun is smooth and g is possibly non-smooth. This method is a specific
+  instance of (accelerated) projected gradient descent when the prox is a
+  projection and (acclerated) gradient descent when prox is ``prox_none``.
 
-  # There is no way to compute the sensitivity to init.
-  # We therefore assume convergence to the fixed point and return zeros.
+  The stopping criterion is::
 
-  if prox is None:
-    fixed_point_fun = make_gradient_descent_fixed_point_fun(fun)
-    vjp = fixed_point_vjp(fixed_point_fun=fixed_point_fun, sol=sol,
-                          params=params_fun, cotangent=cotangent)
-    # vjp_init, vjp_params_fun, vjp_params_prox
-    return (jnp.zeros_like(sol), vjp, None)
-  else:
-    fixed_point_fun = make_proximal_gradient_fixed_point_fun(fun, prox)
-    vjps = fixed_point_vjp(fixed_point_fun=fixed_point_fun, sol=sol,
-                           params=(params_fun, params_prox),
-                           cotangent=cotangent)
-    # vjp_init, vjp_params_fun, vjp_params_prox
-    return (jnp.zeros_like(sol), vjps[0], vjps[1])
-
-
-def proximal_gradient(fun: Callable,
-                      init: Any,
-                      params_fun: Optional[Any] = None,
-                      prox: Optional[Callable] = None,
-                      params_prox: Optional[Any] = None,
-                      stepsize: float = 0.0,
-                      maxiter: int = 500,
-                      maxls: int = 15,
-                      tol: float = 1e-3,
-                      acceleration: bool = True,
-                      verbose: int = 0,
-                      implicit_diff: bool = True,
-                      ret_info: bool = False) -> Any:
-  """Solves argmin_x fun(x, params_fun) + g(x, params_prox),
-
-  where fun is smooth and g is possibly non-smooth, using proximal gradient
-  descent, also known as (F)ISTA. This method is a specific instance of
-  (accelerated) projected gradient descent when the prox is a projection and
-  (acclerated) gradient descent when prox is None.
-
-  The stopping criterion is
-
-  ||x - prox(x - grad(fun)(x, params_fun), params_prox)||_2 <= tol.
+    ||x - prox(x - grad(fun)(x, params_fun), params_prox)||_2 <= tol.
 
   Args:
-    fun: a smooth function of the form fun(x, params_fun).
-    init: initialization to use for x (pytree).
-    params_fun: parameters to use for fun above (pytree).
+    fun: a smooth function of the form ``fun(x, params_fun)``.
     prox: proximity operator associated with the function g.
-    params_prox: parameters to use for prox above (pytree).
+    init: initialization to use for x (pytree).
     stepsize: a stepsize to use (if <= 0, use backtracking line search).
     maxiter: maximum number of proximal gradient descent iterations.
     maxls: maximum number of iterations to use in the line search.
@@ -288,10 +249,7 @@ def proximal_gradient(fun: Callable,
       information regarding the solution
 
   Returns:
-    If ret_info:
-      An OptimizeResults object.
-    Otherwise:
-      Approximate solution to the problem (same pytree structure as `init`).
+    Solver function ``solver_fun(params_fun, params_prox)``.
 
   References:
     Beck, Amir, and Marc Teboulle. "A fast iterative shrinkage-thresholding
@@ -300,26 +258,13 @@ def proximal_gradient(fun: Callable,
     Nesterov, Yu. "Gradient methods for minimizing composite functions."
     Mathematical Programming (2013).
   """
-  if implicit_diff:
-    # We use implicit differentiation.
-    _fun = jax.custom_vjp(
-        _proximal_gradient, nondiff_argnums=(0, 3, 5, 6, 7, 8, 9, 10, 11, 12))
-    _fun.defvjp(_proximal_gradient_fwd, _proximal_gradient_bwd)
-  else:
-    # We leave differentiation to JAX.
-    _fun = _proximal_gradient
+  def solver_fun(params_fun=None, params_prox=None):
+    return _proximal_gradient(fun, init, params_fun, prox, params_prox,
+                              stepsize, maxiter, maxls, tol, acceleration,
+                              verbose,  not implicit_diff, ret_info)
 
-  return _fun(
-      fun=fun,
-      init=init,
-      params_fun=params_fun,
-      prox=prox,
-      params_prox=params_prox,
-      stepsize=stepsize,
-      maxiter=maxiter,
-      maxls=maxls,
-      tol=tol,
-      acceleration=acceleration,
-      verbose=verbose,
-      unroll=not implicit_diff,
-      ret_info=ret_info)
+  if implicit_diff:
+    fixed_point_fun = idf.make_proximal_gradient_fixed_point_fun(fun, prox)
+    solver_fun = idf.custom_fixed_point(fixed_point_fun,
+                                        unpack_params=True)(solver_fun)
+  return solver_fun
