@@ -86,14 +86,21 @@ class ImplicitDiffTest(jtu.JaxTestCase):
     fun = test_util.make_least_squares_objective(X, y, fit_intercept=False)
     fixed_point_fun = make_proximal_gradient_fixed_point_fun(fun, prox_lasso)
 
-    @custom_fixed_point(fixed_point_fun)
-    def solver_fun(params):
-      _, params_prox = params
+    @custom_fixed_point(fixed_point_fun, unpack_params=True)
+    def solver_fun(params_fun, params_prox):
       return test_util.lasso_skl(X, y, params_prox, fit_intercept=False)
 
     jac_num = test_util.lasso_skl_jac(X, y, lam, fit_intercept=False)
-    _, jac_lam = jax.jacrev(solver_fun)((1.0, lam))
+    jac_lam = jax.jacrev(solver_fun, argnums=1)(1.0, lam)
     self.assertArraysAllClose(jac_num, jac_lam, atol=1e-4)
+
+    @custom_fixed_point(fixed_point_fun, unpack_params=False)
+    def solver_fun2(params):
+      _, params_prox = params
+      return test_util.lasso_skl(X, y, params_prox, fit_intercept=False)
+
+    _, jac_lam2 = jax.jacrev(solver_fun2)((1.0, lam))
+    self.assertArraysAllClose(jac_num, jac_lam2, atol=1e-4)
 
   def test_elastic_net(self):
     X, y = datasets.make_regression(n_samples=50, n_features=10, random_state=0)

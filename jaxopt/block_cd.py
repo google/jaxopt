@@ -98,8 +98,7 @@ def make_solver_fun(fun: base.CompositeLinearFunction,
   prox = jax.vmap(block_prox, in_axes=(0, None))
   subfun_grad = jax.grad(fun.subfun)
 
-  def _solver_fun(params):
-    params_fun, params_prox = params
+  def solver_fun(params_fun=None, params_prox=None):
     stepsizes = 1.0 / fun.column_lipschitz_constants(params_fun)
     assert stepsizes.shape[0] == init.shape[0]
 
@@ -137,9 +136,7 @@ def make_solver_fun(fun: base.CompositeLinearFunction,
 
   if implicit_diff:
     fixed_point_fun = idf.make_block_cd_fixed_point_fun(fun, block_prox)
-    _solver_fun = idf.custom_fixed_point(fixed_point_fun)(_solver_fun)
-
-  def solver_fun(params_fun=None, params_prox=None):
-    return _solver_fun((params_fun, params_prox))
+    solver_fun = idf.custom_fixed_point(fixed_point_fun,
+                                        unpack_params=True)(solver_fun)
 
   return solver_fun

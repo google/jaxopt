@@ -191,16 +191,24 @@ def make_mirror_descent_fixed_point_fun(fun, projection, mapping_fun):
   return fixed_point_fun
 
 
-def _custom_fixed_point(solver_fun, fixed_point_fun):
-  def solver_fun_fwd(params):
-    sol = solver_fun(params)
-    return sol, (params, sol)
+def _custom_fixed_point(solver_fun, fixed_point_fun, unpack_params):
+  if unpack_params:
+    def solver_fun_fwd(*params):
+      sol = solver_fun(*params)
+      return sol, (params, sol)
+  else:
+    def solver_fun_fwd(params):
+      sol = solver_fun(params)
+      return sol, (params, sol)
 
   def solver_fun_bwd(res, cotangent):
     params, sol = res
     vjp = fixed_point_vjp(fixed_point_fun=fixed_point_fun,
                           sol=sol, params=params, cotangent=cotangent)
-    return (vjp,)
+    if unpack_params:
+      return vjp
+    else:
+      return (vjp,)
 
   wrapped_solver_fun = jax.custom_vjp(solver_fun)
   wrapped_solver_fun.defvjp(solver_fun_fwd, solver_fun_bwd)
@@ -208,7 +216,7 @@ def _custom_fixed_point(solver_fun, fixed_point_fun):
   return wrapped_solver_fun
 
 
-def custom_fixed_point(fixed_point_fun):
+def custom_fixed_point(fixed_point_fun: Callable, unpack_params: bool = False):
   """Decorator for adding implicit differentiation to a solver.
 
   Args:
@@ -216,8 +224,12 @@ def custom_fixed_point(fixed_point_fun):
       The invariant is `sol == fixed_point_fun(sol, params)` at the fixed point
       `sol`.
 
+    unpack_params: if True, the signature of the solver function must be
+      ``solver_fun(*params)`` instead of ``solver_fun(params)``.
+
   Returns:
-    solver function wrapped with implicit differentiation.
+    A solver function decorator, i.e.,
+      ``custom_fixed_point(fixed_point_fun, unpack_params)(solver_fun)``.
 
   Example::
 
@@ -251,5 +263,5 @@ def custom_fixed_point(fixed_point_fun):
     jac_lam = jax.jacrev(solver_fun)(10.0)
   """
   def wrapper(solver_fun):
-    return _custom_fixed_point(solver_fun, fixed_point_fun)
+    return _custom_fixed_point(solver_fun, fixed_point_fun, unpack_params)
   return wrapper
