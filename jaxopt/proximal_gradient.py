@@ -11,34 +11,29 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """Implementation of proximal gradient descent in JAX."""
 
 from typing import Any
 from typing import Callable
-from typing import NamedTuple
 from typing import Optional
 
 import jax
 import jax.numpy as jnp
 
+from jaxopt import base
+from jaxopt import loop
+from jaxopt.implicit_diff import fixed_point_vjp
 from jaxopt.implicit_diff import make_gradient_descent_fixed_point_fun
 from jaxopt.implicit_diff import make_proximal_gradient_fixed_point_fun
-from jaxopt.implicit_diff import fixed_point_vjp
-from jaxopt import loop
 from jaxopt.tree_util import tree_add_scalar_mul
 from jaxopt.tree_util import tree_l2_norm
 from jaxopt.tree_util import tree_sub
 from jaxopt.tree_util import tree_vdot
 
 
-class OptimizeResults(NamedTuple):
-  error: float
-  nit: int
-  x: Any
-
-
 def _make_prox_grad(prox, params_prox):
-  """Make the update function:
+  """Makes the update function:
 
     prox(curr_x - curr_stepsize * curr_x_fun_grad, params_prox, curr_stepsize)
   """
@@ -51,7 +46,7 @@ def _make_prox_grad(prox, params_prox):
 
 
 def _make_linesearch(fun, params_fun, prox_grad, maxls, stepfactor, unroll):
-  """Make the backtracking line search."""
+  """Makes the backtracking line search."""
 
   # Currently, we never jit when unrolling, since jitting a huge graph is slow.
   # In the future, we will improve loop.while_loop similarly to
@@ -67,9 +62,9 @@ def _make_linesearch(fun, params_fun, prox_grad, maxls, stepfactor, unroll):
       next_x, stepsize = args
       diff_x = tree_sub(next_x, curr_x)
       sqdist = tree_l2_norm(diff_x, squared=True)
-      # the expression below checks the sufficient decrease condition
+      # The expression below checks the sufficient decrease condition
       # f(next_x) < f(x) + dot(grad_f(x), diff_x) + (0.5/stepsize) ||diff_x||^2
-      # where the terms have been reordered for numerical stability
+      # where the terms have been reordered for numerical stability.
       fun_decrease = stepsize * (fun(next_x, params_fun) - curr_x_fun_val)
       condition = stepsize * tree_vdot(diff_x, curr_x_fun_grad) + 0.5 * sqdist
       return fun_decrease > condition + eps
@@ -94,16 +89,16 @@ def _make_linesearch(fun, params_fun, prox_grad, maxls, stepfactor, unroll):
   return linesearch
 
 
-def make_proximal_gradient_body_fun(fun: Callable,
-                                    params_fun: Optional[Any] = None,
-                                    prox: Optional[Callable] = None,
-                                    params_prox: Optional[Any] = None,
-                                    stepsize: float = 0.0,
-                                    maxls: int = 15,
-                                    acceleration: bool = True,
-                                    unroll_ls: bool = False,
-                                    stepfactor: float = 0.5) -> Callable:
-  """Create a body_fun for performing one iteration of proximal gradient."""
+def _make_pg_body_fun(fun: Callable,
+                      params_fun: Optional[Any] = None,
+                      prox: Optional[Callable] = None,
+                      params_prox: Optional[Any] = None,
+                      stepsize: float = 0.0,
+                      maxls: int = 15,
+                      acceleration: bool = True,
+                      unroll_ls: bool = False,
+                      stepfactor: float = 0.5) -> Callable:
+  """Creates a body_fun for performing one iteration of proximal gradient."""
 
   if prox is None:
     prox = lambda x, params, scaling=1.0: x
@@ -179,7 +174,7 @@ def _proximal_gradient(fun, init, params_fun, prox, params_prox, stepsize,
       print(iter_num, error)
     return error > tol
 
-  body_fun = make_proximal_gradient_body_fun(
+  body_fun = _make_pg_body_fun(
       fun=fun,
       params_fun=params_fun,
       prox=prox,
@@ -213,7 +208,7 @@ def _proximal_gradient(fun, init, params_fun, prox, params_prox, stepsize,
       jit=jit)
 
   if ret_info:
-    return OptimizeResults(x=res[1], nit=res[0], error=res[-1])
+    return base.OptimizeResults(x=res[1], nit=res[0], error=res[-1])
   else:
     return res[1]
 

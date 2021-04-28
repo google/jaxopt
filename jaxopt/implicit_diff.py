@@ -133,6 +133,32 @@ def make_proximal_gradient_fixed_point_fun(fun, prox):
   return fixed_point_fun
 
 
+def make_block_cd_fixed_point_fun(fun, block_prox):
+  """Makes a block coordinate descent fixed point function.
+
+  The fixed point function is `sol = fixed_point_fun(sol, params)`, where::
+
+    params = (params_fun, params_prox)
+    prox = jax.vmap(block_prox, in_axes=(0, None))
+    sol = prox(sol - grad(fun)(sol, params_fun), params_prox)
+
+  Args:
+    fun: a smooth function of the form `fun(x, params_fun)`.
+    block_prox: block-wise proximity operator of the form
+      `block_prox(x, params_prox, scaling=1.0)`.
+  Returns:
+    fixed_point_fun
+  """
+  grad_fun = jax.grad(fun)
+  prox = jax.vmap(block_prox, in_axes=(0, None))
+
+  def fixed_point_fun(sol, params):
+    params_fun, params_prox = params
+    grad_step = sol - grad_fun(sol, params_fun)
+    return prox(grad_step, params_prox)
+  return fixed_point_fun
+
+
 def make_mirror_descent_fixed_point_fun(fun, projection, mapping_fun):
   """Makes a gradient descent fixed point function.
 

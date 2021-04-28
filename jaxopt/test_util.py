@@ -17,6 +17,7 @@
 import jax
 import jax.numpy as jnp
 
+from jaxopt import base
 from jaxopt import loss
 
 from sklearn import linear_model
@@ -24,39 +25,92 @@ from sklearn import preprocessing
 from sklearn import svm
 
 
-def make_logreg_objective(X, y, fit_intercept=False):
-  X = preprocessing.Normalizer().fit_transform(X)
+def _make_composite_linear_objective(loss_fun, lipschitz_constant, X, y,
+                                     fit_intercept=False, l2_penalty=True,
+                                     preprocess_X=True):
+  if preprocess_X:
+    X = preprocessing.Normalizer().fit_transform(X)
+
+  loss_vmap = jax.vmap(loss_fun)
+
   if fit_intercept:
     def fun(pytree, lam):
       W, b = pytree
-      logits = jnp.dot(X, W) + b
-      return (jnp.sum(jax.vmap(loss.multiclass_logistic_loss)(y, logits)) +
-              0.5 * lam * jnp.sum(W ** 2))
+      y_pred = jnp.dot(X, W) + b
+      ret = jnp.sum(loss_vmap(y, y_pred))
+      if l2_penalty:
+        ret += 0.5 * lam * jnp.sum(W ** 2)
+      return ret
+
+    return fun
+
   else:
-    def fun(W, lam):
-      logits = jnp.dot(X, W)
-      return (jnp.sum(jax.vmap(loss.multiclass_logistic_loss)(y, logits)) +
-              0.5 * lam * jnp.sum(W ** 2))
-  return fun
+    if l2_penalty:
+      def fun(W, lam):
+        y_pred = jnp.dot(X, W)
+        return jnp.sum(loss_vmap(y, y_pred)) + 0.5 * lam * jnp.sum(W ** 2)
+      return fun
+    else:
+      def subfun(y_pred, lam):
+        return jnp.sum(loss_vmap(y, y_pred))
+
+      lipschitz_fun = lambda params_fun: lipschitz_constant
+      linop = base.LinearOperator(X)
+      return base.CompositeLinearFunction(subfun, linop,
+                                          lipschitz_fun=lipschitz_fun)
 
 
-def logreg_skl(X, y, lam, tol=1e-5, fit_intercept=False):
+def make_logreg_objective(X, y, fit_intercept=False, l2_penalty=True,
+                          preprocess_X=True):
+  loss_fun = loss.multiclass_logistic_loss
+  return _make_composite_linear_objective(loss_fun=loss_fun,
+                                          lipschitz_constant=0.5, X=X, y=y,
+                                          fit_intercept=fit_intercept,
+                                          l2_penalty=l2_penalty,
+                                          preprocess_X=preprocess_X)
+
+
+def make_binary_logreg_objective(X, y, fit_intercept=False, l2_penalty=True,
+                                 preprocess_X=True):
+  loss_fun = loss.binary_logistic_loss
+  return _make_composite_linear_objective(loss_fun=loss_fun,
+                                          lipschitz_constant=0.25, X=X, y=y,
+                                          fit_intercept=fit_intercept,
+                                          l2_penalty=l2_penalty,
+                                          preprocess_X=preprocess_X)
+
+
+def logreg_skl(X, y, lam, tol=1e-5, fit_intercept=False,
+               penalty="l2", multiclass=True):
   """Return the solution found by sklearn's logreg solver."""
+
+  def _reshape_coef(coef):
+    return coef.ravel() if coef.shape[0] == 1 else coef.T
+
   X = preprocessing.Normalizer().fit_transform(X)
+  if multiclass:
+    solver = "lbfgs"
+    multiclass = "multinomial"
+  else:
+    solver = "liblinear"
+    multiclass = "ovr"
   logreg = linear_model.LogisticRegression(fit_intercept=fit_intercept,
                                            C=1. / lam, tol=tol,
-                                           multi_class="multinomial")
+                                           solver=solver, penalty=penalty,
+                                           multi_class=multiclass,
+                                           random_state=0)
   logreg = logreg.fit(X, y)
   if fit_intercept:
-    return logreg.coef_.T, logreg.intercept_
+    return _reshape_coef(logreg.coef_), logreg.intercept_
   else:
-    return logreg.coef_.T
+    return _reshape_coef(logreg.coef_)
 
 
-def logreg_skl_jac(X, y, lam, tol=1e-5, fit_intercept=False, eps=1e-5):
+def logreg_skl_jac(X, y, lam, tol=1e-5, fit_intercept=False, penalty="l2",
+                   multiclass=True, eps=1e-5):
   """Return the numerical Jacobian using sklearn's logreg solver."""
-  res1 = logreg_skl(X, y, lam + eps, tol, fit_intercept)
-  res2 = logreg_skl(X, y, lam - eps, tol, fit_intercept)
+  res1 = logreg_skl(X, y, lam + eps, tol, fit_intercept, penalty, multiclass)
+  res2 = logreg_skl(X, y, lam - eps, tol, fit_intercept, penalty, multiclass)
   twoeps = 2 * eps
   if fit_intercept:
     return (res1[0] - res2[0]) / twoeps, (res1[1] - res2[1]) / twoeps
@@ -75,44 +129,51 @@ def lasso_skl(X, y, lam, tol=1e-5, fit_intercept=False):
     return lasso.coef_
 
 
-def make_least_squares_objective(X, y, fit_intercept=False):
-  """Constructs a least squares loss.
+def multitask_lasso_skl(X, Y, lam, tol=1e-5, fit_intercept=False):
+  """Return the solution found by sklearn's multitask lasso solver."""
+  X = preprocessing.Normalizer().fit_transform(X)
+  lasso = linear_model.MultiTaskLasso(fit_intercept=False, alpha=lam, tol=tol)
+  lasso = lasso.fit(X, Y)
+  return lasso.coef_.T
 
-  The returned callable takes as input a vector or pytree w and a scalar lam
-  and evaluates
+
+def make_least_squares_objective(X, y, fit_intercept=False, preprocess_X=True):
+  """Constructs a least squares loss objective function.
+
+  If `fit_intercept=False`, the returned callable takes the form::
 
       fun(w, lam) = (0.5 / (lam * n_features)) || X w - y||^2
 
-  where X is normalized using sklearn.preprocessing.Normalizer and n_features
-  is the second dimension this matrix.
+  where ``w`` is an array, ``lam`` is a scalar and ``n_features = X.shape[1]`.
+
+  If `fit_intercept=True`, the returned callable takes the form::
+
+      fun((w, b), lam) = (0.5 / (lam * n_features)) || X w + b - y||^2.
 
   Args:
     X: input dataset, of size (n_samples, n_features)
-    y: target values associated with X, of size (n_samples, n_tasks)
-    fit_intercept: if True, the loss is modified to be
-      (0.5 / (lam * n_features)) || X w + b - y||^2 and the
-      input to the callable is a pytree of the form (w, b)
+    y: target values associated with X, same shape as ``dot(X, w)``.
+    fit_intercept: whether to fit an intercept or not, see above.
+    preprocess_X: whether to normalize X using sklearn.preprocessing.Normalizer
+      or not.
   Returns:
-    fun: least squares loss, callable that takes as argument
-      a vector w of size (n_features, n_tasks) if
-      fit_intercept=False or a pytree (w, b) with
-      w of size (n_features, n_tasks) and b
-      of size (n_tasks,).
+    fun: least squares loss (see above).
   """
-
-  X = preprocessing.Normalizer().fit_transform(X)
+  if preprocess_X:
+    X = preprocessing.Normalizer().fit_transform(X)
   if fit_intercept:
     def fun(pytree, lam):
       w, b = pytree
       y_pred = jnp.dot(X, w) + b
       diff = y_pred - y
       return 0.5 / (lam * X.shape[0]) * jnp.dot(diff, diff)
+    return fun
   else:
-    def fun(w, lam):
-      y_pred = jnp.dot(X, w)
+    def subfun(y_pred, lam):
       diff = y_pred - y
-      return 0.5 / (lam * X.shape[0]) * jnp.dot(diff, diff)
-  return fun
+      return 0.5 / (lam * y_pred.shape[0]) * jnp.vdot(diff, diff)
+    linop = base.LinearOperator(X)
+    return base.CompositeLinearFunction(subfun, linop)
 
 
 def lasso_skl_jac(X, y, lam, tol=1e-5, fit_intercept=False, eps=1e-5):
@@ -126,7 +187,8 @@ def lasso_skl_jac(X, y, lam, tol=1e-5, fit_intercept=False, eps=1e-5):
     return (res1 - res2) / twoeps
 
 
-def enet_skl(X, y, lam, gamma, tol=1e-5, fit_intercept=False):
+def enet_skl(X, y, params_prox, tol=1e-5, fit_intercept=False):
+  lam, gamma = params_prox
   alpha = lam + lam * gamma
   l1_ratio = lam / alpha
   X = preprocessing.Normalizer().fit_transform(X)
@@ -139,26 +201,36 @@ def enet_skl(X, y, lam, gamma, tol=1e-5, fit_intercept=False):
     return enet.coef_
 
 
-def enet_skl_jac(X, y, lam, gamma, tol=1e-5, fit_intercept=False, eps=1e-5):
+def enet_skl_jac(X, y, params_prox, tol=1e-5, fit_intercept=False, eps=1e-5):
   if fit_intercept:
     raise NotImplementedError
 
-  jac_lam = (enet_skl(X, y, lam + eps, gamma) -
-             enet_skl(X, y, lam - eps, gamma)) / (2 * eps)
-  jac_gam = (enet_skl(X, y, lam, gamma + eps) -
-             enet_skl(X, y, lam, gamma - eps)) / (2 * eps)
+  lam, gamma = params_prox
+
+  jac_lam = (enet_skl(X, y, (lam + eps, gamma)) -
+             enet_skl(X, y, (lam - eps, gamma))) / (2 * eps)
+  jac_gam = (enet_skl(X, y, (lam, gamma + eps)) -
+             enet_skl(X, y, (lam, gamma - eps))) / (2 * eps)
 
   return jac_lam, jac_gam
 
 
 def make_multiclass_linear_svm_objective(X, y):
   Y = preprocessing.LabelBinarizer().fit_transform(y)
-  def fun(beta, lam):
-    dual_obj = jnp.vdot(beta, 1 - Y)
-    V = jnp.dot(X.T, (Y - beta))
-    dual_obj = dual_obj - 0.5 / lam * jnp.vdot(V, V)
-    return -dual_obj  # We want to maximize the dual objective
-  return fun
+  XY = jnp.dot(X.T, Y)
+
+  # The dual objective is:
+  # fun(beta) = vdot(beta, 1 - Y) - 0.5 / lam * ||V(beta)||^2
+  # where V(beta) = dot(X.T, Y) - dot(X.T, beta).
+  def subfun(Xbeta, lam):
+    V = XY - Xbeta
+    # With opposite sign, as we want to maximize.
+    return 0.5 / lam * jnp.vdot(V, V)
+
+  linop = base.LinearOperator(X.T)
+  # With opposite sign, as we want to maximize.
+  b = Y - 1
+  return base.CompositeLinearFunction(subfun, linop, b)
 
 
 def multiclass_linear_svm_skl(X, y, lam, tol=1e-5):

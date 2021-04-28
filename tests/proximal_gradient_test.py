@@ -242,7 +242,7 @@ class ProximalGradientTest(jtu.JaxTestCase):
     self.assertLessEqual(jnp.sqrt(jnp.sum(w_diff**2)), tol)
 
     # Compare against sklearn.
-    w_skl = test_util.enet_skl(X, y, *params_prox)
+    w_skl = test_util.enet_skl(X, y, params_prox)
     self.assertArraysAllClose(w_fit, w_skl, atol=atol)
 
   def test_elastic_net_implicit_diff(self):
@@ -254,8 +254,8 @@ class ProximalGradientTest(jtu.JaxTestCase):
     fun = test_util.make_least_squares_objective(X, y)
     prox = prox_elastic_net
 
-    jac_num_lam, jac_num_gam = test_util.enet_skl_jac(X, y, *params_prox)
-    w_skl = test_util.enet_skl(X, y, *params_prox)
+    jac_num_lam, jac_num_gam = test_util.enet_skl_jac(X, y, params_prox)
+    w_skl = test_util.enet_skl(X, y, params_prox)
     jac_fun = jax.jacrev(proximal_gradient.proximal_gradient, argnums=4)
     jac_custom = jac_fun(
         fun,

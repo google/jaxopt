@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from absl.testing import absltest
+from absl.testing import parameterized
 
 import jax
 from jax import test_util as jtu
@@ -21,6 +22,7 @@ import jax.numpy as jnp
 from jaxopt.implicit_diff import fixed_point_jvp
 from jaxopt.implicit_diff import fixed_point_vjp
 from jaxopt.implicit_diff import custom_fixed_point
+from jaxopt.implicit_diff import make_block_cd_fixed_point_fun
 from jaxopt.implicit_diff import make_gradient_descent_fixed_point_fun
 from jaxopt.implicit_diff import make_mirror_descent_fixed_point_fun
 from jaxopt.implicit_diff import make_proximal_gradient_fixed_point_fun
@@ -37,13 +39,17 @@ from sklearn import preprocessing
 
 class ImplicitDiffTest(jtu.JaxTestCase):
 
-  def test_lasso(self):
+  @parameterized.product(fixed_point_fun=["pg", "bcd"])
+  def test_lasso(self, fixed_point_fun):
     X, y = datasets.make_regression(n_samples=50, n_features=10, random_state=0)
     lam = 10.0
     w_skl = test_util.lasso_skl(X, y, lam, fit_intercept=False)
     jac_num = test_util.lasso_skl_jac(X, y, lam, fit_intercept=False)
     fun = test_util.make_least_squares_objective(X, y, fit_intercept=False)
-    fixed_point_fun = make_proximal_gradient_fixed_point_fun(fun, prox_lasso)
+    if fixed_point_fun == "pg":
+      fixed_point_fun = make_proximal_gradient_fixed_point_fun(fun, prox_lasso)
+    else:
+      fixed_point_fun = make_block_cd_fixed_point_fun(fun, prox_lasso)
 
     # Compute the Jacobian w.r.t. lam (params_fun) using VJPs.
     I = jnp.eye(len(w_skl))
@@ -98,10 +104,8 @@ class ImplicitDiffTest(jtu.JaxTestCase):
 
     # Jacobian w.r.t. lam using central finite difference.
     # We use the sklearn solver for precision, as it operates on float64.
-    jac_num_lam, jac_num_gam = test_util.enet_skl_jac(X, y,
-                                                      params_prox[0],
-                                                      params_prox[1])
-    w_skl = test_util.enet_skl(X, y, params_prox[0], params_prox[1])
+    jac_num_lam, jac_num_gam = test_util.enet_skl_jac(X, y, params_prox)
+    w_skl = test_util.enet_skl(X, y, params_prox)
 
     # Compute the Jacobian w.r.t. params_prox using VJPs.
     vjp_fun = lambda g: fixed_point_vjp(fixed_point_fun=fixed_point_fun,

@@ -110,6 +110,41 @@ class ProxTest(jtu.JaxTestCase):
     got = prox.prox_elastic_net(x, ((0.5, 0.5), (0.1, 0.1)))
     self.assertArraysAllClose(jnp.array(expected), jnp.array(got))
 
+  # A pure NumPy implementation for check purposes.
+  def _prox_l2(self, x, alpha):
+    l2_norm = onp.sqrt(onp.sum(x ** 2))
+    return max(1 - alpha / l2_norm, 0) * x
+
+  def test_prox_group_lasso(self):
+    rng = onp.random.RandomState(0)
+    x = rng.rand(20) * 2 - 1
+
+    # An example with non-zero block.
+    alpha = 0.1
+    got = prox.prox_group_lasso(x, alpha)
+    expected = self._prox_l2(x, alpha)
+
+    # An example with zero block.
+    alpha = 10.0
+    self.assertArraysAllClose(got, expected)
+    got = prox.prox_group_lasso(x, alpha)
+    expected = self._prox_l2(x, alpha)
+
+  def test_prox_ridge(self):
+    rng = onp.random.RandomState(0)
+    x = rng.rand(20) * 2 - 1
+    x = jnp.array(x)
+    alpha = 10.0
+
+    # The objective solved by the prox is differentiable.
+    # We can check that the gradient is zero.
+    def fun(y):
+      """f(y) = 0.5 ||y - x||^2 + 0.5 * alpha ||y||_2^2."""
+      diff = x - y
+      return 0.5 * jnp.sum(diff ** 2) + 0.5 * alpha * jnp.sum(y ** 2)
+
+    got = prox.prox_ridge(x, alpha)
+    self.assertArraysAllClose(jax.grad(fun)(got), jnp.zeros_like(got))
 
 if __name__ == '__main__':
   absltest.main(testLoader=jtu.JaxTestLoader())

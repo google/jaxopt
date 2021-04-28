@@ -17,14 +17,42 @@ from absl.testing import absltest
 import jax
 from jax import test_util as jtu
 from jax.nn import softmax
+from jax.scipy.special import expit as sigmoid
 import jax.numpy as jnp
 
+from jaxopt.loss import binary_logistic_loss
 from jaxopt.loss import multiclass_logistic_loss
 from jaxopt.loss import multiclass_sparsemax_loss
 from jaxopt.projection import projection_simplex
 
 
 class LossTest(jtu.JaxTestCase):
+
+  def _test_binary_loss_function(self, loss_fun, inv_link_fun):
+    # Check that loss is zero when the weight goes to the correct label.
+    loss = loss_fun(0, -1e5)
+    self.assertEqual(loss, 0)
+    loss = loss_fun(1, 1e5)
+    self.assertEqual(loss, 0)
+
+    # Check that gradient has the expected form.
+    logit = 1.2
+    grad = jax.grad(loss_fun, argnums=1)(0, logit)
+    self.assertArraysAllClose(grad, inv_link_fun(logit))
+    grad = jax.grad(loss_fun, argnums=1)(1, logit)
+    self.assertArraysAllClose(grad, inv_link_fun(logit) - 1)
+
+    # Check that vmap works as expected.
+    logits = jnp.array([1.2, -0.3, 0.7])
+    labels = jnp.array([0, 0, 1])
+    losses = jax.vmap(loss_fun)(labels, logits)
+    losses2 = jnp.array([loss_fun(labels[0], logits[0]),
+                         loss_fun(labels[1], logits[1]),
+                         loss_fun(labels[2], logits[2])])
+    self.assertArraysAllClose(losses, losses2)
+
+  def test_binary_logistic_loss(self):
+    self._test_binary_loss_function(binary_logistic_loss, sigmoid)
 
   def _test_multiclass_loss_function(self, loss_fun, inv_link_fun):
     # Check that loss is zero when all weights goes to the correct label.
@@ -36,7 +64,7 @@ class LossTest(jtu.JaxTestCase):
     grad = jax.grad(loss_fun, argnums=1)(0, logits)
     self.assertArraysAllClose(grad, inv_link_fun(logits) - jnp.array([1, 0, 0]))
 
-    # Check that vmaps works as expected.
+    # Check that vmap works as expected.
     logits = jnp.array([[1.3, 2.5],
                         [1.7, -0.3],
                         [0.2, 1.2]])

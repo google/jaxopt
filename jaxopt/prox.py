@@ -14,17 +14,20 @@
 
 """Proximity operators."""
 
+from typing import Any
+from typing import Tuple
+
 import jax
 import jax.numpy as jnp
 
 from jaxopt import tree_util
 
 
-def prox_lasso(x, params, scaling=1.0):
+def prox_lasso(x: Any, params: Any, scaling: float = 1.0):
   r"""Proximal operator for the l1 norm, i.e., soft-thresholding operator.
 
   The output is:
-    argmin_y 0.5 ||y - x||^2 + scaling * params ||y||_1.
+    argmin_y 0.5 ||y - x||^2 + scaling * params * ||y||_1.
   When params is a pytree, the weights are applied coordinate-wise.
 
   Args:
@@ -38,7 +41,7 @@ def prox_lasso(x, params, scaling=1.0):
   return tree_util.tree_multimap(fun, x, params)
 
 
-def prox_elastic_net(x, params, scaling=1.0):
+def prox_elastic_net(x: Any, params: Tuple[Any, Any], scaling: float = 1.0):
   r"""Proximal operator for the elastic net.
 
   The output is:
@@ -58,3 +61,41 @@ def prox_elastic_net(x, params, scaling=1.0):
   fun = lambda u, lam, gamma: (prox_l1(u, scaling * lam) /
                                (1.0 + scaling * lam * gamma))
   return tree_util.tree_multimap(fun, x, params[0], params[1])
+
+
+def prox_group_lasso(x: Any, param: float, scaling=1.0):
+  r"""Proximal operator for the l2 norm, i.e., block soft-thresholding operator.
+
+  The output is:
+    argmin_y 0.5 ||y - x||^2 + scaling * param * ||y||_2.
+
+  Blocks can be grouped using ``jax.vmap`.
+
+  Args:
+    x: input pytree.
+    param: regularization strength, float.
+    scaling: a scaling factor.
+  Returns:
+    y: output pytree with same structure as x.
+  """
+  l2_norm = tree_util.tree_l2_norm(x)
+  factor = 1 - param * scaling / l2_norm
+  factor = jnp.where(factor >= 0, factor, 0)
+  return tree_util.tree_scalar_mul(factor, x)
+
+
+def prox_ridge(x: Any, param: float, scaling=1.0):
+  r"""Proximal operator for the squared l2 norm.
+
+  The output is:
+    argmin_y 0.5 ||y - x||^2 + scaling * param * 0.5 * ||y||_2^2.
+
+  Args:
+    x: input pytree.
+    param: regularization strength, float.
+    scaling: a scaling factor.
+  Returns:
+    y: output pytree with same structure as x.
+  """
+  factor = 1. / (1 + scaling * param)
+  return tree_util.tree_scalar_mul(factor, x)
