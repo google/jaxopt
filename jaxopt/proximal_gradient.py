@@ -17,12 +17,14 @@
 from typing import Any
 from typing import Callable
 from typing import Optional
+from typing import Union
 
 import jax
 import jax.numpy as jnp
 
 from jaxopt import base
 from jaxopt import implicit_diff as idf
+from jaxopt import linear_solve
 from jaxopt import loop
 from jaxopt.tree_util import tree_add_scalar_mul
 from jaxopt.tree_util import tree_l2_norm
@@ -217,7 +219,7 @@ def make_solver_fun(fun: Callable,
                     tol: float = 1e-3,
                     acceleration: bool = True,
                     verbose: int = 0,
-                    implicit_diff: bool = True,
+                    implicit_diff: Union[bool, Callable] = True,
                     ret_info: bool = False) -> Callable:
   """Creates a proximal gradient (a.k.a. FISTA) solver function
   ``solver_fun(params_fun, params_prox)`` for solving::
@@ -243,8 +245,9 @@ def make_solver_fun(fun: Callable,
     acceleration: whether to use acceleration (also known as FISTA) or not.
     verbose: whether to print error on every iteration or not. verbose=True will
       automatically disable jit.
-    implicit_diff: whether to use implicit differentiation or not.
-      implicit_diff=False will trigger loop unrolling.
+    implicit_diff: if True, enable implicit differentiation using cg,
+      if Callable, do implicit differentiation using callable as linear solver,
+      if False, enable autodiff (this triggers loop unrolling),
     ret_info: whether to return an OptimizeResults object containing additional
       information regarding the solution
 
@@ -264,7 +267,12 @@ def make_solver_fun(fun: Callable,
                               verbose,  not implicit_diff, ret_info)
 
   if implicit_diff:
+    if isinstance(implicit_diff, Callable):
+      solve = implicit_diff
+    else:
+      solve = linear_solve.solve_normal_cg
     fixed_point_fun = idf.make_proximal_gradient_fixed_point_fun(fun, prox)
     solver_fun = idf.custom_fixed_point(fixed_point_fun,
-                                        unpack_params=True)(solver_fun)
+                                        unpack_params=True,
+                                        solve=solve)(solver_fun)
   return solver_fun

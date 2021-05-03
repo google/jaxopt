@@ -16,8 +16,10 @@
 
 from typing import Any
 from typing import Callable
+from typing import Union
 
 from jaxopt import implicit_diff as idf
+from jaxopt import linear_solve
 from jaxopt import prox
 from jaxopt import proximal_gradient
 
@@ -30,7 +32,7 @@ def make_solver_fun(fun: Callable,
                     tol: float = 1e-3,
                     acceleration: bool = True,
                     verbose: int = 0,
-                    implicit_diff: bool = True,
+                    implicit_diff: Union[bool,Callable] = True,
                     ret_info: bool = False) -> Callable:
   """Creates a gradient descent solver function ``solver_fun(params_fun)`` for
     solving::
@@ -56,8 +58,9 @@ def make_solver_fun(fun: Callable,
     acceleration: whether to use acceleration or not.
     verbose: whether to print error on every iteration or not. verbose=True will
       automatically disable jit.
-    implicit_diff: whether to use implicit differentiation or not.
-      implicit_diff=False will trigger loop unrolling.
+    implicit_diff: if True, enable implicit differentiation using cg,
+      if Callable, do implicit differentiation using callable as linear solver,
+      if False, enable autodiff (this triggers loop unrolling),
     ret_info: whether to return an OptimizeResults object containing additional
       information regarding the solution
 
@@ -74,7 +77,12 @@ def make_solver_fun(fun: Callable,
     return pg_fun(params_fun=params_fun)
 
   if implicit_diff:
+    if isinstance(implicit_diff, Callable):
+      solve = implicit_diff
+    else:
+      solve = linear_solve.solve_normal_cg
     fixed_point_fun = idf.make_gradient_descent_fixed_point_fun(fun)
-    solver_fun = idf.custom_fixed_point(fixed_point_fun)(solver_fun)
+    solver_fun = idf.custom_fixed_point(fixed_point_fun,
+                                        solve=solve)(solver_fun)
 
   return solver_fun

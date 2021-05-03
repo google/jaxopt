@@ -31,6 +31,7 @@ from jaxopt.projection import projection_simplex
 from jaxopt import proximal_gradient
 from jaxopt.prox import prox_elastic_net
 from jaxopt.prox import prox_lasso
+from jaxopt import linear_solve
 from jaxopt import test_util
 
 from sklearn import datasets
@@ -57,28 +58,36 @@ class ImplicitDiffTest(jtu.JaxTestCase):
                                         sol=w_skl, params=(lam, 1.0),
                                         cotangent=g)[0]
     jac_params_fun = jax.vmap(vjp_fun)(I)
-    self.assertArraysAllClose(jac_num, jac_params_fun, atol=1e-4)
+    self.assertArraysAllClose(jac_num, jac_params_fun, atol=1e-3)
 
     # Same but now w.r.t. params_prox.
     vjp_fun = lambda g: fixed_point_vjp(fixed_point_fun=fixed_point_fun,
                                         sol=w_skl, params=(1.0, lam),
                                         cotangent=g)[1]
     jac_params_prox = jax.vmap(vjp_fun)(I)
-    self.assertArraysAllClose(jac_num, jac_params_prox, atol=1e-4)
+    self.assertArraysAllClose(jac_num, jac_params_prox, atol=1e-3)
+
+    # Trying a custom solve.
+    vjp_fun = lambda g: fixed_point_vjp(fixed_point_fun=fixed_point_fun,
+                                        sol=w_skl, params=(lam, 1.0),
+                                        cotangent=g,
+                                        solve=linear_solve.solve_lax)[0]
+    jac_params_fun = jax.vmap(vjp_fun)(I)
+    self.assertArraysAllClose(jac_num, jac_params_fun, atol=1e-4)
 
     # Compute the Jacobian w.r.t. lam (params_fun) using JVPs.
     fixed_point_fun1 = lambda sol, pf: fixed_point_fun(sol, (pf, 1.0))
     jac_params_fun = fixed_point_jvp(fixed_point_fun=fixed_point_fun1,
                                      sol=w_skl, params=lam,
                                      tangent=1.0)
-    self.assertArraysAllClose(jac_num, jac_params_fun, atol=1e-4)
+    self.assertArraysAllClose(jac_num, jac_params_fun, atol=1e-3)
 
     # Same but now w.r.t. params_prox.
     fixed_point_fun2 = lambda sol, pp: fixed_point_fun(sol, (1.0, pp))
     jac_params_prox = fixed_point_jvp(fixed_point_fun=fixed_point_fun2,
                                       sol=w_skl, params=lam,
                                       tangent=1.0)
-    self.assertArraysAllClose(jac_num, jac_params_prox, atol=1e-4)
+    self.assertArraysAllClose(jac_num, jac_params_prox, atol=1e-3)
 
   def test_lasso_wrapper(self):
     X, y = datasets.make_regression(n_samples=50, n_features=10, random_state=0)
@@ -92,7 +101,7 @@ class ImplicitDiffTest(jtu.JaxTestCase):
 
     jac_num = test_util.lasso_skl_jac(X, y, lam, fit_intercept=False)
     jac_lam = jax.jacrev(solver_fun, argnums=1)(1.0, lam)
-    self.assertArraysAllClose(jac_num, jac_lam, atol=1e-4)
+    self.assertArraysAllClose(jac_num, jac_lam, atol=1e-3)
 
     @custom_fixed_point(fixed_point_fun, unpack_params=False)
     def solver_fun2(params):
@@ -100,7 +109,7 @@ class ImplicitDiffTest(jtu.JaxTestCase):
       return test_util.lasso_skl(X, y, params_prox, fit_intercept=False)
 
     _, jac_lam2 = jax.jacrev(solver_fun2)((1.0, lam))
-    self.assertArraysAllClose(jac_num, jac_lam2, atol=1e-4)
+    self.assertArraysAllClose(jac_num, jac_lam2, atol=1e-3)
 
   def test_elastic_net(self):
     X, y = datasets.make_regression(n_samples=50, n_features=10, random_state=0)
@@ -121,8 +130,8 @@ class ImplicitDiffTest(jtu.JaxTestCase):
                                         cotangent=g)[1]
     I = jnp.eye(len(w_skl))
     jac_params_prox = jax.vmap(vjp_fun)(I)
-    self.assertArraysAllClose(jac_num_lam, jac_params_prox[0], atol=1e-4)
-    self.assertArraysAllClose(jac_num_gam, jac_params_prox[1], atol=1e-4)
+    self.assertArraysAllClose(jac_num_lam, jac_params_prox[0], atol=1e-3)
+    self.assertArraysAllClose(jac_num_gam, jac_params_prox[1], atol=1e-3)
 
     # Compute the Jacobian w.r.t. params_prox using JVPs.
     fixed_point_fun2 = lambda sol, pp: fixed_point_fun(sol, (1.0, pp))
@@ -132,8 +141,8 @@ class ImplicitDiffTest(jtu.JaxTestCase):
                                         tangent=g)
     jac_lam = jvp_fun((1.0, 0.0))
     jac_gam = jvp_fun((0.0, 1.0))
-    self.assertArraysAllClose(jac_num_lam, jac_lam, atol=1e-4)
-    self.assertArraysAllClose(jac_num_gam, jac_gam, atol=1e-4)
+    self.assertArraysAllClose(jac_num_lam, jac_lam, atol=1e-3)
+    self.assertArraysAllClose(jac_num_gam, jac_gam, atol=1e-3)
 
   def test_logreg(self):
     X, y = datasets.make_classification(n_samples=50, n_features=10,

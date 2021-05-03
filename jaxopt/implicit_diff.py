@@ -19,15 +19,16 @@ from typing import Callable
 from typing import Tuple
 
 import jax
-from jax.scipy.sparse import linalg as sparse_linalg
 
+from jaxopt import linear_solve
 from jaxopt.tree_util import tree_sub
 
 
 def fixed_point_vjp(fixed_point_fun: Callable,
                     sol: Any,
                     params: Any,
-                    cotangent: Any) -> Any:
+                    cotangent: Any,
+                    solve: Callable = linear_solve.solve_normal_cg) -> Any:
   """Vector-Jacobian product of a fixed point.
 
   The fixed point is `sol = fixed_point_fun(sol, params)`.
@@ -38,6 +39,8 @@ def fixed_point_vjp(fixed_point_fun: Callable,
     params: parameters to use for `fixed_point_fun` above (pytree).
     cotangent: vector to left-multiply the Jacobian with
       (pytree, same structure as `sol`).
+    solve: a linear solver of the form, ``x = solve(matvec, b)``,
+      where ``matvec(x) = Ax`` and ``Ax=b``.
   Returns:
     Vector-Jacobian product w.r.t. `params` of `sol` with cotangent.
     It has the same pytree  structure as `params`.
@@ -51,7 +54,7 @@ def fixed_point_vjp(fixed_point_fun: Callable,
 
   # The solution of A^T u = v, where A = Id - J, v = cotangent, and
   # J = jacobian(fixed_point_fun, argnums=0).
-  u = sparse_linalg.cg(matvec, cotangent)[0]
+  u = solve(matvec, cotangent)
 
   return vjp_fun(u)[1]
 
@@ -71,7 +74,8 @@ def _jvp2(f, primals, tangent):
 def fixed_point_jvp(fixed_point_fun: Callable,
                     sol: Any,
                     params: Any,
-                    tangent: Any) -> Any:
+                    tangent: Any,
+                    solve:Callable = linear_solve.solve_normal_cg) -> Any:
   """Jacobian-vector product of a fixed point.
 
   The fixed point is `sol = fixed_point_fun(sol, params)`.
@@ -82,6 +86,7 @@ def fixed_point_jvp(fixed_point_fun: Callable,
     params: parameters to use for `fixed_point_fun` above (pytree).
     tangent: a pytree to right-multiply the Jacobian with, with the same pytree
       structure as `params`.
+    solve: a linear solver of the form, ``solve(matvec, b)``.
   Returns:
     Jacobian-vector product w.r.t. `params` of `sol` with `tangent`.
     It has the same pytree structure as `sol`.
@@ -93,7 +98,7 @@ def fixed_point_jvp(fixed_point_fun: Callable,
     return tree_sub(u, Ju)
 
   Jv = _jvp2(fixed_point_fun, (sol, params), tangent)
-  return sparse_linalg.cg(matvec, Jv)[0]
+  return solve(matvec, Jv)
 
 
 def make_gradient_descent_fixed_point_fun(fun):
@@ -191,7 +196,7 @@ def make_mirror_descent_fixed_point_fun(fun, projection, mapping_fun):
   return fixed_point_fun
 
 
-def _custom_fixed_point(solver_fun, fixed_point_fun, unpack_params):
+def _custom_fixed_point(solver_fun, fixed_point_fun, unpack_params, solve):
   if unpack_params:
     def solver_fun_fwd(*params):
       sol = solver_fun(*params)
@@ -203,7 +208,7 @@ def _custom_fixed_point(solver_fun, fixed_point_fun, unpack_params):
 
   def solver_fun_bwd(res, cotangent):
     params, sol = res
-    vjp = fixed_point_vjp(fixed_point_fun=fixed_point_fun,
+    vjp = fixed_point_vjp(fixed_point_fun=fixed_point_fun, solve=solve,
                           sol=sol, params=params, cotangent=cotangent)
     if unpack_params:
       return vjp
@@ -216,16 +221,18 @@ def _custom_fixed_point(solver_fun, fixed_point_fun, unpack_params):
   return wrapped_solver_fun
 
 
-def custom_fixed_point(fixed_point_fun: Callable, unpack_params: bool = False):
+def custom_fixed_point(fixed_point_fun: Callable,
+                       unpack_params: bool = False,
+                       solve: Callable = linear_solve.solve_normal_cg):
   """Decorator for adding implicit differentiation to a solver.
 
   Args:
     fixed_point_fun: a fixed point function, `fixed_point_fun(x, params)`.
       The invariant is `sol == fixed_point_fun(sol, params)` at the fixed point
       `sol`.
-
     unpack_params: if True, the signature of the solver function must be
       ``solver_fun(*params)`` instead of ``solver_fun(params)``.
+    solve: a linear solver of the form, ``solve(matvec, b)``.
 
   Returns:
     A solver function decorator, i.e.,
@@ -263,5 +270,6 @@ def custom_fixed_point(fixed_point_fun: Callable, unpack_params: bool = False):
     jac_lam = jax.jacrev(solver_fun)(10.0)
   """
   def wrapper(solver_fun):
-    return _custom_fixed_point(solver_fun, fixed_point_fun, unpack_params)
+    return _custom_fixed_point(solver_fun, fixed_point_fun, unpack_params,
+                               solve)
   return wrapper

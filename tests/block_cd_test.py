@@ -180,13 +180,8 @@ class BlockCoordinateDescentTest(jtu.JaxTestCase):
                                          multiclass=multiclass)
 
       # By implicit diff.
-
-      # Disabling this test for now, as it is sometimes failing.
-      # Hopefully, introducing block-wise stepsizes in the fixed point function
-      # will fix it.
-
-      # jac = jax.jacrev(solver_fun, argnums=1)(params_fun, params_prox)
-      # self.assertAllClose(jac_num, jac, atol=1e-1)
+      jac = jax.jacrev(solver_fun, argnums=1)(params_fun, params_prox)
+      self.assertAllClose(jac_num, jac, atol=1e-1)
 
       # By autodiff.
       solver_fun = block_cd.make_solver_fun(fun=fun, init=W_init,

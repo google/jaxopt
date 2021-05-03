@@ -17,12 +17,14 @@
 from typing import Any
 from typing import Callable
 from typing import Optional
+from typing import Union
 
 import jax
 import jax.numpy as jnp
 
 from jaxopt import base
 from jaxopt import implicit_diff as idf
+from jaxopt import linear_solve
 from jaxopt import loop
 
 
@@ -58,7 +60,7 @@ def make_solver_fun(fun: base.CompositeLinearFunction,
                     maxiter: int = 500,
                     tol: float = 1e-3,
                     verbose: int = 0,
-                    implicit_diff: bool = True) -> Callable:
+                    implicit_diff: Union[bool,Callable] = True) -> Callable:
   """Creates a block coordinate descent solver function
   ``solver_fun(params_fun, params_prox)`` for solving::
 
@@ -85,8 +87,9 @@ def make_solver_fun(fun: base.CompositeLinearFunction,
     tol: tolerance to use.
     verbose: whether to print error on every iteration or not. verbose=True will
       automatically disable jit.
-    implicit_diff: whether to use implicit differentiation or not.
-      implicit_diff=False will trigger loop unrolling.
+    implicit_diff: if True, enable implicit differentiation using cg,
+      if Callable, do implicit differentiation using callable as linear solver,
+      if False, enable autodiff (this triggers loop unrolling),
 
   Returns:
     Solver function ``solver_fun(params_fun, params_prox)``.
@@ -124,19 +127,19 @@ def make_solver_fun(fun: base.CompositeLinearFunction,
     sub_g = subfun_grad(Ax, params_fun)
     # iter_num, x, sub_g, Ax, error
     args = (0, init, sub_g, Ax, jnp.inf)
-    if verbose:
-      unroll = True
-      jit = False
-    else:
-      unroll = not implicit_diff
-      jit = implicit_diff
+    jit = False if verbose else bool(implicit_diff)
     res = loop.while_loop(cond_fun=cond_fun, body_fun=body_fun, init_val=args,
-                          maxiter=maxiter, unroll=unroll, jit=jit)
+                          maxiter=maxiter, unroll=not jit, jit=jit)
     return res[1]
 
   if implicit_diff:
+    if isinstance(implicit_diff, Callable):
+      solve = implicit_diff
+    else:
+      solve = linear_solve.solve_normal_cg
     fixed_point_fun = idf.make_block_cd_fixed_point_fun(fun, block_prox)
     solver_fun = idf.custom_fixed_point(fixed_point_fun,
-                                        unpack_params=True)(solver_fun)
+                                        unpack_params=True,
+                                        solve=solve)(solver_fun)
 
   return solver_fun
