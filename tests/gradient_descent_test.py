@@ -20,6 +20,7 @@ from jax import test_util as jtu
 import jax.numpy as jnp
 
 from jaxopt import gradient_descent
+from jaxopt import implicit_diff
 from jaxopt import test_util
 from jaxopt import tree_util as tu
 from jaxopt import prox
@@ -88,6 +89,13 @@ class GradientDescentTest(jtu.JaxTestCase):
                                                   acceleration=acceleration)
     jac_lam2 = jax.jacrev(solver_fun)(lam)
     self.assertArraysAllClose(jac_lam, jac_lam2, atol=atol)
+
+  def test_vmap(self):
+    errors, errors_vmap = test_util.test_logreg_vmap(
+        gradient_descent.make_solver_fun,
+        implicit_diff.make_gradient_descent_fixed_point_fun,
+        jnp.array([1.0, 10.0]))
+    self.assertArraysAllClose(errors, errors_vmap, atol=1e-3)
 
 if __name__ == '__main__':
   # Uncomment the line below in order to run in float64.

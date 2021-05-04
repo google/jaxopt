@@ -20,6 +20,7 @@ import jax.numpy as jnp
 from jaxopt import base
 from jaxopt import loss
 
+from sklearn import datasets
 from sklearn import linear_model
 from sklearn import preprocessing
 from sklearn import svm
@@ -242,3 +243,27 @@ def multiclass_linear_svm_skl(X, y, lam, tol=1e-5):
 def multiclass_linear_svm_skl_jac(X, y, lam, tol=1e-5, eps=1e-5):
   return (multiclass_linear_svm_skl(X, y, lam + eps, tol=tol) -
           multiclass_linear_svm_skl(X, y, lam - eps, tol=tol)) / (2 * eps)
+
+
+def test_logreg_vmap(make_solver_fun, make_fixed_point_fun, params_list,
+                     l2_penalty=True, unpack_params=False):
+  X, y = datasets.make_classification(n_samples=30, n_features=5,
+                                      n_informative=3, n_classes=2,
+                                      random_state=0)
+  fun = make_logreg_objective(X, y, l2_penalty=l2_penalty, preprocess_X=True)
+  W_init = jnp.zeros((X.shape[1], 2))
+  solver_fun = make_solver_fun(fun=fun, init=W_init, tol=1e-3, maxiter=100)
+  fixed_point_fun = make_fixed_point_fun(fun=fun)
+
+  def solve(params):
+    if unpack_params:
+      W_fit = solver_fun(*params)
+    else:
+      W_fit = solver_fun(params)
+    W_fit2 = fixed_point_fun(W_fit, params)
+    error = jnp.sqrt(jnp.sum((W_fit - W_fit2) ** 2))
+    return error
+
+  errors = jnp.array([solve(params) for params in params_list])
+  errors_vmap = jax.vmap(solve)(params_list)
+  return errors, errors_vmap
