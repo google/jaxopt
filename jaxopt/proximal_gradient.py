@@ -183,10 +183,10 @@ def _proximal_gradient(fun, init, params_fun, prox, params_prox, stepsize,
 
   if acceleration:
     # iter_num, curr_x, curr_y, curr_t, curr_stepsize, error
-    args = (0, init, init, 1.0, 1.0, 1e6)
+    args = (0, init, init, 1.0, 1.0, jnp.inf)
   else:
     # iter_num, curr_x, curr_stepsize, error
-    args = (0, init, 1.0, 1e6)
+    args = (0, init, 1.0, jnp.inf)
 
   # Currently, we always unroll in verbose mode.
   unroll = unroll or verbose
