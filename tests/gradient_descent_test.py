@@ -90,12 +90,13 @@ class GradientDescentTest(jtu.JaxTestCase):
     jac_lam2 = jax.jacrev(solver_fun)(lam)
     self.assertArraysAllClose(jac_lam, jac_lam2, atol=atol)
 
-  def test_vmap(self):
-    errors, errors_vmap = test_util.test_logreg_vmap(
+  def test_jit_and_vmap(self):
+    test_util.test_logreg_jit_and_vmap(
+        self,
         gradient_descent.make_solver_fun,
         implicit_diff.make_gradient_descent_fixed_point_fun,
-        jnp.array([1.0, 10.0]))
-    self.assertArraysAllClose(errors, errors_vmap, atol=1e-3)
+        jnp.array([1.0, 10.0]),
+        atol=1e-3)
 
 if __name__ == '__main__':
   # Uncomment the line below in order to run in float64.

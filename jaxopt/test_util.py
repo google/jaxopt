@@ -245,8 +245,10 @@ def multiclass_linear_svm_skl_jac(X, y, lam, tol=1e-5, eps=1e-5):
           multiclass_linear_svm_skl(X, y, lam - eps, tol=tol)) / (2 * eps)
 
 
-def test_logreg_vmap(make_solver_fun, make_fixed_point_fun, params_list,
-                     l2_penalty=True, unpack_params=False):
+def test_logreg_jit_and_vmap(self, make_solver_fun, make_fixed_point_fun,
+                             params_list, l2_penalty=True, unpack_params=False,
+                             atol=1e-4):
+
   X, y = datasets.make_classification(n_samples=30, n_features=5,
                                       n_informative=3, n_classes=2,
                                       random_state=0)
@@ -266,4 +268,7 @@ def test_logreg_vmap(make_solver_fun, make_fixed_point_fun, params_list,
 
   errors = jnp.array([solve(params) for params in params_list])
   errors_vmap = jax.vmap(solve)(params_list)
-  return errors, errors_vmap
+  self.assertArraysAllClose(errors, errors_vmap, atol=atol)
+
+  error0 = jax.jit(solve)(params_list[0])
+  self.assertAllClose(errors[0], error0)

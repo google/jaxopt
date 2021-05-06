@@ -290,7 +290,7 @@ class ProximalGradientTest(jtu.JaxTestCase):
     jac_num = test_util.multiclass_linear_svm_skl_jac(X, y, lam, eps=1e-3)
     self.assertArraysAllClose(jac_num, jac_primal, atol=5e-3)
 
-  def test_vmap(self):
+  def test_jit_and_vmap(self):
     make_solver_fun = functools.partial(proximal_gradient.make_solver_fun,
                                         prox=prox.prox_lasso)
     make_fixed_point_fun = functools.partial(
@@ -298,12 +298,9 @@ class ProximalGradientTest(jtu.JaxTestCase):
         prox=prox.prox_lasso)
     # A list of (params_fun, params_prox) pairs.
     params_list = jnp.array([[1.0, 1.0], [1.0, 10.0]])
-    errors, errors_vmap = test_util.test_logreg_vmap(make_solver_fun,
-                                                     make_fixed_point_fun,
-                                                     params_list,
-                                                     unpack_params=True)
-    self.assertArraysAllClose(errors, errors_vmap, atol=1e-4)
-
+    test_util.test_logreg_jit_and_vmap(self, make_solver_fun,
+                                       make_fixed_point_fun, params_list,
+                                       unpack_params=True)
 
 if __name__ == '__main__':
   # Uncomment the line below in order to run in float64.

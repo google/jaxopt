@@ -194,7 +194,7 @@ class BlockCoordinateDescentTest(jtu.JaxTestCase):
       jac = jax.jacfwd(solver_fun, argnums=1)(params_fun, params_prox)
       self.assertAllClose(jac_num, jac, atol=1e-1)
 
-  def test_vmap(self):
+  def test_jit_and_vmap(self):
     make_solver_fun = functools.partial(block_cd.make_solver_fun,
                                         block_prox=prox.prox_lasso)
     make_fixed_point_fun = functools.partial(
@@ -202,12 +202,9 @@ class BlockCoordinateDescentTest(jtu.JaxTestCase):
         block_prox=prox.prox_lasso)
     # A list of (params_fun, params_prox) pairs.
     params_list = jnp.array([[1.0, 1.0], [1.0, 10.0]])
-    errors, errors_vmap = test_util.test_logreg_vmap(make_solver_fun,
-                                                     make_fixed_point_fun,
-                                                     params_list,
-                                                     l2_penalty=False,
-                                                     unpack_params=True)
-    self.assertArraysAllClose(errors, errors_vmap, atol=1e-4)
+    test_util.test_logreg_jit_and_vmap(self, make_solver_fun,
+                                       make_fixed_point_fun, params_list,
+                                       l2_penalty=False, unpack_params=True)
 
 
 if __name__ == '__main__':
