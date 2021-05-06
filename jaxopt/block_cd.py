@@ -89,7 +89,8 @@ def make_solver_fun(fun: base.CompositeLinearFunction,
       automatically disable jit.
     implicit_diff: if True, enable implicit differentiation using cg,
       if Callable, do implicit differentiation using callable as linear solver,
-      if False, enable autodiff (this triggers loop unrolling),
+      if False, use autodiff through the solver implementation (note:
+        this will unroll syntactic loops).
 
   Returns:
     Solver function ``solver_fun(params_fun, params_prox)``.

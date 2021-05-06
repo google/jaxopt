@@ -71,7 +71,7 @@ class ImplicitDiffTest(jtu.JaxTestCase):
     vjp_fun = lambda g: fixed_point_vjp(fixed_point_fun=fixed_point_fun,
                                         sol=w_skl, params=(lam, 1.0),
                                         cotangent=g,
-                                        solve=linear_solve.solve_lax)[0]
+                                        solve=linear_solve.solve_lu)[0]
     jac_params_fun = jax.vmap(vjp_fun)(I)
     self.assertArraysAllClose(jac_num, jac_params_fun, atol=1e-4)
 

@@ -38,16 +38,16 @@ class LinearSolveTest(jtu.JaxTestCase):
     A_mat = A.reshape(15, 15)
     matvec = lambda x: jnp.dot(A_mat, x.ravel()).reshape(5, 3)
     A2 = linear_solve._materialize_array(matvec, (5, 3))
-    self.assertArraysAllClose(A_mat, A2, atol=1e-3)
+    self.assertArraysAllClose(A, A2, atol=1e-3)
 
-  def test_solve_lax(self):
+  def test_solve_dense(self):
     rng = onp.random.RandomState(0)
 
     # Matrix case.
     A = rng.randn(5, 5)
     b = rng.randn(5)
     matvec = lambda x: jnp.dot(A, x)
-    x = linear_solve.solve_lax(matvec, b)
+    x = linear_solve.solve_lu(matvec, b)
     x2 = jax.numpy.linalg.solve(A, b)
     self.assertArraysAllClose(x, x2)
 
@@ -59,11 +59,21 @@ class LinearSolveTest(jtu.JaxTestCase):
     def matvec(x):
       return jnp.dot(A_mat, x.ravel()).reshape(5, 3)
 
-    x = linear_solve.solve_lax(matvec, b)
+    x = linear_solve.solve_lu(matvec, b)
     x2 = linear_solve.solve_gmres(matvec, b)
     self.assertArraysAllClose(x, x2, atol=1e-4)
 
-  def test_solve_normal_cg_and_gmres(self):
+  def test_solve_dense_psd(self):
+    rng = onp.random.RandomState(0)
+    A = rng.randn(5, 5)
+    A = jnp.dot(A.T, A)
+    b = rng.randn(5)
+    matvec = lambda x: jnp.dot(A, x)
+    x = linear_solve.solve_cholesky(matvec, b)
+    x2 = jax.numpy.linalg.solve(A, b)
+    self.assertArraysAllClose(x, x2, atol=1e-3)
+
+  def test_solve_sparse(self):
     rng = onp.random.RandomState(0)
 
     # Matrix case.
@@ -73,11 +83,13 @@ class LinearSolveTest(jtu.JaxTestCase):
     def matvec(x):
       return jnp.dot(A, x)
 
-    x = linear_solve.solve_lax(matvec, b)
+    x = linear_solve.solve_lu(matvec, b)
     x2 = linear_solve.solve_normal_cg(matvec, b)
-    x3 = linear_solve.solve_normal_cg(matvec, b)
+    x3 = linear_solve.solve_gmres(matvec, b)
+    x4 = linear_solve.solve_bicgstab(matvec, b)
     self.assertArraysAllClose(x, x2, atol=1e-4)
     self.assertArraysAllClose(x, x3, atol=1e-4)
+    self.assertArraysAllClose(x, x4, atol=1e-4)
 
 
 if __name__ == '__main__':

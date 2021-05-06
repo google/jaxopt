@@ -60,7 +60,8 @@ def make_solver_fun(fun: Callable,
       automatically disable jit.
     implicit_diff: if True, enable implicit differentiation using cg,
       if Callable, do implicit differentiation using callable as linear solver,
-      if False, enable autodiff (this triggers loop unrolling),
+      if False, use autodiff through the solver implementation (note:
+        this will unroll syntactic loops).
     ret_info: whether to return an OptimizeResults object containing additional
       information regarding the solution
 

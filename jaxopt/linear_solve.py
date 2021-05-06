@@ -21,19 +21,13 @@ import jax
 import jax.numpy as jnp
 
 
-def _materialize_array(matvec, shape):
-  if len(shape) == 1:
-    I = jnp.eye(shape[0])
-    return jax.vmap(matvec)(I).T
-  elif len(shape) == 2:
-    I = jnp.eye(shape[0] * shape[1])
-    I = I.reshape(-1, shape[0], shape[1])
-    return jax.vmap(matvec)(I).reshape(-1, shape[0] * shape[1]).T
-  else:
-    raise NotImplementedError
+def _materialize_array(matvec, shape, dtype=None):
+  """Materializes the matrix A used in matvec(x) = Ax."""
+  x = jnp.zeros(shape, dtype)
+  return jax.jacfwd(matvec)(x)
 
 
-def solve_lax(matvec: Callable, b: jnp.ndarray) -> jnp.ndarray:
+def solve_lu(matvec: Callable, b: jnp.ndarray) -> jnp.ndarray:
   """Solves ``A x = b`` using ``jax.lax.solve``.
 
   This solver is based on an LU decomposition.
@@ -47,10 +41,34 @@ def solve_lax(matvec: Callable, b: jnp.ndarray) -> jnp.ndarray:
     array with same structure as ``b``.
   """
   if len(b.shape) == 1:
-    return jax.numpy.linalg.solve(_materialize_array(matvec, b.shape), b)
+    A = _materialize_array(matvec, b.shape, b.dtype)
+    return jax.numpy.linalg.solve(A, b)
+  elif len(b.shape) == 2:
+    A = _materialize_array(matvec, b.shape, b.dtype)  # 4d array (tensor)
+    A = A.reshape(-1, b.shape[0] * b.shape[1])  # 2d array (matrix)
+    return jax.numpy.linalg.solve(A, b.ravel()).reshape(*b.shape)
+  else:
+    raise NotImplementedError
+
+
+def solve_cholesky(matvec: Callable, b: jnp.ndarray) -> jnp.ndarray:
+  """Solves ``A x = b``, using Cholesky decomposition.
+
+  It will materialize the matrix ``A`` in memory.
+
+  Args:
+    matvec: product between positive definite matrix ``A`` and a vector.
+    b: array.
+
+  Returns:
+    array with same structure as ``b``.
+  """
+  if len(b.shape) == 1:
+    A = _materialize_array(matvec, b.shape)
+    return jax.scipy.linalg.solve(A, b, sym_pos=True)
   elif len(b.shape) == 2:
     A = _materialize_array(matvec, b.shape)
-    return jax.numpy.linalg.solve(A, b.ravel()).reshape(*b.shape)
+    return  jax.scipy.linalg.solve(A, b.ravel(), sym_pos=True).reshape(*b.shape)
   else:
     raise NotImplementedError
 
@@ -108,3 +126,16 @@ def solve_gmres(matvec: Callable, b: Any) -> Any:
     pytree with same structure as ``b``.
   """
   return jax.scipy.sparse.linalg.gmres(matvec, b)[0]
+
+
+def solve_bicgstab(matvec: Callable, b: Any) -> Any:
+  """Solves ``A x = b`` using bicgstab.
+
+  Args:
+    matvec: product between ``A`` and a vector.
+    b: pytree.
+
+  Returns:
+    pytree with same structure as ``b``.
+  """
+  return jax.scipy.sparse.linalg.bicgstab(matvec, b)[0]
