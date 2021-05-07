@@ -48,11 +48,6 @@ def _make_prox_grad(prox, params_prox):
 def _make_linesearch(fun, params_fun, prox_grad, maxls, stepfactor, unroll):
   """Makes the backtracking line search."""
 
-  # Currently, we never jit when unrolling, since jitting a huge graph is slow.
-  # In the future, we will improve loop.while_loop similarly to
-  # https://github.com/google-research/ott/blob/master/ott/core/fixed_point_loop.py
-  jit = not unroll
-
   def linesearch(curr_x, curr_x_fun_val, curr_x_fun_grad, curr_stepsize):
     # epsilon of current dtype for robust checking of
     # sufficient decrease condition
@@ -84,7 +79,7 @@ def _make_linesearch(fun, params_fun, prox_grad, maxls, stepfactor, unroll):
         init_val=init_val,
         maxiter=maxls,
         unroll=unroll,
-        jit=jit)
+        jit=True)
 
   return linesearch
 
@@ -161,8 +156,8 @@ def _make_pg_body_fun(fun: Callable,
 
 
 def _proximal_gradient(fun, init, params_fun, prox, params_prox, stepsize,
-                       maxiter, maxls, tol, acceleration, verbose, unroll,
-                       ret_info):
+                       maxiter, maxls, tol, acceleration, verbose,
+                       implicit_diff, ret_info):
 
   def cond_fun(args):
     iter_num = args[0]
@@ -179,7 +174,7 @@ def _proximal_gradient(fun, init, params_fun, prox, params_prox, stepsize,
       stepsize=stepsize,
       maxls=maxls,
       acceleration=acceleration,
-      unroll_ls=unroll)
+      unroll_ls=not implicit_diff)
 
   if acceleration:
     # iter_num, curr_x, curr_y, curr_t, curr_stepsize, error
@@ -188,13 +183,10 @@ def _proximal_gradient(fun, init, params_fun, prox, params_prox, stepsize,
     # iter_num, curr_x, curr_stepsize, error
     args = (0, init, 1.0, jnp.inf)
 
-  # Currently, we always unroll in verbose mode.
-  unroll = unroll or verbose
-
-  # Currently, we never jit when unrolling, since jitting a huge graph is slow.
-  # In the future, we will improve loop.while_loop similarly to
-  # https://github.com/google-research/ott/blob/master/ott/core/fixed_point_loop.py
-  jit = not unroll
+  # We always jit unless verbose mode is enabled.
+  jit = not verbose
+  # We unroll when implicit diff is disabled or when jit is disabled.
+  unroll = not implicit_diff or not jit
 
   res = loop.while_loop(
       cond_fun=cond_fun,
@@ -265,7 +257,7 @@ def make_solver_fun(fun: Callable,
   def solver_fun(params_fun=None, params_prox=None):
     return _proximal_gradient(fun, init, params_fun, prox, params_prox,
                               stepsize, maxiter, maxls, tol, acceleration,
-                              verbose,  not implicit_diff, ret_info)
+                              verbose, implicit_diff, ret_info)
 
   if implicit_diff:
     if isinstance(implicit_diff, Callable):

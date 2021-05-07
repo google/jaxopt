@@ -23,7 +23,6 @@ from jaxopt import gradient_descent
 from jaxopt import implicit_diff
 from jaxopt import test_util
 from jaxopt import tree_util as tu
-from jaxopt import prox
 
 from sklearn import datasets
 

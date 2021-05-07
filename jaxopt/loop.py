@@ -18,21 +18,24 @@ import jax
 import jax.numpy as jnp
 
 
-def _while_loop_unrolled_jit(cond_fun, body_fun, init_val, maxiter):
+def _while_loop_scan(cond_fun, body_fun, init_val, max_iter):
+  """Scan-based implementation (jit ok, reverse-mode autodiff ok)."""
   def _iter(val):
     next_val = body_fun(val)
     next_cond = cond_fun(next_val)
     return next_val, next_cond
 
-  val = init_val
-  cond = cond_fun(val)
-  for _ in range(maxiter):
-    # When condition is met, start doing noops.
-    val, cond = jax.lax.cond(cond, _iter, lambda x: (x, False), val)
-  return val
+  def _fun(tup, it):
+    val, cond = tup
+    # When cond is met, we start doing no-ops.
+    return jax.lax.cond(cond, _iter, lambda x: (x, False), val), it
+
+  init = (init_val, cond_fun(init_val))
+  return jax.lax.scan(_fun, init, None, length=max_iter)[0][0]
 
 
-def _while_loop_unrolled_nojit(cond_fun, body_fun, init_val, maxiter):
+def _while_loop_python(cond_fun, body_fun, init_val, maxiter):
+  """Python based implementation (no jit, reverse-mode autodiff ok)."""
   val = init_val
   for _ in range(maxiter):
     cond = cond_fun(val)
@@ -44,6 +47,7 @@ def _while_loop_unrolled_nojit(cond_fun, body_fun, init_val, maxiter):
 
 
 def _while_loop_lax(cond_fun, body_fun, init_val, maxiter):
+  """lax.while_loop based implementation (jit by default, no reverse-mode)."""
   def _cond_fun(_val):
     it, val = _val
     return jnp.logical_and(cond_fun(val), it <= maxiter - 1)
@@ -61,9 +65,9 @@ def while_loop(cond_fun, body_fun, init_val, maxiter, unroll=False, jit=False):
 
   if unroll:
     if jit:
-      fun = _while_loop_unrolled_jit
+      fun = _while_loop_scan
     else:
-      fun = _while_loop_unrolled_nojit
+      fun = _while_loop_python
   else:
     if jit:
       fun = _while_loop_lax

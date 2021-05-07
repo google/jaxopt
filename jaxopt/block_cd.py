@@ -128,9 +128,13 @@ def make_solver_fun(fun: base.CompositeLinearFunction,
     sub_g = subfun_grad(Ax, params_fun)
     # iter_num, x, sub_g, Ax, error
     args = (0, init, sub_g, Ax, jnp.inf)
-    jit = False if verbose else bool(implicit_diff)
+    # We always jit unless verbose mode is enabled.
+    jit = not verbose
+    # We unroll when implicit diff is disabled or when jit is disabled.
+    unroll = not implicit_diff or not jit
+
     res = loop.while_loop(cond_fun=cond_fun, body_fun=body_fun, init_val=args,
-                          maxiter=maxiter, unroll=not jit, jit=jit)
+                          maxiter=maxiter, unroll=unroll, jit=jit)
     return res[1]
 
   if implicit_diff:
