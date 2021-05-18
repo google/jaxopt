@@ -16,9 +16,9 @@
 
 from typing import Any
 from typing import Callable
-from typing import Tuple
 
 import jax
+import jax.numpy as jnp
 
 from jaxopt import linear_solve
 from jaxopt.tree_util import tree_scalar_mul
@@ -340,3 +340,73 @@ def custom_fixed_point(fixed_point_fun: Callable,
   """
   fun = lambda x, p: tree_sub(fixed_point_fun(x, p), x)
   return custom_root(fun, unpack_params, solve)
+
+
+def make_kkt_optimality_fun(obj_fun, eq_fun, ineq_fun=None):
+  """Makes the optimality function for KKT conditions.
+
+  Args:
+    obj_fun: objective function ``obj_fun(primal_var, params_obj)``.
+    eq_fun: equality constraint function, so that
+      ``eq_fun(primal_var, params_eq) == 0`` is imposed.
+    ineq_fun: inequality constraint function, so that
+      ``ineq_fun(primal_var, params_ineq) <= 0`` is imposed (optional).
+  Returns:
+    optimality_fun(x, params) where
+      x = (primal_var, eq_dual_var, ineq_dual_var)
+      params = (params_obj, params_eq, params_ineq)
+
+    If ``ineq_fun`` is None, ``ineq_dual_var`` and ``params_ineq`` are
+    ignored (i.e., they can be set to ``None``).
+  """
+  grad_fun = jax.grad(obj_fun)
+
+  def optimality_fun(x, params):
+    primal_var, eq_dual_var, ineq_dual_var = x
+    params_obj, params_eq, params_ineq = params
+
+    # Size: number of primal variables.
+    _, eq_vjp_fun = jax.vjp(eq_fun, primal_var, params_eq)
+    stationarity = (grad_fun(primal_var, params_obj) +
+                    eq_vjp_fun(eq_dual_var)[0])
+
+    # Size: number of equality constraints.
+    primal_feasability = eq_fun(primal_var, params_eq)
+
+    if params_ineq is not None:
+      _, ineq_vjp_fun = jax.vjp(ineq_fun, primal_var, params_ineq)
+      stationarity += ineq_vjp_fun(ineq_dual_var)[0]
+      # Size: number of inequality constraints.
+      comp_slackness = ineq_fun(primal_var, params_ineq) * ineq_dual_var
+      return stationarity, primal_feasability, comp_slackness
+    else:
+      return stationarity, primal_feasability, None
+
+  return optimality_fun
+
+
+def make_quadratic_prog_optimality_fun():
+  """Makes the optimality function for quadratic programming.
+
+  Returns:
+    optimality_fun(x, params) where
+      x = (primal_var, eq_dual_var, ineq_dual_var)
+      params = (params_obj, params_eq, params_ineq)
+      params_obj = (Q, c)
+      params_eq = (A, b)
+      params_ineq = (G, h) or None
+  """
+  def obj_fun(primal_var, params_obj):
+    Q, c = params_obj
+    return (0.5 * jnp.dot(primal_var, jnp.dot(Q, primal_var)) +
+            jnp.dot(primal_var, c))
+
+  def eq_fun(primal_var, params_eq):
+    A, b = params_eq
+    return jnp.dot(A, primal_var) - b
+
+  def ineq_fun(primal_var, params_ineq):
+    G, h = params_ineq
+    return jnp.dot(G, primal_var) - h
+
+  return make_kkt_optimality_fun(obj_fun, eq_fun, ineq_fun)
