@@ -69,6 +69,31 @@ class GradientDescentTest(jtu.JaxTestCase):
     jac_custom = jax.jacrev(solver_fun)(lam)
     self.assertArraysAllClose(jac_num, jac_custom, atol=1e-2)
 
+  def test_has_aux(self):
+    """Test implicit differentiation works when has_aux set to True."""
+    X, y = datasets.load_digits(return_X_y=True)
+    lam = float(X.shape[0])
+    tol = 1e-3
+    maxiter = 200
+
+    W_skl = test_util.logreg_skl(X, y, lam)
+
+    fun_naked = test_util.make_logreg_objective(X, y)
+    fun_aux = lambda x, par: (fun_naked(x, par), jnp.ones_like(x))
+
+    # Run both solvers and check they match.
+    jac_custom = []
+
+    for has_aux, fun in zip([False, True], [fun_naked, fun_aux]):
+      solver_fun = gradient_descent.make_solver_fun(
+          fun=fun, init=W_skl, tol=tol,
+          maxiter=maxiter, acceleration=True, implicit_diff=True,
+          has_aux=has_aux)
+
+      jac_custom.append(jax.jacrev(solver_fun)(lam))
+
+    self.assertArraysAllClose(jac_custom[0], jac_custom[1], atol=1e-4)
+
   @parameterized.product(acceleration=[True, False])
   def test_logreg_forward_diff(self, acceleration):
     X, y = datasets.load_digits(return_X_y=True)

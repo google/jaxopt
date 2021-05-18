@@ -86,6 +86,28 @@ class ProximalGradientTest(jtu.JaxTestCase):
     self.assertArraysAllClose(pytree_fit[0], w_skl, atol=atol)
     self.assertAllClose(pytree_fit[1], b_skl, atol=atol)
 
+  def test_has_aux(self):
+    """Test implicit differentiation works when has_aux set to True."""
+    X, y = datasets.load_boston(return_X_y=True)
+    lam = 1.5
+    tol = 1e-3
+    maxiter = 200
+
+    fun_naked = test_util.make_least_squares_objective(X, y)
+    fun_aux = lambda x, par: (fun_naked(x, par), jnp.ones_like(x))
+
+    # Run both solvers and check they match.
+    jac_custom = []
+
+    for has_aux, fun in zip([True, False], [fun_aux, fun_naked]):
+      solver_fun = proximal_gradient.make_solver_fun(
+          fun=fun, init=jnp.zeros((X.shape[1],)), prox=prox.prox_lasso,
+          tol=tol, maxiter=maxiter, acceleration=True, implicit_diff=True,
+          has_aux=has_aux)
+      jac_custom.append(jax.jacrev(solver_fun)(lam, 1.0))
+
+    self.assertArraysAllClose(jac_custom[0], jac_custom[1], atol=1e-4)
+
   def test_lasso_implicit_diff(self):
     """Test implicit differentiation of a single lambda parameter."""
     X, y = datasets.load_boston(return_X_y=True)

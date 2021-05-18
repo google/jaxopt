@@ -212,7 +212,8 @@ def make_solver_fun(fun: Callable,
                     acceleration: bool = True,
                     verbose: int = 0,
                     implicit_diff: Union[bool, Callable] = True,
-                    ret_info: bool = False) -> Callable:
+                    ret_info: bool = False,
+                    has_aux: bool = False) -> Callable:
   """Creates a proximal gradient (a.k.a. FISTA) solver function
   ``solver_fun(params_fun, params_prox)`` for solving::
 
@@ -243,6 +244,9 @@ def make_solver_fun(fun: Callable,
         this will unroll syntactic loops).
     ret_info: whether to return an OptimizeResults object containing additional
       information regarding the solution
+    has_aux: whether function fun outputs one (False) or more values (True).
+      When True it will be assumed by default that fun(...)[0] is the objective.
+
 
   Returns:
     Solver function ``solver_fun(params_fun, params_prox)``.
@@ -254,8 +258,9 @@ def make_solver_fun(fun: Callable,
     Nesterov, Yu. "Gradient methods for minimizing composite functions."
     Mathematical Programming (2013).
   """
+  _fun = fun if not has_aux else lambda x, par: fun(x, par)[0]
   def solver_fun(params_fun=None, params_prox=None):
-    return _proximal_gradient(fun, init, params_fun, prox, params_prox,
+    return _proximal_gradient(_fun, init, params_fun, prox, params_prox,
                               stepsize, maxiter, maxls, tol, acceleration,
                               verbose, implicit_diff, ret_info)
 
@@ -264,7 +269,7 @@ def make_solver_fun(fun: Callable,
       solve = implicit_diff
     else:
       solve = linear_solve.solve_normal_cg
-    fixed_point_fun = idf.make_proximal_gradient_fixed_point_fun(fun, prox)
+    fixed_point_fun = idf.make_proximal_gradient_fixed_point_fun(_fun, prox)
     solver_fun = idf.custom_fixed_point(fixed_point_fun,
                                         unpack_params=True,
                                         solve=solve)(solver_fun)

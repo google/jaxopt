@@ -32,8 +32,9 @@ def make_solver_fun(fun: Callable,
                     tol: float = 1e-3,
                     acceleration: bool = True,
                     verbose: int = 0,
-                    implicit_diff: Union[bool,Callable] = True,
-                    ret_info: bool = False) -> Callable:
+                    implicit_diff: Union[bool, Callable] = True,
+                    ret_info: bool = False,
+                    has_aux: bool = False) -> Callable:
   """Creates a gradient descent solver function ``solver_fun(params_fun)`` for
     solving::
 
@@ -64,11 +65,14 @@ def make_solver_fun(fun: Callable,
         this will unroll syntactic loops).
     ret_info: whether to return an OptimizeResults object containing additional
       information regarding the solution
+    has_aux: whether function fun outputs one (False) or more values (True).
+      When True it will be assumed by default that fun(...)[0] is the objective.
 
   Returns:
     Solver function ``solver_fun(params_fun)``.
   """
-  pg_fun = proximal_gradient.make_solver_fun(fun=fun, prox=prox.prox_none,
+  _fun = fun if not has_aux else lambda x, par: fun(x, par)[0]
+  pg_fun = proximal_gradient.make_solver_fun(fun=_fun, prox=prox.prox_none,
                                              init=init, stepsize=stepsize,
                                              maxiter=maxiter, maxls=maxls,
                                              tol=tol, acceleration=acceleration,
@@ -82,7 +86,7 @@ def make_solver_fun(fun: Callable,
       solve = implicit_diff
     else:
       solve = linear_solve.solve_normal_cg
-    fixed_point_fun = idf.make_gradient_descent_fixed_point_fun(fun)
+    fixed_point_fun = idf.make_gradient_descent_fixed_point_fun(_fun)
     solver_fun = idf.custom_fixed_point(fixed_point_fun,
                                         solve=solve)(solver_fun)
 
