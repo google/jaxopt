@@ -13,15 +13,12 @@
 # limitations under the License.
 
 from absl.testing import absltest
-
 import jax
 from jax import test_util as jtu
 import jax.numpy as jnp
-
-import numpy as onp
-
-
+from jaxopt.projection import projection_l2_sphere
 from jaxopt.projection import projection_simplex
+import numpy as onp
 
 
 class ProjectionTest(jtu.JaxTestCase):
@@ -64,7 +61,7 @@ class ProjectionTest(jtu.JaxTestCase):
 
     # Check vector Jacobian product.
     Jv = jax.jvp(projection_simplex, (x,), (v,))[1]
-    self.assertArraysAllClose(Jv, jnp.dot(J_true,v))
+    self.assertArraysAllClose(Jv, jnp.dot(J_true, v))
 
   def test_projection_simplex_vmap(self):
     rng = onp.random.RandomState(0)
@@ -99,6 +96,18 @@ class ProjectionTest(jtu.JaxTestCase):
     dir_deriv = jnp.vdot(jax.grad(fun)(X), U)
     self.assertAllClose(dir_deriv, dir_deriv_num, atol=1e-3)
 
+  def test_projection_l2_sphere(self):
+    rng = onp.random.RandomState(0)
+
+    x = rng.randn(50).astype(onp.float32)
+
+    p = projection_l2_sphere(x)
+    self.assertAllClose(jnp.sum(p ** 2), 1.0)
+
+    diam = 3.21
+
+    p = projection_l2_sphere(x, diam)
+    self.assertAllClose(jnp.sqrt(jnp.sum(p ** 2)), diam)
 
 if __name__ == '__main__':
   absltest.main(testLoader=jtu.JaxTestLoader())

@@ -12,22 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from absl.testing import absltest
-from absl.testing import parameterized
-
 import functools
 
+from absl.testing import absltest
+from absl.testing import parameterized
 import jax
 from jax import test_util as jtu
 import jax.numpy as jnp
-
 from jaxopt import implicit_diff
 from jaxopt import projection
 from jaxopt import prox
 from jaxopt import proximal_gradient
 from jaxopt import test_util
 from jaxopt import tree_util as tu
-
 from sklearn import datasets
 from sklearn import preprocessing
 
@@ -299,9 +296,13 @@ class ProximalGradientTest(jtu.JaxTestCase):
     def proximal_gradient_fun_dual(lam):
       n_samples, n_classes = Y.shape
       beta_init = jnp.ones((n_samples, n_classes)) / n_classes
-      solver_fun = proximal_gradient.make_solver_fun(fun=fun, init= beta_init,
-                                                     prox=_prox, stepsize=1e-2,
-                                                     tol=tol, maxiter=maxiter)
+      solver_fun = proximal_gradient.make_solver_fun(
+          fun=fun,
+          init=beta_init,
+          prox=_prox,
+          stepsize=1e-2,
+          tol=tol,
+          maxiter=maxiter)
       return solver_fun(params_fun=lam)
 
     def proximal_gradient_fun_primal(lam):

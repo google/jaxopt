@@ -14,8 +14,11 @@
 
 """Projection operators."""
 
+from typing import Any
+
 import jax
 import jax.numpy as jnp
+from jaxopt import tree_util
 
 
 @jax.custom_jvp
@@ -44,9 +47,9 @@ def _projection_unit_simplex_jvp(primals, tangents):
 
 
 def projection_simplex(x: jnp.ndarray, s: float = 1.0) -> jnp.ndarray:
-  """Projection onto the simplex.
+  r"""Projection onto the simplex.
 
-  argmin_{p : 0 <= p <= s, jnp.sum(p) = s} ||x - p||
+  The output is ``argmin_{p : 0 <= p <= s, jnp.sum(p) = s} ||x - p||``
 
   Args:
     x: vector to project, an array of shape (n,).
@@ -55,3 +58,19 @@ def projection_simplex(x: jnp.ndarray, s: float = 1.0) -> jnp.ndarray:
     p: projected vector, an array of shape (n,).
   """
   return s * _projection_unit_simplex(x / s)
+
+
+def projection_l2_sphere(x: Any, diam: float = 1.0) -> Any:
+  r"""Projection onto the sphere, { x | || x || = diam}
+
+  The output is: ``argmin_{y, ||y||= diam} 0.5 ||y - x||^2 = diam * x / ||x||``.
+
+  Args:
+    x: jnp.ndarray to project.
+    diam: diameter of the sphere.
+
+  Returns:
+    y: output jnp.ndarray (same size as x) normalized to have suitable norm.
+  """
+  factor = diam / tree_util.tree_l2_norm(x)
+  return tree_util.tree_scalar_mul(factor, x)

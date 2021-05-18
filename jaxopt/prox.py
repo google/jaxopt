@@ -36,6 +36,7 @@ def prox_none(x: Any, params: Optional[Any] = None, scaling: float = 1.0):
   Returns:
     y: output pytree with same structure as x.
   """
+  del params, scaling
   return x
 
 
@@ -50,6 +51,7 @@ def prox_lasso(x: Any, params: Any, scaling: float = 1.0):
     x: input pytree.
     params: regularization strength, float or pytree (same structure as x).
     scaling: a scaling factor.
+
   Returns:
     y: output pytree with same structure as x.
   """
@@ -70,6 +72,7 @@ def prox_elastic_net(x: Any, params: Tuple[Any, Any], scaling: float = 1.0):
     params: a tuple, where both params[0] and params[1] can be either floats
       or pytrees with the same structure as x.
     scaling: a scaling factor.
+
   Returns:
     y: output pytree with same structure as x.
   """
@@ -91,6 +94,7 @@ def prox_group_lasso(x: Any, param: float, scaling=1.0):
     x: input pytree.
     param: regularization strength, float.
     scaling: a scaling factor.
+
   Returns:
     y: output pytree with same structure as x.
   """
@@ -110,6 +114,7 @@ def prox_ridge(x: Any, param: float, scaling=1.0):
     x: input pytree.
     param: regularization strength, float.
     scaling: a scaling factor.
+
   Returns:
     y: output pytree with same structure as x.
   """
