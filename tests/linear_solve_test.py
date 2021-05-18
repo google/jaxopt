@@ -91,6 +91,19 @@ class LinearSolveTest(jtu.JaxTestCase):
     self.assertArraysAllClose(x, x3, atol=1e-4)
     self.assertArraysAllClose(x, x4, atol=1e-4)
 
+  def test_solve_1d(self):
+    rng = onp.random.RandomState(0)
+
+    # Matrix case.
+    A = rng.randn(1, 1)
+    b = rng.randn(1)
+
+    def matvec(x):
+      return jnp.dot(A, x)
+
+    x = linear_solve.solve_lu(matvec, b)
+    self.assertArraysAllClose(x, b / A[0, 0])
+
 
 if __name__ == '__main__':
   absltest.main(testLoader=jtu.JaxTestLoader())

@@ -40,7 +40,9 @@ def solve_lu(matvec: Callable, b: jnp.ndarray) -> jnp.ndarray:
   Returns:
     array with same structure as ``b``.
   """
-  if len(b.shape) == 1:
+  if len(b.shape) == 0:
+    return b / matvec(1.0)
+  elif len(b.shape) == 1:
     A = _materialize_array(matvec, b.shape, b.dtype)
     return jax.numpy.linalg.solve(A, b)
   elif len(b.shape) == 2:
@@ -63,7 +65,9 @@ def solve_cholesky(matvec: Callable, b: jnp.ndarray) -> jnp.ndarray:
   Returns:
     array with same structure as ``b``.
   """
-  if len(b.shape) == 1:
+  if len(b.shape) == 0:
+    return b / matvec(1.0)
+  elif len(b.shape) == 1:
     A = _materialize_array(matvec, b.shape)
     return jax.scipy.linalg.solve(A, b, sym_pos=True)
   elif len(b.shape) == 2:

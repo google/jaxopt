@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Implicit differentiation of fixed points."""
+"""Implicit differentiation of roots and fixed points."""
 
 from typing import Any
 from typing import Callable
@@ -21,7 +21,43 @@ from typing import Tuple
 import jax
 
 from jaxopt import linear_solve
+from jaxopt.tree_util import tree_scalar_mul
 from jaxopt.tree_util import tree_sub
+
+
+def root_vjp(fun: Callable,
+             sol: Any,
+             params: Any,
+             cotangent: Any,
+             solve: Callable = linear_solve.solve_normal_cg) -> Any:
+  """Vector-Jacobian product of a root.
+
+  The invariant is ``fun(sol, params) == 0``.
+
+  Args:
+    fun: the equation function to use.
+    sol: solution / root (pytree).
+    params: parameters to use for ``fun`` above (pytree).
+    cotangent: vector to left-multiply the Jacobian with
+      (pytree, same structure as ``sol``).
+    solve: a linear solver of the form, ``x = solve(matvec, b)``,
+      where ``matvec(x) = Ax`` and ``Ax=b``.
+  Returns:
+    Vector-Jacobian product w.r.t. ``params` of `sol` with cotangent.
+    It has the same pytree  structure as `params`.
+  """
+  _, vjp_fun = jax.vjp(fun, sol, params)
+
+  # Compute the multiplication A^T u = (u^T A)^T.
+  matvec = lambda u: vjp_fun(u)[0]
+
+  # The solution of A^T u = v, where
+  # A = jacobian(fun, argnums=0)
+  # v = -cotangent.
+  v = tree_scalar_mul(-1, cotangent)
+  u = solve(matvec, v)
+
+  return vjp_fun(u)[1]
 
 
 def fixed_point_vjp(fixed_point_fun: Callable,
@@ -45,18 +81,8 @@ def fixed_point_vjp(fixed_point_fun: Callable,
     Vector-Jacobian product w.r.t. `params` of `sol` with cotangent.
     It has the same pytree  structure as `params`.
   """
-  _, vjp_fun = jax.vjp(fixed_point_fun, sol, params)
-
-  def matvec(u):
-    # Compute the multiplication A^T u = (u^T A)^T = (u^T (Id - J))^T.
-    uJ = vjp_fun(u)[0]
-    return tree_sub(u, uJ)
-
-  # The solution of A^T u = v, where A = Id - J, v = cotangent, and
-  # J = jacobian(fixed_point_fun, argnums=0).
-  u = solve(matvec, cotangent)
-
-  return vjp_fun(u)[1]
+  fun = lambda x, p: tree_sub(fixed_point_fun(x, p), x)
+  return root_vjp(fun, sol, params, cotangent, solve)
 
 
 def _jvp1(f, primals, tangent):
@@ -69,6 +95,34 @@ def _jvp2(f, primals, tangent):
   """JVP in the second argument of f."""
   fun = lambda y: f(primals[0], y)
   return jax.jvp(fun, (primals[1],), (tangent,))[1]
+
+
+def root_jvp(fun: Callable,
+             sol: Any,
+             params: Any,
+             tangent: Any,
+             solve:Callable = linear_solve.solve_normal_cg) -> Any:
+  """Jacobian-vector product of a root.
+
+  The invariant is `sol = fun(sol, params) == 0`.
+
+  Args:
+    fun: the equation function to use.
+    sol: solution / root (pytree).
+    params: parameters to use for ``fun`` above (pytree).
+    tangent: a pytree to right-multiply the Jacobian with, with the same pytree
+      structure as ``params``.
+    solve: a linear solver of the form, ``solve(matvec, b)``.
+  Returns:
+    Jacobian-vector product w.r.t. ``params`` of ``sol`` with ``tangent``.
+    It has the same pytree structure as ``sol``.
+  """
+  # Product with A = jacobian(fun, argnums=0).
+  matvec = lambda u: _jvp1(fun, (sol, params), u)
+
+  v = tree_scalar_mul(-1, tangent)
+  Jv = _jvp2(fun, (sol, params), v)
+  return solve(matvec, Jv)
 
 
 def fixed_point_jvp(fixed_point_fun: Callable,
@@ -91,14 +145,8 @@ def fixed_point_jvp(fixed_point_fun: Callable,
     Jacobian-vector product w.r.t. `params` of `sol` with `tangent`.
     It has the same pytree structure as `sol`.
   """
-  def matvec(u):
-    # Compute the multiplication Au = (Id - J)u,
-    # where A = jacobian(fixed_point_fun, argnums=0).
-    Ju = _jvp1(fixed_point_fun, (sol, params), u)
-    return tree_sub(u, Ju)
-
-  Jv = _jvp2(fixed_point_fun, (sol, params), tangent)
-  return solve(matvec, Jv)
+  fun = lambda x, p: tree_sub(fixed_point_fun(x, p), x)
+  return root_jvp(fun, sol, params, tangent, solve)
 
 
 def make_gradient_descent_fixed_point_fun(fun):
@@ -196,7 +244,7 @@ def make_mirror_descent_fixed_point_fun(fun, projection, mapping_fun):
   return fixed_point_fun
 
 
-def _custom_fixed_point(solver_fun, fixed_point_fun, unpack_params, solve):
+def _custom_root(solver_fun, fun, unpack_params, solve):
   if unpack_params:
     def solver_fun_fwd(*params):
       sol = solver_fun(*params)
@@ -208,8 +256,8 @@ def _custom_fixed_point(solver_fun, fixed_point_fun, unpack_params, solve):
 
   def solver_fun_bwd(res, cotangent):
     params, sol = res
-    vjp = fixed_point_vjp(fixed_point_fun=fixed_point_fun, solve=solve,
-                          sol=sol, params=params, cotangent=cotangent)
+    vjp = root_vjp(fun=fun, solve=solve,sol=sol, params=params,
+                   cotangent=cotangent)
     if unpack_params:
       return vjp
     else:
@@ -221,10 +269,31 @@ def _custom_fixed_point(solver_fun, fixed_point_fun, unpack_params, solve):
   return wrapped_solver_fun
 
 
+def custom_root(fun: Callable,
+                unpack_params: bool = False,
+                solve: Callable = linear_solve.solve_normal_cg):
+  """Decorator for adding implicit differentiation to a root solver.
+
+  Args:
+    fun: an equation function, ``fun(x, params)`.
+      The invariant is ``fun(sol, params) == 0`` at the solution / root ``sol``.
+    unpack_params: if True, the signature of the solver function must be
+      ``solver_fun(*params)`` instead of ``solver_fun(params)``.
+    solve: a linear solver of the form, ``solve(matvec, b)``.
+
+  Returns:
+    A solver function decorator, i.e.,
+      ``custom_root(fun, unpack_params)(solver_fun)``.
+  """
+  def wrapper(solver_fun):
+    return _custom_root(solver_fun, fun, unpack_params, solve)
+  return wrapper
+
+
 def custom_fixed_point(fixed_point_fun: Callable,
                        unpack_params: bool = False,
                        solve: Callable = linear_solve.solve_normal_cg):
-  """Decorator for adding implicit differentiation to a solver.
+  """Decorator for adding implicit differentiation to a fixed point solver.
 
   Args:
     fixed_point_fun: a fixed point function, `fixed_point_fun(x, params)`.
@@ -269,7 +338,5 @@ def custom_fixed_point(fixed_point_fun: Callable,
     # Jacobian of solver_fun w.r.t. lam evaluated at lam = 10.0.
     jac_lam = jax.jacrev(solver_fun)(10.0)
   """
-  def wrapper(solver_fun):
-    return _custom_fixed_point(solver_fun, fixed_point_fun, unpack_params,
-                               solve)
-  return wrapper
+  fun = lambda x, p: tree_sub(fixed_point_fun(x, p), x)
+  return custom_root(fun, unpack_params, solve)
