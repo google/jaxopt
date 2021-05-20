@@ -13,11 +13,16 @@
 # limitations under the License.
 
 from absl.testing import absltest
+
 import jax
 from jax import test_util as jtu
 import jax.numpy as jnp
+
+from jaxopt import quadratic_prog
+from jaxopt.projection import projection_box_section
 from jaxopt.projection import projection_l2_sphere
 from jaxopt.projection import projection_simplex
+
 import numpy as onp
 
 
@@ -108,6 +113,56 @@ class ProjectionTest(jtu.JaxTestCase):
 
     p = projection_l2_sphere(x, diam)
     self.assertAllClose(jnp.sqrt(jnp.sum(p ** 2)), diam)
+
+  def test_projection_box_section(self):
+    x = jnp.array([1.2, 3.0, 0.7])
+    w = jnp.array([1.0, 2.0, 3.0])
+    alpha = jnp.zeros_like(x)
+    beta = jnp.ones_like(x) * 0.8
+    c = 1.0
+    params = (alpha, beta, w, c)
+    p = projection_box_section(x, params)
+    self.assertAllClose(jnp.dot(w, p), c, atol=1e-5)
+    self.assertTrue(jnp.all(alpha <= p))
+    self.assertTrue(jnp.all(p <= beta))
+
+    Q = jnp.eye(len(x))
+    A = jnp.array([w])
+    b = jnp.array([c])
+    G = jnp.concatenate((-jnp.eye(len(x)), jnp.eye(len(x))))
+    h = jnp.concatenate((alpha, beta))
+    params = ((Q, -x), (A, b), (G, h))
+    solver_fun = quadratic_prog.make_solver_fun()
+    p2 = solver_fun(*params)[0]
+    self.assertArraysAllClose(p, p2, atol=1e-5)
+
+  def test_projection_box_section_infeasible(self):
+    x = jnp.array([1.2, 3.0, 0.7])
+    w = jnp.array([1.0, 2.0, 3.0])
+    alpha = jnp.zeros_like(x)
+    beta = jnp.ones_like(x)
+    params = (alpha + 1.5, beta, w, 1.0)
+    self.assertRaises(ValueError, projection_box_section, x, params, True)
+    params = (alpha, beta - 1.5, w, 1.0)
+    self.assertRaises(ValueError, projection_box_section, x, params, True)
+
+  def test_projection_box_section_simplex(self):
+    rng = onp.random.RandomState(0)
+    x = jnp.array(rng.rand(5).astype(onp.float32))
+    w = jnp.ones_like(x)
+    alpha = jnp.zeros_like(x)
+    beta = jnp.ones_like(x)
+    c = 1.0
+    params = (alpha, beta, w, c)
+
+    p = projection_simplex(x)
+    p2 = projection_box_section(x, params)
+    self.assertArraysAllClose(p, p2, atol=1e-4)
+
+    J = jax.jacrev(projection_simplex)(x)
+    J2 = jax.jacrev(projection_box_section)(x, params)
+    self.assertArraysAllClose(J, J2)
+
 
 if __name__ == '__main__':
   absltest.main(testLoader=jtu.JaxTestLoader())

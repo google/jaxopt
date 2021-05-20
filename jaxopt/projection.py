@@ -20,6 +20,8 @@ import jax
 import jax.numpy as jnp
 from jaxopt import tree_util
 
+from jaxopt import root_finding
+
 
 @jax.custom_jvp
 def _projection_unit_simplex(x: jnp.ndarray) -> jnp.ndarray:
@@ -74,3 +76,52 @@ def projection_l2_sphere(x: Any, diam: float = 1.0) -> Any:
   """
   factor = diam / tree_util.tree_l2_norm(x)
   return tree_util.tree_scalar_mul(factor, x)
+
+
+def projection_box_section(x, params, check_feasible=False):
+  """Projection onto a box section.
+
+  The projection is::
+
+    argmin_{p : alpha_i <= p_i <= beta_i, jnp.dot(w, p) = c} ||x - p||
+
+  where ``(alpha, beta, w, c) = params``.
+
+  Args:
+    x: vector to project, an array of shape (n,).
+    params: tuple of parameters, ``params = (alpha, beta, w, c)``, where
+      ``w`` is a positive vector. The problem is infeasible if
+      dot(w, alpha) > c or if dot(w, beta) < c.
+    check_feasible: whether to check feasibility or not.
+      If True, function cannot be jitted.
+  Returns:
+    p: projected vector, an array of shape (n,).
+  """
+  # An optimal solution has the form
+  # p_i = clip(w_i * tau + x_i, alpha_i, beta_i) for all i
+  # where tau is the root of fun(tau, params) = dot(w, p) - c = 0.
+  def root(x, params):
+    def fun(tau, args):
+      x, params = args
+      alpha, beta, w, c = params
+      p = jnp.clip(w * tau + x, alpha, beta)
+      return jnp.dot(w, p) - c
+
+    alpha, beta, w, _ = params
+    lower = jax.lax.stop_gradient(jnp.min((alpha - x) / w))
+    upper = jax.lax.stop_gradient(jnp.max((beta - x) / w))
+    bisect_fun = root_finding.make_bisect_fun(fun=fun, lower=lower, upper=upper,
+                                              increasing=True)
+    args = (x, params)
+    return bisect_fun(args)
+
+  alpha, beta, w, c = params
+
+  if check_feasible:
+    if jnp.dot(w, alpha) > c:
+      raise ValueError("alpha should satisfy dot(w, alpha) <= c")
+
+    if jnp.dot(w, beta) < c:
+      raise ValueError("beta should satisfy dot(w, beta) >= c")
+
+  return jnp.clip(w * root(x, params) + x, alpha, beta)

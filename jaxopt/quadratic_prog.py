@@ -20,6 +20,28 @@ from jaxopt import implicit_diff
 from jaxopt import linear_solve
 
 
+def _check_params(params_obj, params_eq=None, params_ineq=None):
+  Q, c = params_obj
+  if Q.shape[0] != Q.shape[1]:
+    raise ValueError("Q must be a square matrix.")
+  if Q.shape[1] != c.shape[0]:
+    raise ValueError("Q.shape[1] != c.shape[0]")
+
+  if params_eq is not None:
+    A, b = params_eq
+    if A.shape[0] != b.shape[0]:
+      raise ValueError("A.shape[0] != b.shape[0]")
+    if A.shape[1] != Q.shape[1]:
+      raise ValueError("Q.shape[1] != A.shape[1]")
+
+  if params_ineq is not None:
+    G, h = params_ineq
+    if G.shape[0] != h.shape[0]:
+      raise ValueError("G.shape[0] != h.shape[0]")
+    if G.shape[1] != Q.shape[1]:
+      raise ValueError("G.shape[1] != Q.shape[1]")
+
+
 def _solve_eq_constrained_qp(params_obj, params_eq):
   """Solve 0.5 * x^T Q x + c^T x subject to Ax = b."""
   Q, c = params_obj
@@ -65,6 +87,8 @@ def make_solver_fun():
       sol = (primal_var, dual_var_eq, dual_var_ineq)
   """
   def solver_fun(params_obj, params_eq, params_ineq=None):
+    _check_params(params_obj, params_eq=params_eq, params_ineq=params_ineq)
+
     if params_ineq is None:
       primal, dual_eq = _solve_eq_constrained_qp(params_obj, params_eq)
       return primal, dual_eq, None

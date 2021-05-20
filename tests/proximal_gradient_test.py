@@ -313,6 +313,40 @@ class ProximalGradientTest(jtu.JaxTestCase):
     jac_num = test_util.multiclass_linear_svm_skl_jac(X, y, lam, eps=1e-3)
     self.assertArraysAllClose(jac_num, jac_primal, atol=5e-3)
 
+  def test_binary_kernel_svm_dual(self):
+    X, y = datasets.make_classification(
+        n_samples=20,
+        n_features=5,
+        n_informative=3,
+        n_classes=2,
+        random_state=0)
+    X = preprocessing.Normalizer().fit_transform(X)
+    # Transform labels to {-1, 1}
+    y = y * 2 - 1
+    lam = 1.0
+    C = 1./ lam
+    tol = 1e-3
+    maxiter = 500
+    K = jnp.dot(X, X.T)
+    fun = test_util.make_binary_kernel_svm_objective(K, y)
+    box_lower = jnp.where(y == 1, 0, -C)
+    box_upper = jnp.where(y == 1, C, 0)
+    w = jnp.ones(X.shape[0])
+
+    def proj(beta):
+      proj_params = (box_lower, box_upper, w, 0.0)
+      return projection.projection_box_section(beta, proj_params)
+
+    _prox = lambda beta, params_prox, scaling=1.0: proj(beta)
+
+    beta_init = jnp.ones(X.shape[0])
+    solver_fun = proximal_gradient.make_solver_fun(fun=fun, init= beta_init,
+                                                   prox=_prox, tol=tol,
+                                                   maxiter=maxiter)
+    beta_fit = solver_fun(params_fun=lam)
+    beta_fit_skl = test_util.binary_kernel_svm_skl(K, y, lam)
+    self.assertArraysAllClose(beta_fit, beta_fit_skl, atol=1e-2)
+
   def test_jit_and_vmap(self):
     make_solver_fun = functools.partial(proximal_gradient.make_solver_fun,
                                         prox=prox.prox_lasso)

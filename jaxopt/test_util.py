@@ -20,6 +20,8 @@ import jax.numpy as jnp
 from jaxopt import base
 from jaxopt import loss
 
+import numpy as onp
+
 from sklearn import datasets
 from sklearn import linear_model
 from sklearn import preprocessing
@@ -214,6 +216,27 @@ def enet_skl_jac(X, y, params_prox, tol=1e-5, fit_intercept=False, eps=1e-5):
              enet_skl(X, y, (lam, gamma - eps))) / (2 * eps)
 
   return jac_lam, jac_gam
+
+
+def binary_kernel_svm_skl(K, y, lam, tol=1e-5):
+  svc = svm.SVC(kernel="precomputed", C=1.0 / lam).fit(K, y)
+  dual_coef = onp.zeros(K.shape[0])
+  dual_coef[svc.support_] = svc.dual_coef_[0]
+  return dual_coef
+
+
+def make_binary_kernel_svm_objective(K, y):
+  # The dual objective is:
+  # fun(beta) = 0.5 beta^T K beta - beta^T y
+  # subject to
+  # sum(beta) = 0
+  # 0 <= beta_i <= C if y_i = 1
+  # -C <= beta_i <= 0 if y_i = -1
+  # where C = 1.0 / lam
+  def fun(beta, lam):
+    return 0.5 * jnp.dot(beta, jnp.dot(K, beta)) - jnp.dot(beta, y)
+
+  return fun
 
 
 def make_multiclass_linear_svm_objective(X, y):

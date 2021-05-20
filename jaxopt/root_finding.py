@@ -28,7 +28,8 @@ def make_bisect_fun(fun: Callable,
                     upper: float,
                     increasing: bool = True,
                     maxiter: int = 30,
-                    tol: float = 1e-5):
+                    tol: float = 1e-5,
+                    check_bracket=False):
   """Makes a bisection solver.
 
   Args:
@@ -40,6 +41,8 @@ def make_bisect_fun(fun: Callable,
     increasing: whether ``fun(x, params)`` is an increasing function of ``x``.
     maxiter: maximum number of iterations.
     tol: tolerance.
+    check_bracket: whether to check correctness of the bracketing interval.
+      If True, the function cannot be jitted.
   Returns:
     A solver function ``bisect(params)``.
   """
@@ -55,12 +58,21 @@ def make_bisect_fun(fun: Callable,
       midpoint = 0.5 * (high + low)
       value = fun_(midpoint, params)
       error = jnp.abs(value)
-      too_large = value < 0
+      too_large = value > 0
       # When `value` is too large, `midpoint` becomes the next `high`,
       # and `low` remains the same. Otherwise, it is the opposite.
       high = jnp.where(too_large, midpoint, high)
       low = jnp.where(too_large, low, midpoint)
       return low, high, error
+
+    if check_bracket:
+      if fun_(lower, params) > 0:
+        raise ValueError("fun(lower, params) should be < 0 if increasing=True "
+                         "and > 0 if increasing=False.")
+
+      if fun_(upper, params) < 0:
+        raise ValueError("fun(upper, params) should be > 0 if increasing=True "
+                         "and < 0 if increasing=False")
 
     args = (lower, upper, jnp.inf)
     low, high, _ = loop.while_loop(cond_fun=cond_fun, body_fun=body_fun,

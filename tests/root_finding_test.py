@@ -31,12 +31,12 @@ def _projection_simplex_bisect(x, s=1.0):
     #              => x_i - tau <= 0 for all i
     #              => maximum(x_i - tau, 0) = 0 for all i
     #              => fun(tau, x) = -s <= 0
-    lower = jax.lax.stop_gradient(jnp.max(x))
+    upper = jax.lax.stop_gradient(jnp.max(x))
     # tau' = min(x) => tau' <= x_i for all i
     #               => 0 <= x_i - tau' for all_i
     #               => maximum(x_i - tau', 0) >= 0
     #               => fun(tau, x) >= 0 where tau = tau' - s / len(x)
-    upper = jax.lax.stop_gradient(jnp.min(x)) - s / len(x)
+    lower = jax.lax.stop_gradient(jnp.min(x)) - s / len(x)
     # fun(tau, x) is a decreasing function of x on [lower, upper]
     # since the derivative w.r.t. tau is negative.
     fun = lambda tau, x_: jnp.sum(jnp.maximum(x_ - tau, 0)) - s
@@ -60,6 +60,32 @@ class RootFindingTest(jtu.JaxTestCase):
       J = jax.jacrev(projection.projection_simplex)(x)
       J2 = jax.jacrev(_projection_simplex_bisect)(x)
       self.assertArraysAllClose(J, J2, atol=1e-5)
+
+  def test_bisect_wrong_lower_bracket(self):
+    def threshold(x, s=1.0):
+      upper = jax.lax.stop_gradient(jnp.max(x))
+      fun = lambda tau, x_: jnp.sum(jnp.maximum(x_ - tau, 0)) - s
+      bisect_fun = root_finding.make_bisect_fun(fun=fun, lower=upper,
+                                                upper=upper, increasing=False,
+                                                check_bracket=True)
+      return bisect_fun(x)
+
+    rng = onp.random.RandomState(0)
+    x = jnp.array(rng.randn(5).astype(onp.float32))
+    self.assertRaises(ValueError, threshold, x)
+
+  def test_bisect_wrong_upper_bracket(self):
+    def threshold(x, s=1.0):
+      lower = jax.lax.stop_gradient(jnp.min(x)) - s / len(x)
+      fun = lambda tau, x_: jnp.sum(jnp.maximum(x_ - tau, 0)) - s
+      bisect_fun = root_finding.make_bisect_fun(fun=fun, lower=lower,
+                                                upper=lower, increasing=False,
+                                                check_bracket=True)
+      return bisect_fun(x)
+
+    rng = onp.random.RandomState(0)
+    x = jnp.array(rng.randn(5).astype(onp.float32))
+    self.assertRaises(ValueError, threshold, x)
 
 
 if __name__ == '__main__':
