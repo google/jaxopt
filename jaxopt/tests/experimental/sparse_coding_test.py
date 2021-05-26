@@ -18,6 +18,7 @@ import jax
 from jax import test_util as jtu
 import jax.numpy as jnp
 from jaxopt import test_util
+from jaxopt import loss
 from jaxopt.experimental import sparse_coding
 from sklearn import datasets
 
@@ -43,7 +44,9 @@ class SparseCodingTest(jtu.JaxTestCase):
         jax.random.PRNGKey(0),(self.N, self.d))
 
   @parameterized.parameters([None,
-                             lambda x, y : jnp.sum(jnp.abs(x-y) ** 2.1)])
+                             lambda x, y : jnp.sum(jnp.abs(x-y) ** 2.1),
+                             lambda x, y : jnp.sum(loss.huber_loss(x, y, .01))]
+                            )
   def test_task_driven_sparse_coding(self, reconstruction_loss_fun):
     elastic_penalty = 0.01
     regularization = 0.01

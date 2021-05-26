@@ -37,6 +37,23 @@ def binary_logistic_loss(label: int, logit: float) -> float:
   return softplus(logit) - label * logit
 
 
+def huber_loss(y: jnp.ndarray, y_pred: jnp.ndarray,
+               delta: float = 1) -> float:
+  """Huber loss https://en.wikipedia.org/wiki/Huber_loss
+
+  Args:
+    y: ground truth
+    y_pred: predictions
+    delta: radius of quadratic behavior
+  Returns:
+    loss value (float)
+  """
+  abs_diff = jnp.abs(y - y_pred)
+  return jnp.where(abs_diff > delta,
+                delta * (abs_diff - .5 * delta),
+                0.5 * abs_diff ** 2)
+
+
 def multiclass_logistic_loss(label: int, logits: jnp.ndarray) -> float:
   """Multiclass logistic loss.
 

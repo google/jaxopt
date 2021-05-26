@@ -21,6 +21,7 @@ from jax.scipy.special import expit as sigmoid
 import jax.numpy as jnp
 
 from jaxopt.loss import binary_logistic_loss
+from jaxopt.loss import huber_loss
 from jaxopt.loss import multiclass_logistic_loss
 from jaxopt.loss import multiclass_sparsemax_loss
 from jaxopt.projection import projection_simplex
@@ -81,6 +82,13 @@ class LossTest(jtu.JaxTestCase):
   def test_multiclass_sparsemax_loss(self):
     self._test_multiclass_loss_function(multiclass_sparsemax_loss,
                                         projection_simplex)
+
+  def test_huber(self):
+    self.assertAllClose(0.0, huber_loss(0, 0, .1))
+    self.assertAllClose(0.0, huber_loss(1, 1, .1))
+    self.assertAllClose(.1 * (1.0- .5 * .1), huber_loss(4, 3, .1))
+    self.assertAllClose(0.125, huber_loss(0, .5))
+
 
 if __name__ == '__main__':
   absltest.main(testLoader=jtu.JaxTestLoader())
