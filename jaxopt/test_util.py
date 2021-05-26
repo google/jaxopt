@@ -270,7 +270,7 @@ def multiclass_linear_svm_skl_jac(X, y, lam, tol=1e-5, eps=1e-5):
 
 def test_logreg_jit_and_vmap(self, make_solver_fun, make_fixed_point_fun,
                              params_list, l2_penalty=True, unpack_params=False,
-                             atol=1e-4):
+                             atol=1e-3):
 
   X, y = datasets.make_classification(n_samples=30, n_features=5,
                                       n_informative=3, n_classes=2,
