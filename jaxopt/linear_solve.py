@@ -16,6 +16,7 @@
 
 from typing import Any
 from typing import Callable
+from typing import Optional
 
 import jax
 import jax.numpy as jnp
@@ -77,7 +78,7 @@ def solve_cholesky(matvec: Callable, b: jnp.ndarray) -> jnp.ndarray:
     raise NotImplementedError
 
 
-def solve_cg(matvec: Callable, b: Any) -> Any:
+def solve_cg(matvec: Callable, b: Any, *args, **kwargs) -> Any:
   """Solves ``A x = b`` using conjugate gradient.
 
   It assumes that ``A`` is  a Hermitian, positive definite matrix.
@@ -85,11 +86,13 @@ def solve_cg(matvec: Callable, b: Any) -> Any:
   Args:
     matvec: product between ``A`` and a vector.
     b: pytree.
+    *args: additional positional arguments for solver.
+    *kwargs: additional keyword arguments for solver.
 
   Returns:
     pytree with same structure as ``b``.
   """
-  return jax.scipy.sparse.linalg.cg(matvec, b)[0]
+  return jax.scipy.sparse.linalg.cg(matvec, b, *args, **kwargs)[0]
 
 
 def _rmatvec(matvec, x):
@@ -98,7 +101,7 @@ def _rmatvec(matvec, x):
   return transpose(x)[0]
 
 
-def solve_normal_cg(matvec: Callable, b: Any) -> Any:
+def solve_normal_cg(matvec: Callable, b: Any, *args, **kwargs) -> Any:
   """Solves the normal equation ``A^T A x = A^T b`` using conjugate gradient.
 
   This can be used to solve Ax=b using conjugate gradient when A is not
@@ -107,6 +110,8 @@ def solve_normal_cg(matvec: Callable, b: Any) -> Any:
   Args:
     matvec: product between ``A`` and a vector.
     b: pytree.
+    *args: additional positional arguments for solver.
+    *kwargs: additional keyword arguments for solver.
 
   Returns:
     pytree with same structure as ``b``.
@@ -116,30 +121,34 @@ def solve_normal_cg(matvec: Callable, b: Any) -> Any:
     return _rmatvec(matvec, matvec(x))
 
   Ab = _rmatvec(matvec, b)
-  return jax.scipy.sparse.linalg.cg(_matvec, Ab)[0]
+  return jax.scipy.sparse.linalg.cg(_matvec, Ab, *args, **kwargs)[0]
 
 
-def solve_gmres(matvec: Callable, b: Any) -> Any:
+def solve_gmres(matvec: Callable, b: Any, *args, **kwargs) -> Any:
   """Solves ``A x = b`` using gmres.
 
   Args:
     matvec: product between ``A`` and a vector.
     b: pytree.
+    *args: additional positional arguments for solver.
+    *kwargs: additional keyword arguments for solver.
 
   Returns:
     pytree with same structure as ``b``.
   """
-  return jax.scipy.sparse.linalg.gmres(matvec, b)[0]
+  return jax.scipy.sparse.linalg.gmres(matvec, b, *args, **kwargs)[0]
 
 
-def solve_bicgstab(matvec: Callable, b: Any) -> Any:
+def solve_bicgstab(matvec: Callable, b: Any, *args, **kwargs) -> Any:
   """Solves ``A x = b`` using bicgstab.
 
   Args:
     matvec: product between ``A`` and a vector.
     b: pytree.
+    *args: additional positional arguments for solver.
+    *kwargs: additional keyword arguments for solver.
 
   Returns:
     pytree with same structure as ``b``.
   """
-  return jax.scipy.sparse.linalg.bicgstab(matvec, b)[0]
+  return jax.scipy.sparse.linalg.bicgstab(matvec, b, *args, **kwargs)[0]
