@@ -91,6 +91,45 @@ class LinearSolveTest(jtu.JaxTestCase):
     self.assertArraysAllClose(x, x3, atol=1e-4)
     self.assertArraysAllClose(x, x4, atol=1e-4)
 
+  def test_solve_sparse_ridge(self):
+    rng = onp.random.RandomState(0)
+
+    # Value of the ridge regularizaer.
+    ridge = 1.0
+
+    # Matrix case.
+    A = rng.randn(5, 5)
+    b = rng.randn(5)
+
+    def matvec(x):
+      return jnp.dot(A, x)
+
+    def matvec_with_ridge(x):
+      return jnp.dot(A + ridge * onp.eye(A.shape[0]), x)
+
+    x = linear_solve.solve_lu(matvec_with_ridge, b)
+    x2 = linear_solve.solve_gmres(matvec, b, ridge=ridge)
+    x3 = linear_solve.solve_bicgstab(matvec, b, ridge=ridge)
+    self.assertArraysAllClose(x, x2, atol=1e-4)
+    self.assertArraysAllClose(x, x3, atol=1e-4)
+
+    K = onp.dot(A.T, A)
+    Ab = onp.dot(A.T, b)
+
+    def gram_matvec(x):
+      return jnp.dot(K, x)
+
+    def gram_matvec_with_ridge(x):
+      return jnp.dot(K + ridge * onp.eye(A.shape[0]), x)
+
+    x = linear_solve.solve_lu(gram_matvec_with_ridge, b)
+    x4 = linear_solve.solve_cg(gram_matvec, b, ridge=ridge)
+    self.assertArraysAllClose(x, x4, atol=1e-4)
+
+    x = linear_solve.solve_lu(gram_matvec_with_ridge, Ab)
+    x5 = linear_solve.solve_normal_cg(matvec, b, ridge=ridge)
+    self.assertArraysAllClose(x, x5, atol=1e-4)
+
   def test_solve_1d(self):
     rng = onp.random.RandomState(0)
 

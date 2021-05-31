@@ -20,12 +20,19 @@ from typing import Optional
 
 import jax
 import jax.numpy as jnp
+from jaxopt.tree_util import tree_add_scalar_mul
 
 
 def _materialize_array(matvec, shape, dtype=None):
   """Materializes the matrix A used in matvec(x) = Ax."""
   x = jnp.zeros(shape, dtype)
   return jax.jacfwd(matvec)(x)
+
+
+def _make_ridge_matvec(matvec: Callable, ridge: float = 0.0):
+  def ridge_matvec(v: Any) -> Any:
+    return tree_add_scalar_mul(matvec(v), ridge, v)
+  return ridge_matvec
 
 
 def solve_lu(matvec: Callable, b: jnp.ndarray) -> jnp.ndarray:
@@ -78,7 +85,10 @@ def solve_cholesky(matvec: Callable, b: jnp.ndarray) -> jnp.ndarray:
     raise NotImplementedError
 
 
-def solve_cg(matvec: Callable, b: Any, *args, **kwargs) -> Any:
+def solve_cg(matvec: Callable,
+             b: Any,
+             ridge: Optional[float] = None,
+             **kwargs) -> Any:
   """Solves ``A x = b`` using conjugate gradient.
 
   It assumes that ``A`` is  a Hermitian, positive definite matrix.
@@ -86,13 +96,15 @@ def solve_cg(matvec: Callable, b: Any, *args, **kwargs) -> Any:
   Args:
     matvec: product between ``A`` and a vector.
     b: pytree.
-    *args: additional positional arguments for solver.
-    *kwargs: additional keyword arguments for solver.
+    ridge: optional ridge regularization.
+    **kwargs: additional keyword arguments for solver.
 
   Returns:
     pytree with same structure as ``b``.
   """
-  return jax.scipy.sparse.linalg.cg(matvec, b, *args, **kwargs)[0]
+  if ridge is not None:
+    matvec = _make_ridge_matvec(matvec, ridge=ridge)
+  return jax.scipy.sparse.linalg.cg(matvec, b, **kwargs)[0]
 
 
 def _rmatvec(matvec, x):
@@ -101,7 +113,10 @@ def _rmatvec(matvec, x):
   return transpose(x)[0]
 
 
-def solve_normal_cg(matvec: Callable, b: Any, *args, **kwargs) -> Any:
+def solve_normal_cg(matvec: Callable,
+                    b: Any,
+                    ridge: Optional[float] = None,
+                    **kwargs) -> Any:
   """Solves the normal equation ``A^T A x = A^T b`` using conjugate gradient.
 
   This can be used to solve Ax=b using conjugate gradient when A is not
@@ -110,8 +125,8 @@ def solve_normal_cg(matvec: Callable, b: Any, *args, **kwargs) -> Any:
   Args:
     matvec: product between ``A`` and a vector.
     b: pytree.
-    *args: additional positional arguments for solver.
-    *kwargs: additional keyword arguments for solver.
+    ridge: optional ridge regularization.
+    **kwargs: additional keyword arguments for solver.
 
   Returns:
     pytree with same structure as ``b``.
@@ -119,36 +134,49 @@ def solve_normal_cg(matvec: Callable, b: Any, *args, **kwargs) -> Any:
   def _matvec(x):
     """Computes A^T A x."""
     return _rmatvec(matvec, matvec(x))
+  if ridge is not None:
+    _matvec = _make_ridge_matvec(_matvec, ridge=ridge)
 
   Ab = _rmatvec(matvec, b)
-  return jax.scipy.sparse.linalg.cg(_matvec, Ab, *args, **kwargs)[0]
+
+  return jax.scipy.sparse.linalg.cg(_matvec, Ab, **kwargs)[0]
 
 
-def solve_gmres(matvec: Callable, b: Any, *args, **kwargs) -> Any:
+def solve_gmres(matvec: Callable,
+                b: Any,
+                ridge: Optional[float] = None,
+                **kwargs) -> Any:
   """Solves ``A x = b`` using gmres.
 
   Args:
     matvec: product between ``A`` and a vector.
     b: pytree.
-    *args: additional positional arguments for solver.
-    *kwargs: additional keyword arguments for solver.
+    ridge: optional ridge regularization.
+    **kwargs: additional keyword arguments for solver.
 
   Returns:
     pytree with same structure as ``b``.
   """
-  return jax.scipy.sparse.linalg.gmres(matvec, b, *args, **kwargs)[0]
+  if ridge is not None:
+    matvec = _make_ridge_matvec(matvec, ridge=ridge)
+  return jax.scipy.sparse.linalg.gmres(matvec, b, **kwargs)[0]
 
 
-def solve_bicgstab(matvec: Callable, b: Any, *args, **kwargs) -> Any:
+def solve_bicgstab(matvec: Callable,
+                   b: Any,
+                   ridge: Optional[float] = None,
+                   **kwargs) -> Any:
   """Solves ``A x = b`` using bicgstab.
 
   Args:
     matvec: product between ``A`` and a vector.
     b: pytree.
-    *args: additional positional arguments for solver.
-    *kwargs: additional keyword arguments for solver.
+    ridge: optional ridge regularization.
+    **kwargs: additional keyword arguments for solver.
 
   Returns:
     pytree with same structure as ``b``.
   """
-  return jax.scipy.sparse.linalg.bicgstab(matvec, b, *args, **kwargs)[0]
+  if ridge is not None:
+    matvec = _make_ridge_matvec(matvec, ridge=ridge)
+  return jax.scipy.sparse.linalg.bicgstab(matvec, b, **kwargs)[0]
