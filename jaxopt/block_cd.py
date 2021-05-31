@@ -60,7 +60,8 @@ def make_solver_fun(fun: base.CompositeLinearFunction,
                     maxiter: int = 500,
                     tol: float = 1e-3,
                     verbose: int = 0,
-                    implicit_diff: Union[bool,Callable] = True) -> Callable:
+                    implicit_diff: Union[bool, Callable] = True,
+                    ret_info: bool = False) -> Callable:
   """Creates a block coordinate descent solver function
   ``solver_fun(params_fun, params_prox)`` for solving::
 
@@ -91,6 +92,8 @@ def make_solver_fun(fun: base.CompositeLinearFunction,
       if Callable, do implicit differentiation using callable as linear solver,
       if False, use autodiff through the solver implementation (note:
         this will unroll syntactic loops).
+    ret_info: whether to return an OptimizeResults object containing additional
+      information regarding the solution.
 
   Returns:
     Solver function ``solver_fun(params_fun, params_prox)``.
@@ -135,7 +138,10 @@ def make_solver_fun(fun: base.CompositeLinearFunction,
 
     res = loop.while_loop(cond_fun=cond_fun, body_fun=body_fun, init_val=args,
                           maxiter=maxiter, unroll=unroll, jit=jit)
-    return res[1]
+    if ret_info:
+      return base.OptimizeResults(x=res[1], nit=res[0], error=res[-1])
+    else:
+      return res[1]
 
   if implicit_diff:
     if isinstance(implicit_diff, Callable):
