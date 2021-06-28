@@ -1,4 +1,3 @@
-# Copyright 2020 DeepMind Technologies Limited
 # Copyright 2021 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,11 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""MNIST example with Haiku and JAXopt."""
+"""MNIST example with Flax and JAXopt."""
 
 from absl import app
-from absl import flags
-import haiku as hk
+from flax import linen as nn
 import jax
 import jax.numpy as jnp
 from jaxopt import loss
@@ -25,10 +23,6 @@ from jaxopt import optax_wrapper
 from jaxopt import tree_util
 import optax
 import tensorflow_datasets as tfds
-
-
-flags.DEFINE_float("learning_rate", 0.001, "Learning rate for the optimizer.")
-FLAGS = flags.FLAGS
 
 
 def load_dataset(split, *, is_training, batch_size):
@@ -40,25 +34,32 @@ def load_dataset(split, *, is_training, batch_size):
   return iter(tfds.as_numpy(ds))
 
 
-def net_fun(batch):
-  """Standard LeNet-300-100 MLP network."""
-  x = batch["image"].astype(jnp.float32) / 255.
-  mlp = hk.Sequential([
-      hk.Flatten(),
-      hk.Linear(300), jax.nn.relu,
-      hk.Linear(100), jax.nn.relu,
-      hk.Linear(10),
-  ])
-  return mlp(x)
+class CNN(nn.Module):
+  """A simple CNN model."""
+
+  @nn.compact
+  def __call__(self, x):
+    x = nn.Conv(features=32, kernel_size=(3, 3))(x)
+    x = nn.relu(x)
+    x = nn.avg_pool(x, window_shape=(2, 2), strides=(2, 2))
+    x = nn.Conv(features=64, kernel_size=(3, 3))(x)
+    x = nn.relu(x)
+    x = nn.avg_pool(x, window_shape=(2, 2), strides=(2, 2))
+    x = x.reshape((x.shape[0], -1))  # flatten
+    x = nn.Dense(features=256)(x)
+    x = nn.relu(x)
+    x = nn.Dense(features=10)(x)
+    return x
 
 
 def main(argv):
-  net = hk.without_apply_rng(hk.transform(net_fun))
+  net = CNN()
 
   @jax.jit
   def accuracy(params, batch):
-    predictions = net.apply(params, batch)
-    return jnp.mean(jnp.argmax(predictions, axis=-1) == batch["label"])
+    x = batch["image"].astype(jnp.float32) / 255.
+    logits = net.apply({"params": params}, x)
+    return jnp.mean(jnp.argmax(logits, axis=-1) == batch["label"])
 
   logistic_loss = jax.vmap(loss.multiclass_logistic_loss)
 
@@ -66,7 +67,8 @@ def main(argv):
   # loss_fun(params, hyperparams, data).
   def loss_fun(params, l2_regul, batch):
     """Compute the loss of the network."""
-    logits = net.apply(params, batch)
+    x = batch["image"].astype(jnp.float32) / 255.
+    logits = net.apply({"params": params}, x)
     labels = batch["label"]
     sqnorm = tree_util.tree_l2_norm(params, squared=True)
     loss_value = jnp.mean(logistic_loss(labels, logits))
@@ -84,14 +86,12 @@ def main(argv):
     return params, state
 
   # Initialize solver and parameters.
-
-  # Equilent to:
-  # opt = optax.chain(optax.scale_by_adam(b1=0.9, b2=0.999, eps=1e-8),
-  #                   optax.scale(-FLAGS.learning_rate))
-  opt = optax.adam(FLAGS.learning_rate)
-  solver = optax_wrapper.OptaxSolver(opt=opt, fun=loss_fun, maxiter=100,
+  solver = optax_wrapper.OptaxSolver(opt=optax.adam(1e-3),
+                                     fun=loss_fun,
+                                     maxiter=100,
                                      pre_update_fun=pre_update)
-  init_params = net.init(jax.random.PRNGKey(42), next(train_ds))
+  rng = jax.random.PRNGKey(0)
+  init_params = CNN().init(rng, jnp.ones([1, 28, 28, 1]))["params"]
   l2_regul = 1e-4
 
   # Run training loop.
