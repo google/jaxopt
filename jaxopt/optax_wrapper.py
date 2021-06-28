@@ -26,6 +26,7 @@ from dataclasses import dataclass
 import jax
 import jax.numpy as jnp
 
+from jaxopt import base
 from jaxopt import implicit_diff2 as idf
 from jaxopt import linear_solve
 from jaxopt import loop
@@ -35,8 +36,10 @@ from jaxopt import tree_util
 class OptaxState(NamedTuple):
   """Named tuple containing state information."""
   iter_num: int
+  value: float
   error: float
   internal_state: NamedTuple
+  aux: Any
 
 
 @dataclass
@@ -61,9 +64,10 @@ class OptaxSolver:
       if Callable, do implicit differentiation using callable as linear solver,
       if False, use autodiff through the solver implementation (note:
         this will unroll syntactic loops).
-    has_aux: whether function fun outputs one (False) or more values (True).
+    has_aux: whether ``fun`` outputs one (False) or more values (True).
       When True it will be assumed by default that ``fun(...)[0]``
-      is the objective.
+      is the objective value. The auxiliary outputs are stored in
+      ``state.aux``.
   """
   fun: Callable
   opt: NamedTuple
@@ -74,17 +78,23 @@ class OptaxSolver:
   implicit_diff: Union[bool, Callable] = True
   has_aux: bool = False
 
-  def init(self, init_params: Any) -> Tuple[Any, NamedTuple]:
+  def init(self, init_params: Any) -> base.OptStep:
     """Initialize the ``(params, state)`` pair.
 
     Args:
       init_params: pytree containing the initial parameters.
+    Return type:
+      base.OptStep
     Returns:
       (params, state)
     """
     opt_state = self.opt.init(init_params)
-    state = OptaxState(iter_num=0, error=jnp.inf, internal_state=opt_state)
-    return init_params, state
+    state = OptaxState(iter_num=0,
+                       value=jnp.inf,
+                       error=jnp.inf,
+                       aux=None,
+                       internal_state=opt_state)
+    return base.OptStep(params=init_params, state=state)
 
   def _apply_updates(self, params, updates):
     update_fun = lambda p, u: jnp.asarray(p + u).astype(jnp.asarray(p).dtype)
@@ -93,42 +103,53 @@ class OptaxSolver:
   def update(self,
              params: Any,
              state: NamedTuple,
-             hyperparams: Any,
-             data: Any) -> Tuple[Any, NamedTuple]:
+             hyperparams: Optional[Any] = None,
+             data: Optional[Any] = None) -> base.OptStep:
     """Performs one iteration of the optax solver.
 
     Args:
       params: pytree containing the parameters.
       state: named tuple containing the solver state.
-      hyperparams: pytree containing hyper-parameters.
-      data: pytree containing data.
+      hyperparams: pytree containing hyper-parameters (default: None).
+      data: pytree containing data (default: None).
+    Return type:
+      base.OptStep
     Returns:
       (params, state)
     """
     if self.pre_update_fun:
       params, state = self.pre_update_fun(params, state, hyperparams, data)
 
-    grad = self.grad_fun(params, hyperparams, data)
+    if self.has_aux:
+      (value, aux), grad = self.value_and_grad_fun(params, hyperparams, data)
+    else:
+      value, grad = self.value_and_grad_fun(params, hyperparams, data)
+      aux = None
+
     delta, opt_state = self.opt.update(grad, state.internal_state, params)
     params = self._apply_updates(params, delta)
     error = self.l2_optimality_error(params, hyperparams, data)
     new_state = OptaxState(iter_num=state.iter_num + 1,
                            error=error,
+                           value=value,
+                           aux=aux,
                            internal_state=opt_state)
-    return params, new_state
+    return base.OptStep(params=params, state=new_state)
 
   def run(self,
           hyperparams: Any,
           data: Any,
-          init_params: Any) -> Tuple[Any, NamedTuple]:
+          init_params: Any) -> base.OptStep:
     """Runs the optax solver on a fixed dataset.
 
     Args:
       hyperparams: pytree containing hyper-parameters.
       data: pytree containing the entire data.
       init_params: pytree containing the initial parameters.
+    Return type:
+      base.OptStep
     Returns:
-      (params, info)
+      (params, state)
     """
     def cond_fun(pair):
       _, state = pair
@@ -155,8 +176,10 @@ class OptaxSolver:
       hyperparams: pytree containing hyper-parameters.
       iterator: iterator generating data batches.
       init_params: pytree containing the initial parameters.
+    Return type:
+      base.OptStep
     Returns:
-      (params, info)
+      (params, state)
     """
     params, state = self.init(init_params)
 
@@ -169,11 +192,14 @@ class OptaxSolver:
 
       params, state = self.update(params, state, hyperparams, data)
 
-    return params, state
+    return base.OptStep(params=params, state=state)
 
   def optimality_fun(self, sol, hyperparams, data):
     """Optimality function mapping compatible with ``@custom_root``."""
-    return self.grad_fun(sol, hyperparams, data)
+    if self.has_aux:
+      return self.grad_fun(sol, hyperparams, data)[0]
+    else:
+      return self.grad_fun(sol, hyperparams, data)
 
   def l2_optimality_error(self, params, hyperparams, data):
     """Computes the L2 optimality error."""
@@ -181,11 +207,8 @@ class OptaxSolver:
     return tree_util.tree_l2_norm(optimality)
 
   def __post_init__(self):
-    if self.has_aux:
-      self.fun = jax.jit(lambda x, par: self.fun(x, par)[0])
-    else:
-      self.fun = jax.jit(self.fun)
-    self.grad_fun = jax.jit(jax.grad(self.fun))
+    self.value_and_grad_fun = jax.value_and_grad(self.fun, has_aux=self.has_aux)
+    self.grad_fun = jax.grad(self.fun, has_aux=self.has_aux)
     # We always jit unless verbose mode is enabled.
     self.jit = not self.verbose
     # We unroll when implicit diff is disabled or when jit is disabled.

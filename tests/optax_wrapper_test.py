@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from absl.testing import absltest
+from absl.testing import parameterized
 
 import jax
 from jax import test_util as jtu
@@ -57,19 +58,28 @@ class OptaxWrapperTest(jtu.JaxTestCase):
     self.assertArraysAllClose(params[0], W_skl, atol=5e-2)
     self.assertArraysAllClose(params[1], b_skl, atol=5e-2)
 
-  def test_logreg_with_intercept_run(self):
+  @parameterized.product(has_aux=[True, False])
+  def test_logreg_with_intercept_run(self, has_aux):
     X, y = datasets.make_classification(n_samples=10, n_features=5, n_classes=3,
                                         n_informative=3, random_state=0)
     data = (X, y)
     hyperparams = 100.0
-    fun = test_util.l2_logreg_objective_with_intercept
+    if has_aux:
+      def fun(params, hyperparams, data):
+        return test_util.l2_logreg_objective_with_intercept(params,
+                                                            hyperparams,
+                                                            data), None
+    else:
+      fun = test_util.l2_logreg_objective_with_intercept
+
     n_classes = len(jnp.unique(y))
 
     W_init = jnp.zeros((X.shape[1], n_classes))
     b_init = jnp.zeros(n_classes)
     pytree_init = (W_init, b_init)
 
-    opt = optax_wrapper.OptaxSolver(opt=optax.adam(1e-3), fun=fun, maxiter=200)
+    opt = optax_wrapper.OptaxSolver(opt=optax.adam(1e-3), fun=fun,
+                                    maxiter=200, has_aux=has_aux)
     params, _ = opt.run(hyperparams, data, pytree_init)
 
     # Check optimality conditions.
