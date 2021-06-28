@@ -92,24 +92,27 @@ class ProxTest(jtu.JaxTestCase):
 
     # Check forward pass with array x and scalar alpha.
     x = rng.rand(20) * 2 - 1
-    params = (0.5, 0.1)
-    expected = jnp.array([self._prox_enet(x[i], *params)
+    hyperparams = (0.5, 0.1)
+    expected = jnp.array([self._prox_enet(x[i], *hyperparams)
                           for i in range(len(x))])
-    got = prox.prox_elastic_net(x, params)
+    got = prox.prox_elastic_net(x, hyperparams)
     self.assertArraysAllClose(expected, got)
 
     # Check forward pass with array x and array alpha.
-    params = (rng.rand(20), rng.rand(20))
-    expected = jnp.array([self._prox_enet(x[i], params[0][i], params[1][i])
+    hyperparams = (rng.rand(20), rng.rand(20))
+    expected = jnp.array([self._prox_enet(x[i], hyperparams[0][i],
+                                          hyperparams[1][i])
                           for i in range(len(x))])
-    got = prox.prox_elastic_net(x, params)
+    got = prox.prox_elastic_net(x, hyperparams)
     self.assertArraysAllClose(expected, got)
 
     # Check forward pass with pytree x.
     x = (rng.rand(20) * 2 - 1, rng.rand(20) * 2 - 1)
-    params = (0.5, 0.1)
-    expected0 = [self._prox_enet(x[0][i], *params) for i in range(len(x[0]))]
-    expected1 = [self._prox_enet(x[1][i], *params) for i in range(len(x[0]))]
+    hyperparams = (0.5, 0.1)
+    expected0 = [self._prox_enet(x[0][i], *hyperparams)
+                 for i in range(len(x[0]))]
+    expected1 = [self._prox_enet(x[1][i], *hyperparams)
+                 for i in range(len(x[0]))]
     expected = (jnp.array(expected0), jnp.array(expected1))
     got = prox.prox_elastic_net(x, ((0.5, 0.5), (0.1, 0.1)))
     self.assertArraysAllClose(jnp.array(expected), jnp.array(got))

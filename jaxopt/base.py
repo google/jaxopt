@@ -27,6 +27,11 @@ class OptimizeResults(NamedTuple):
   x: Any
 
 
+class OptStep(NamedTuple):
+  params: Any
+  state: Any
+
+
 @jax.tree_util.register_pytree_node_class
 class LinearOperator(object):
 

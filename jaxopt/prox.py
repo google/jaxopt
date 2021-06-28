@@ -24,53 +24,55 @@ import jax.numpy as jnp
 from jaxopt import tree_util
 
 
-def prox_none(x: Any, params: Optional[Any] = None, scaling: float = 1.0):
+def prox_none(x: Any, hyperparams: Optional[Any] = None, scaling: float = 1.0):
   r"""Proximal operator for g(x) = 0, i.e., the identity function.
 
   Since g(x) = 0, the output is: ``argmin_y 0.5 ||y - x||^2 = Id(x)``.
 
   Args:
     x: input pytree.
-    params: ignored.
+    hyperparams: ignored.
     scaling: ignored.
   Returns:
     y: output pytree with same structure as x.
   """
-  del params, scaling
+  del hyperparams, scaling
   return x
 
 
-def prox_lasso(x: Any, params: Any, scaling: float = 1.0):
+def prox_lasso(x: Any, hyperparams: Any, scaling: float = 1.0):
   r"""Proximal operator for the l1 norm, i.e., soft-thresholding operator.
 
   The output is:
-    argmin_y 0.5 ||y - x||^2 + scaling * params * ||y||_1.
-  When params is a pytree, the weights are applied coordinate-wise.
+    argmin_y 0.5 ||y - x||^2 + scaling * hyperparams * ||y||_1.
+  When hyperparams is a pytree, the weights are applied coordinate-wise.
 
   Args:
     x: input pytree.
-    params: regularization strength, float or pytree (same structure as x).
+    hyperparams: regularization strength, float or pytree (same structure as x).
     scaling: a scaling factor.
 
   Returns:
     y: output pytree with same structure as x.
   """
   fun = lambda u, v: jnp.sign(u) * jax.nn.relu(jnp.abs(u) - v * scaling)
-  return tree_util.tree_multimap(fun, x, params)
+  return tree_util.tree_multimap(fun, x, hyperparams)
 
 
-def prox_elastic_net(x: Any, params: Tuple[Any, Any], scaling: float = 1.0):
+def prox_elastic_net(x: Any,
+                     hyperparams: Tuple[Any, Any],
+                     scaling: float = 1.0):
   r"""Proximal operator for the elastic net.
 
   The output is:
-    argmin_y 0.5 ||y - x||^2 + scaling * params[0] * g(y)
+    argmin_y 0.5 ||y - x||^2 + scaling * hyperparams[0] * g(y)
 
-  where g(y) = ||y||_1 + params[1] * 0.5 * ||y||_2^2.
+  where g(y) = ||y||_1 + hyperparams[1] * 0.5 * ||y||_2^2.
 
   Args:
     x: input pytree.
-    params: a tuple, where both params[0] and params[1] can be either floats
-      or pytrees with the same structure as x.
+    hyperparams: a tuple, where both hyperparams[0] and hyperparams[1] can be
+      either floats or pytrees with the same structure as x.
     scaling: a scaling factor.
 
   Returns:
@@ -79,44 +81,44 @@ def prox_elastic_net(x: Any, params: Tuple[Any, Any], scaling: float = 1.0):
   prox_l1 = lambda u, lam: jnp.sign(u) * jax.nn.relu(jnp.abs(u) - lam)
   fun = lambda u, lam, gamma: (prox_l1(u, scaling * lam) /
                                (1.0 + scaling * lam * gamma))
-  return tree_util.tree_multimap(fun, x, params[0], params[1])
+  return tree_util.tree_multimap(fun, x, hyperparams[0], hyperparams[1])
 
 
-def prox_group_lasso(x: Any, param: float, scaling=1.0):
+def prox_group_lasso(x: Any, hyperparam: float, scaling=1.0):
   r"""Proximal operator for the l2 norm, i.e., block soft-thresholding operator.
 
   The output is:
-    argmin_y 0.5 ||y - x||^2 + scaling * param * ||y||_2.
+    argmin_y 0.5 ||y - x||^2 + scaling * hyperparam * ||y||_2.
 
   Blocks can be grouped using ``jax.vmap``.
 
   Args:
     x: input pytree.
-    param: regularization strength, float.
+    hyperparam: regularization strength, float.
     scaling: a scaling factor.
 
   Returns:
     y: output pytree with same structure as x.
   """
   l2_norm = tree_util.tree_l2_norm(x)
-  factor = 1 - param * scaling / l2_norm
+  factor = 1 - hyperparam * scaling / l2_norm
   factor = jnp.where(factor >= 0, factor, 0)
   return tree_util.tree_scalar_mul(factor, x)
 
 
-def prox_ridge(x: Any, param: float, scaling=1.0):
+def prox_ridge(x: Any, hyperparam: float, scaling=1.0):
   r"""Proximal operator for the squared l2 norm.
 
   The output is:
-    argmin_y 0.5 ||y - x||^2 + scaling * param * 0.5 * ||y||_2^2.
+    argmin_y 0.5 ||y - x||^2 + scaling * hyperparam * 0.5 * ||y||_2^2.
 
   Args:
     x: input pytree.
-    param: regularization strength, float.
+    hyperparam: regularization strength, float.
     scaling: a scaling factor.
 
   Returns:
     y: output pytree with same structure as x.
   """
-  factor = 1. / (1 + scaling * param)
+  factor = 1. / (1 + scaling * hyperparam)
   return tree_util.tree_scalar_mul(factor, x)
