@@ -19,6 +19,7 @@ import distrax
 import jax
 from jax import test_util as jtu
 import jax.numpy as jnp
+import functools
 
 from jaxopt import perturbations
 
@@ -32,6 +33,11 @@ def one_hot_argmax(inputs: jnp.array) -> jnp.array:
 
 def ranks(inputs: jnp.array) -> jnp.array:
   return jnp.argsort(jnp.argsort(inputs, axis=-1), axis=-1)
+
+
+def top_k_hots(values, k):
+  n = values.shape[0]
+  return jax.nn.one_hot(jnp.argsort(values)[-k:], n)
 
 
 class PerturbationsArgmaxTest(jtu.JaxTestCase):
@@ -337,6 +343,27 @@ class PerturbationsMaxTest(jtu.JaxTestCase):
                                                            rngs)
     expected_grad = jax.vmap(pert_ranks_argmax_fun)(theta_random_batch, rngs)
     self.assertArraysAllClose(autodiff_grad, expected_grad, rtol=1e-6)
+
+  def test_shape(self):
+    rngs = jax.random.split(self.rng)
+    values = jax.random.normal(rngs[0], (6,))
+
+    def top_2_hots(values_k):
+      values = values_k[0]
+      return top_k_hots(values, 2)
+
+    diff_top_2_hots = perturbations.make_perturbed_argmax(top_2_hots,
+                                                          num_samples=100,
+                                                          sigma=0.25)
+
+    def loss_example(values, rng):
+      y_true = top_k_hots(jnp.arange(6), 2)
+      values_k = jnp.tile(values[jnp.newaxis, :], (2, 1))
+      y_pred = diff_top_2_hots(values_k, rng)
+      return jnp.sum((y_true - y_pred) ** 2)
+
+    gradient = jax.grad(loss_example)(values, rngs[1])
+    self.assertEqual(gradient.shape, values.shape)
 
 
 if __name__ == '__main__':

@@ -103,7 +103,7 @@ def make_perturbed_argmax(argmax_fun: Callable[[jnp.array], jnp.array],
         'nd,ne,e->d',
         jnp.reshape(output_pert, (num_samples, -1)),
         jnp.reshape(nabla_z_flat, (num_samples, -1)),
-        tangent)
+        jnp.reshape(tangent, (-1,)))
     return jnp.reshape(tangent_flat, inputs.shape)
 
   forward_pert.defjvps(pert_jvp, None)
