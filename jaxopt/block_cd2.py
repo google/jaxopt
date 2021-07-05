@@ -91,6 +91,9 @@ class BlockCoordinateDescent:
     Returns:
       (params, state)
     """
+    if hyperparams is None:
+      hyperparams = None, None
+
     linop = self.fun.make_linop(data)
     predictions = linop.matvec(init_params)
     hyperparams_fun, _ = hyperparams
@@ -157,6 +160,9 @@ class BlockCoordinateDescent:
     Returns:
       (params, state)
     """
+    if hyperparams is None:
+      hyperparams = None, None
+
 
     return self._update_composite(params, state, hyperparams, data)
 

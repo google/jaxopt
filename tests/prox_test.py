@@ -154,6 +154,36 @@ class ProxTest(jtu.JaxTestCase):
     got = prox.prox_ridge(x, alpha)
     self.assertArraysAllClose(jax.grad(fun)(got), jnp.zeros_like(got))
 
+  def test_prox_non_negative_ridge(self):
+    rng = onp.random.RandomState(0)
+    x = rng.rand(20) * 2 - 1
+    x = jnp.array(x)
+    alpha = 10.0
+
+    def fun(y):
+      """f(y) = 0.5 ||y - x||^2 + 0.5 * alpha ||y||_2^2."""
+      diff = x - y
+      return 0.5 * jnp.sum(diff ** 2) + 0.5 * alpha * jnp.sum(y ** 2)
+
+    got = prox.prox_non_negative_ridge(x, alpha)
+    fixed_point = jax.nn.relu(got - jax.grad(fun)(got))
+    self.assertArraysAllClose(got, fixed_point)
+
+  def test_prox_non_negative_lasso(self):
+    rng = onp.random.RandomState(0)
+    x = rng.rand(20) * 2 - 1
+    x = jnp.array(x)
+    alpha = 0.5
+
+    def fun(y):
+      """f(y) = 0.5 ||y - x||^2 + alpha * sum(y)."""
+      diff = x - y
+      return 0.5 * jnp.sum(diff ** 2) + alpha * jnp.sum(y)
+
+    got = prox.prox_non_negative_lasso(x, alpha)
+    fixed_point = jax.nn.relu(got - jax.grad(fun)(got))
+    self.assertArraysAllClose(got, fixed_point)
+
   def test_make_prox_from_projection(self):
     rng = onp.random.RandomState(0)
     x = rng.rand(10)

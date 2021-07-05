@@ -59,6 +59,24 @@ def prox_lasso(x: Any, hyperparams: Any, scaling: float = 1.0):
   return tree_util.tree_multimap(fun, x, hyperparams)
 
 
+def prox_non_negative_lasso(x, hyperparam=1.0, scaling=1.0):
+  r"""Proximal operator for the l1 norm on the non-negative orthant.
+
+  The output is:
+    argmin_{y >= 0} 0.5 ||y - x||^2 + scaling * hyperparam * ||y||_1.
+
+  Args:
+    x: input pytree.
+    hyperparam: regularization strength, float.
+    scaling: a scaling factor.
+
+  Returns:
+    y: output pytree with same structure as x.
+  """
+  pytree = tree_util.tree_add(x, -hyperparam * scaling)
+  return tree_util.tree_map(jax.nn.relu, pytree)
+
+
 def prox_elastic_net(x: Any,
                      hyperparams: Tuple[Any, Any],
                      scaling: float = 1.0):
@@ -122,6 +140,24 @@ def prox_ridge(x: Any, hyperparam: float, scaling=1.0):
   """
   factor = 1. / (1 + scaling * hyperparam)
   return tree_util.tree_scalar_mul(factor, x)
+
+
+def prox_non_negative_ridge(x, hyperparam=1.0, scaling=1.0):
+  r"""Proximal operator for the squared l2 norm on the non-negative orthant.
+
+  The output is:
+    argmin_{y >= 0} 0.5 ||y - x||^2 + scaling * hyperparam * 0.5 * ||y||_2^2.
+
+  Args:
+    x: input pytree.
+    hyperparam: regularization strength, float.
+    scaling: a scaling factor.
+
+  Returns:
+    y: output pytree with same structure as x.
+  """
+  pytree = tree_util.tree_scalar_mul(1./ (1 + hyperparam * scaling), x)
+  return tree_util.tree_map(jax.nn.relu, pytree)
 
 
 def make_prox_from_projection(projection):
