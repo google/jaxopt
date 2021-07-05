@@ -138,9 +138,10 @@ def _custom_root(solver_fun, optimality_fun, solve, has_aux):
       return (vjp_hparams,)
 
     elif len(args) == 3:  # solver_fun(init_params, hyperparams, data)
-      vjp_hparams = root_vjp(optimality_fun=optimality_fun, solve=solve,
-                             sol=sol, hyperparams=args[1], data=args[2],
-                             cotangent=cotangent)
+      hyperparams = args[1]
+      data = args[2]
+      vjp_hparams = root_vjp(optimality_fun, sol, hyperparams, cotangent, solve,
+                             data)
       return (None,) + (vjp_hparams,) + (None,)
 
     else:

@@ -19,41 +19,42 @@ from typing import Tuple
 
 import jax
 import jax.numpy as jnp
-from jaxopt import tree_util
 
 from jaxopt import quadratic_prog
 from jaxopt import root_finding
+from jaxopt import tree_util
 
 
-def projection_non_negative(x: Any, params=None) -> Any:
+def projection_non_negative(x: Any, hyperparams=None) -> Any:
   r"""Projection onto the non-negative orthant.
 
   The output is ``argmin_{p >= 0} ||x - p||``
 
   Args:
     x: pytree to project.
-    params: ignored.
+    hyperparams: ignored.
   Returns:
     p: projected pytree, same structure as ``x``.
   """
+  del hyperparams  # Not used.
   return tree_util.tree_map(jax.nn.relu, x)
 
 
-def projection_box(x: Any, params: Tuple) -> Any:
+def projection_box(x: Any, hyperparams: Tuple) -> Any:
   r"""Projection onto box constraints.
 
   The output is ``argmin_{lower <= p <= upper} ||x - p||``
 
-  where ``(lower, upper) = params``.
+  where ``(lower, upper) = hyperparams``.
 
   Args:
     x: pytree to project.
-    params: a tuple ``(lower, upper)``. ``lower`` and ``upper`` can be either
-      scalar values or pytrees of the same structure as ``x``.
+    hyperparams: a tuple ``(lower, upper)``. ``lower`` and ``upper`` can be
+      either scalar values or pytrees of the same structure as ``x``.
   Returns:
     p: projected pytree, same structure as ``x``.
   """
-  lower, upper = params
+  lower, upper = hyperparams
   return tree_util.tree_multimap(jnp.clip, x, lower, upper)
 
 
@@ -188,7 +189,7 @@ def projection_linf_ball(x: Any, radius: float = 1.0) -> Any:
   return projection_box(x, (-radius, radius))
 
 
-def projection_hyperplane(x: jnp.ndarray, params: Tuple) -> jnp.ndarray:
+def projection_hyperplane(x: jnp.ndarray, hyperparams: Tuple) -> jnp.ndarray:
   r"""Projection onto a hyperplane.
 
   The output is:
@@ -196,17 +197,17 @@ def projection_hyperplane(x: jnp.ndarray, params: Tuple) -> jnp.ndarray:
 
   Args:
     x: pytree to project.
-    params: tuple ``params = (a, b)``, where ``a`` is a vector and ``b`` is a
-      scalar.
+    hyperparams: tuple ``hyperparams = (a, b)``, where ``a`` is a vector and
+      ``b`` is a scalar.
 
   Returns:
     y: output array (same shape as ``x``)
   """
-  a, b = params
+  a, b = hyperparams
   return x - (jnp.dot(a, x) - b) / jnp.dot(a, a) * a
 
 
-def projection_halfspace(x: jnp.ndarray, params: Tuple) -> jnp.ndarray:
+def projection_halfspace(x: jnp.ndarray, hyperparams: Tuple) -> jnp.ndarray:
   r"""Projection onto a halfspace.
 
   The output is:
@@ -214,17 +215,17 @@ def projection_halfspace(x: jnp.ndarray, params: Tuple) -> jnp.ndarray:
 
   Args:
     x: pytree to project.
-    params: tuple ``params = (a, b)``, where ``a`` is a vector and ``b`` is a
-      scalar.
+    hyperparams: tuple ``hyperparams = (a, b)``, where ``a`` is a vector and
+      ``b`` is a scalar.
 
   Returns:
     y: output array (same shape as ``x``)
   """
-  a, b = params
+  a, b = hyperparams
   return x - jax.nn.relu(jnp.dot(a, x) - b) / jnp.dot(a, a) * a
 
 
-def projection_affine_set(x: jnp.ndarray, params: Tuple) -> jnp.ndarray:
+def projection_affine_set(x: jnp.ndarray, hyperparams: Tuple) -> jnp.ndarray:
   r"""Projection onto an affine set.
 
   The output is:
@@ -232,20 +233,20 @@ def projection_affine_set(x: jnp.ndarray, params: Tuple) -> jnp.ndarray:
 
   Args:
     x: pytree to project.
-    params: tuple ``params = (A, b)``, where ``A`` is a matrix and ``b`` is a
-      vector.
+    hyperparams: tuple ``hyperparams = (A, b)``, where ``A`` is a matrix and
+      ``b`` is a vector.
 
   Returns:
     y: output array (same shape as ``x``)
   """
 
-  A, b = params
+  A, b = hyperparams
   solver_fun = quadratic_prog.make_solver_fun()
   I = jnp.eye(len(x))
   return solver_fun((I, -x), (A, b))[0]
 
 
-def projection_polyhedron(x: jnp.ndarray, params: Tuple) -> jnp.ndarray:
+def projection_polyhedron(x: jnp.ndarray, hyperparams: Tuple) -> jnp.ndarray:
   r"""Projection onto a polyhedron.
 
   The output is:
@@ -253,21 +254,45 @@ def projection_polyhedron(x: jnp.ndarray, params: Tuple) -> jnp.ndarray:
 
   Args:
     x: pytree to project.
-    params: tuple ``params = (A, b, G, h)``, where ``A`` is a matrix,
+    hyperparams: tuple ``hyperparams = (A, b, G, h)``, where ``A`` is a matrix,
       ``b`` is a vector, ``G`` is a matrix and ``h`` is a vector.
 
   Returns:
     y: output array (same shape as ``x``)
   """
 
-  A, b, G, h = params
+  A, b, G, h = hyperparams
   solver_fun = quadratic_prog.make_solver_fun()
   I = jnp.eye(len(x))
   return solver_fun((I, -x), (A, b), (G, h))[0]
 
 
+def _optimality_fun_proj_box_sec(tau, args, data):
+  del data  # Not used
+
+  # An optimal solution has the form
+  # p_i = clip(w_i * tau + x_i, alpha_i, beta_i) for all i
+  # where tau is the root of fun(tau, hyperparams) = dot(w, p) - c = 0.
+  x, hyperparams = args
+  alpha, beta, w, c = hyperparams
+  p = jnp.clip(w * tau + x, alpha, beta)
+  return jnp.dot(w, p) - c
+
+
+def _root_proj_box_sec(x, hyperparams):
+  alpha, beta, w, _ = hyperparams
+  lower = jax.lax.stop_gradient(jnp.min((alpha - x) / w))
+  upper = jax.lax.stop_gradient(jnp.max((beta - x) / w))
+  bisect = root_finding.Bisection(optimality_fun=_optimality_fun_proj_box_sec,
+                                  lower=lower,
+                                  upper=upper,
+                                  increasing=True,
+                                  check_bracket=False)
+  return bisect.run(hyperparams=(x, hyperparams)).params
+
+
 def projection_box_section(x: jnp.ndarray,
-                           params: Tuple,
+                           hyperparams: Tuple,
                            check_feasible: bool = False):
   """Projection onto a box section.
 
@@ -275,37 +300,20 @@ def projection_box_section(x: jnp.ndarray,
 
     argmin_{p : alpha_i <= p_i <= beta_i, jnp.dot(w, p) = c} ||x - p||
 
-  where ``(alpha, beta, w, c) = params``.
+  where ``(alpha, beta, w, c) = hyperparams``.
 
   Args:
     x: vector to project, an array of shape (n,).
-    params: tuple of parameters, ``params = (alpha, beta, w, c)``, where
-      ``w`` is a positive vector. The problem is infeasible if
+    hyperparams: tuple of parameters, ``hyperparams = (alpha, beta, w, c)``,
+      where ``w`` is a positive vector. The problem is infeasible if
       dot(w, alpha) > c or if dot(w, beta) < c.
     check_feasible: whether to check feasibility or not.
       If True, function cannot be jitted.
   Returns:
     p: projected vector, an array of shape (n,).
   """
-  # An optimal solution has the form
-  # p_i = clip(w_i * tau + x_i, alpha_i, beta_i) for all i
-  # where tau is the root of fun(tau, params) = dot(w, p) - c = 0.
-  def root(x, params):
-    def fun(tau, args):
-      x, params = args
-      alpha, beta, w, c = params
-      p = jnp.clip(w * tau + x, alpha, beta)
-      return jnp.dot(w, p) - c
 
-    alpha, beta, w, _ = params
-    lower = jax.lax.stop_gradient(jnp.min((alpha - x) / w))
-    upper = jax.lax.stop_gradient(jnp.max((beta - x) / w))
-    bisect_fun = root_finding.make_bisect_fun(fun=fun, lower=lower, upper=upper,
-                                              increasing=True)
-    args = (x, params)
-    return bisect_fun(args)
-
-  alpha, beta, w, c = params
+  alpha, beta, w, c = hyperparams
 
   if check_feasible:
     if jnp.dot(w, alpha) > c:
@@ -314,4 +322,4 @@ def projection_box_section(x: jnp.ndarray,
     if jnp.dot(w, beta) < c:
       raise ValueError("beta should satisfy dot(w, beta) >= c")
 
-  return jnp.clip(w * root(x, params) + x, alpha, beta)
+  return jnp.clip(w * _root_proj_box_sec(x, hyperparams) + x, alpha, beta)

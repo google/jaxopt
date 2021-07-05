@@ -18,32 +18,42 @@ import jax
 from jax import test_util as jtu
 import jax.numpy as jnp
 
-import numpy as onp
-
-
 from jaxopt import projection
 from jaxopt import root_finding
 
+import numpy as onp
+
+
+# optimality_fun(params, hyperparams, data)
+def _optimality_fun_proj_simplex(tau, x, s):
+  # optimality_fun(tau, x, s) is a decreasing function of tau on
+  # [lower, upper] since the derivative w.r.t. tau is negative.
+  return jnp.sum(jnp.maximum(x - tau, 0)) - s
+
+
+def _threshold_proj_simplex(x, s):
+  # tau = max(x) => tau >= x_i for all i
+  #              => x_i - tau <= 0 for all i
+  #              => maximum(x_i - tau, 0) = 0 for all i
+  #              => optimality_fun(tau, x, s) = -s <= 0
+  upper = jax.lax.stop_gradient(jnp.max(x))
+
+  # tau' = min(x) => tau' <= x_i for all i
+  #               => 0 <= x_i - tau' for all_i
+  #               => maximum(x_i - tau', 0) >= 0
+  #               => optimality_fun(tau, x, s) >= 0
+  # where tau = tau' - s / len(x)
+  lower = jax.lax.stop_gradient(jnp.min(x)) - s / len(x)
+
+  bisect = root_finding.Bisection(optimality_fun=_optimality_fun_proj_simplex,
+                                  lower=lower,
+                                  upper=upper,
+                                  increasing=False)
+  return bisect.run(hyperparams=x, data=s).params
+
 
 def _projection_simplex_bisect(x, s=1.0):
-  def threshold(x):
-    # tau = max(x) => tau >= x_i for all i
-    #              => x_i - tau <= 0 for all i
-    #              => maximum(x_i - tau, 0) = 0 for all i
-    #              => fun(tau, x) = -s <= 0
-    upper = jax.lax.stop_gradient(jnp.max(x))
-    # tau' = min(x) => tau' <= x_i for all i
-    #               => 0 <= x_i - tau' for all_i
-    #               => maximum(x_i - tau', 0) >= 0
-    #               => fun(tau, x) >= 0 where tau = tau' - s / len(x)
-    lower = jax.lax.stop_gradient(jnp.min(x)) - s / len(x)
-    # fun(tau, x) is a decreasing function of x on [lower, upper]
-    # since the derivative w.r.t. tau is negative.
-    fun = lambda tau, x_: jnp.sum(jnp.maximum(x_ - tau, 0)) - s
-    bisect_fun = root_finding.make_bisect_fun(fun=fun, lower=lower, upper=upper,
-                                              increasing=False)
-    return bisect_fun(x)
-  return jnp.maximum(x - threshold(x), 0)
+  return jnp.maximum(x - _threshold_proj_simplex(x, s), 0)
 
 
 class RootFindingTest(jtu.JaxTestCase):
@@ -62,31 +72,22 @@ class RootFindingTest(jtu.JaxTestCase):
       self.assertArraysAllClose(J, J2, atol=1e-5)
 
   def test_bisect_wrong_lower_bracket(self):
-    def threshold(x, s=1.0):
-      upper = jax.lax.stop_gradient(jnp.max(x))
-      fun = lambda tau, x_: jnp.sum(jnp.maximum(x_ - tau, 0)) - s
-      bisect_fun = root_finding.make_bisect_fun(fun=fun, lower=upper,
-                                                upper=upper, increasing=False,
-                                                check_bracket=True)
-      return bisect_fun(x)
-
     rng = onp.random.RandomState(0)
     x = jnp.array(rng.randn(5).astype(onp.float32))
-    self.assertRaises(ValueError, threshold, x)
+    s = 1.0
+    upper = jnp.max(x)
+    bisect = root_finding.Bisection(optimality_fun=_optimality_fun_proj_simplex,
+                                    lower=upper, upper=upper, increasing=False)
+    self.assertRaises(ValueError, bisect.run, hyperparams=x, data=s)
 
   def test_bisect_wrong_upper_bracket(self):
-    def threshold(x, s=1.0):
-      lower = jax.lax.stop_gradient(jnp.min(x)) - s / len(x)
-      fun = lambda tau, x_: jnp.sum(jnp.maximum(x_ - tau, 0)) - s
-      bisect_fun = root_finding.make_bisect_fun(fun=fun, lower=lower,
-                                                upper=lower, increasing=False,
-                                                check_bracket=True)
-      return bisect_fun(x)
-
     rng = onp.random.RandomState(0)
     x = jnp.array(rng.randn(5).astype(onp.float32))
-    self.assertRaises(ValueError, threshold, x)
-
+    s = 1.0
+    lower = jnp.min(x) - s / len(x)
+    bisect = root_finding.Bisection(optimality_fun=_optimality_fun_proj_simplex,
+                                    lower=lower, upper=lower, increasing=False)
+    self.assertRaises(ValueError, bisect.run, hyperparams=x, data=s)
 
 if __name__ == '__main__':
   absltest.main(testLoader=jtu.JaxTestLoader())
