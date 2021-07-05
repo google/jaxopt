@@ -61,7 +61,7 @@ class ProximalGradientTest(jtu.JaxTestCase):
     pg = proximal_gradient.ProximalGradient(fun=fun, prox=prox.prox_lasso,
                                             maxiter=200, tol=1e-3,
                                             acceleration=acceleration)
-    w_fit, info = pg.run(hyperparams, data, w_init)
+    w_fit, info = pg.run(w_init, hyperparams, data)
 
     # Check optimality conditions.
     self.assertLess(info.error, 1e-3)
@@ -85,7 +85,11 @@ class ProximalGradientTest(jtu.JaxTestCase):
                                             tol=1e-3, maxiter=200,
                                             acceleration=True,
                                             implicit_diff=True)
-    _, jac_prox = jax.jacrev(test_util.first(pg.run))(hyperparams, data, w_skl)
+
+    def wrapper(hyperparams):
+      return pg.run(w_skl, hyperparams, data).params
+
+    _, jac_prox = jax.jacrev(wrapper)(hyperparams)
     self.assertArraysAllClose(jac_num, jac_prox, atol=1e-3)
 
 if __name__ == '__main__':

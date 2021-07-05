@@ -40,7 +40,7 @@ class GradientDescentTest(jtu.JaxTestCase):
     b_init = jnp.zeros(n_classes)
     pytree_init = (W_init, b_init)
     gd = gradient_descent.GradientDescent(fun=fun, tol=1e-3, maxiter=500)
-    pytree_fit, info = gd.run(hyperparams, data, pytree_init)
+    pytree_fit, info = gd.run(pytree_init, hyperparams, data)
 
     # Check optimality conditions.
     self.assertLessEqual(info.error, 1e-3)
@@ -62,7 +62,9 @@ class GradientDescentTest(jtu.JaxTestCase):
     # Make sure the decorator works.
     gd = gradient_descent.GradientDescent(fun=fun, tol=1e-3, maxiter=10,
                                           implicit_diff=True)
-    jac_custom = jax.jacrev(test_util.first(gd.run))(lam, data, W_skl)
+    def wrapper(hyperparams):
+      return gd.run(W_skl, hyperparams, data).params
+    jac_custom = jax.jacrev(wrapper)(lam)
     self.assertArraysAllClose(jac_num, jac_custom, atol=1e-2)
 
   @parameterized.product(acceleration=[True, False])
@@ -81,7 +83,9 @@ class GradientDescentTest(jtu.JaxTestCase):
                                           maxiter=200,
                                           implicit_diff=False,
                                           acceleration=acceleration)
-    jac_lam2 = jax.jacfwd(test_util.first(gd.run))(lam, data, W_init)
+    def wrapper(hyperparams):
+      return gd.run(W_init, hyperparams, data).params
+    jac_lam2 = jax.jacfwd(wrapper)(lam)
     self.assertArraysAllClose(jac_lam, jac_lam2, atol=1e-2)
 
   def test_jit_and_vmap(self):
@@ -95,7 +99,7 @@ class GradientDescentTest(jtu.JaxTestCase):
     gd = gradient_descent.GradientDescent(fun=fun, tol=1e-3, maxiter=100)
 
     def solve(hyperparams):
-      W_fit, info = gd.run(hyperparams, data, W_init)
+      W_fit, info = gd.run(W_init, hyperparams, data)
       return info.error
 
     errors = jnp.array([solve(hyperparams) for hyperparams in hyperparams_list])

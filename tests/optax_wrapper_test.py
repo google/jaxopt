@@ -80,7 +80,7 @@ class OptaxWrapperTest(jtu.JaxTestCase):
 
     opt = optax_wrapper.OptaxSolver(opt=optax.adam(1e-3), fun=fun,
                                     maxiter=200, has_aux=has_aux)
-    params, _ = opt.run(hyperparams, data, pytree_init)
+    params, _ = opt.run(pytree_init, hyperparams, data)
 
     # Check optimality conditions.
     error = opt.l2_optimality_error(params, hyperparams, data)
@@ -111,7 +111,7 @@ class OptaxWrapperTest(jtu.JaxTestCase):
 
     opt = optax_wrapper.OptaxSolver(opt=optax.adam(1e-3), fun=fun, maxiter=1000)
     iterable = dataset_loader(X, y, n_iter=200)
-    params, _ = opt.run_iterator(hyperparams, iterable, pytree_init)
+    params, _ = opt.run_iterator(pytree_init, hyperparams, iterable)
 
     # Check optimality conditions.
     error = opt.l2_optimality_error(params, hyperparams, (X, y))
@@ -128,7 +128,9 @@ class OptaxWrapperTest(jtu.JaxTestCase):
 
     # Make sure the decorator works.
     opt = optax_wrapper.OptaxSolver(opt=optax.adam(1e-3), fun=fun, maxiter=5)
-    jac_custom = jax.jacrev(test_util.first(opt.run))(lam, data, W_skl)
+    def wrapper(hyperparams):
+      return opt.run(W_skl, hyperparams, data).params
+    jac_custom = jax.jacrev(wrapper)(lam)
     self.assertArraysAllClose(jac_num, jac_custom, atol=1e-2)
 
 if __name__ == '__main__':

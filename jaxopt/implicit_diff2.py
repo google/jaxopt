@@ -115,30 +115,36 @@ def root_jvp(optimality_fun: Callable,
 
 
 def _custom_root(solver_fun, optimality_fun, solve, has_aux):
-  def solver_fun_fwd(hyperparams, *args):
-    if has_aux:
-      res = solver_fun(hyperparams, *args)
-      sol = res[0]
-    else:
-      res = sol = solver_fun(hyperparams, *args)
-    return res, (sol, hyperparams, args)
+  def solver_fun_fwd(*args):
+    res = solver_fun(*args)
+    return res, (res, args)
 
-  def solver_fun_bwd(res, cotangent):
+  def solver_fun_bwd(tup, cotangent):
+    res, args = tup
+
+    # solver_fun can return auxiliary data if has_aux = True.
+
     if has_aux:
       cotangent = cotangent[0]
-
-    sol, hyperparams, args = res
-    if args:
-      # We assume args[0] = data. Typically, args[1] = init_params.
-      vjp_hparams = root_vjp(optimality_fun=optimality_fun, solve=solve,
-                             sol=sol, hyperparams=hyperparams, data=args[0],
-                             cotangent=cotangent)
+      sol = res[0]
     else:
+      sol = res
+
+    # solver_fun can have 1 or 3 arguments.
+
+    if len(args) == 1:  # solver_fun(hyperparams)
       vjp_hparams = root_vjp(optimality_fun=optimality_fun, solve=solve,
-                             sol=sol, hyperparams=hyperparams,
+                             sol=sol, hyperparams=args[0], cotangent=cotangent)
+      return (vjp_hparams,)
+
+    elif len(args) == 3:  # solver_fun(init_params, hyperparams, data)
+      vjp_hparams = root_vjp(optimality_fun=optimality_fun, solve=solve,
+                             sol=sol, hyperparams=args[1], data=args[2],
                              cotangent=cotangent)
-    # The VJP of any extra args is set to None.
-    return (vjp_hparams,) + tuple([None] * len(args))
+      return (None,) + (vjp_hparams,) + (None,)
+
+    else:
+      raise ValueError("Invalid number of arguments in solver function.")
 
   wrapped_solver_fun = jax.custom_vjp(solver_fun)
   wrapped_solver_fun.defvjp(solver_fun_fwd, solver_fun_bwd)

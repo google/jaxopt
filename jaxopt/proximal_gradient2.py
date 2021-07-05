@@ -58,7 +58,7 @@ class ProximalGradient:
   """Proximal gradient solver.
 
   Attributes:
-    fun: a smooth function of the form ``fun(x, hyperparams_fun)``.
+    fun: a smooth function of the form ``fun(x, hyperparams_fun, data)``.
     prox: proximity operator associated with the function g.
     stepsize: a stepsize to use (if <= 0, use backtracking line search).
     maxiter: maximum number of proximal gradient descent iterations.
@@ -94,16 +94,23 @@ class ProximalGradient:
   implicit_diff: Union[bool, Callable] = True
   has_aux: bool = False
 
-  def init(self, init_params: Any) -> Tuple[Any, NamedTuple]:
+  def init(self,
+           init_params: Any,
+           hyperparams: Optional[Any] = None,
+           data: Optional[Any] = None) -> base.OptStep:
     """Initialize the ``(params, state)`` pair.
 
     Args:
       init_params: pytree containing the initial parameters.
+      hyperparams: not used in this initialization.
+      data: not used in this initialization.
     Return type:
       base.OptStep
     Returns:
       (params, state)
     """
+    del hyperparams, data  # Not used
+
     if self.acceleration:
       state = AccelProxGradState(iter_num=0.0,
                                  y=init_params,
@@ -156,7 +163,7 @@ class ProximalGradient:
 
     return loop.while_loop(cond_fun=cond_fun, body_fun=body_fun,
                            init_val=init_val, maxiter=self.maxls,
-                           unroll=self.unroll, jit=True)
+                           unroll=self._unroll, jit=True)
 
   def _iter(self, x, x_fun_val, x_fun_grad, stepsize, hyperparams, data):
     if self.stepsize <= 0:
@@ -178,7 +185,7 @@ class ProximalGradient:
   def _update(self, x, state, hyperparams, data):
     iter_num, stepsize, _ = state
     hyperparams_fun, hyperparams_prox = hyperparams
-    x_fun_val, x_fun_grad = self.value_and_grad_fun(x, hyperparams_fun, data)
+    x_fun_val, x_fun_grad = self._value_and_grad_fun(x, hyperparams_fun, data)
     next_x, next_stepsize = self._iter(x, x_fun_val, x_fun_grad, stepsize,
                                        hyperparams, data)
     error = self._error(x, x_fun_grad, hyperparams_prox)
@@ -189,13 +196,13 @@ class ProximalGradient:
   def _update_accel(self, x, state, hyperparams, data):
     iter_num, y, t, stepsize, _ = state
     hyperparams_fun, hyperparams_prox = hyperparams
-    y_fun_val, y_fun_grad = self.value_and_grad_fun(y, hyperparams_fun, data)
+    y_fun_val, y_fun_grad = self._value_and_grad_fun(y, hyperparams_fun, data)
     next_x, next_stepsize = self._iter(y, y_fun_val, y_fun_grad, stepsize,
                                        hyperparams, data)
     next_t = 0.5 * (1 + jnp.sqrt(1 + 4 * t ** 2))
     diff_x = tree_sub(next_x, x)
     next_y = tree_add_scalar_mul(next_x, (t - 1) / next_t, diff_x)
-    next_x_fun_grad = self.grad_fun(next_x, hyperparams_fun, data)
+    next_x_fun_grad = self._grad_fun(next_x, hyperparams_fun, data)
     next_error = self._error(next_x, next_x_fun_grad, hyperparams_prox)
     next_state = AccelProxGradState(iter_num=iter_num + 1, y=next_y, t=next_t,
                                     stepsize=next_stepsize, error=next_error)
@@ -230,18 +237,18 @@ class ProximalGradient:
       return self._update(params, state, hyperparams, data)
 
   def run(self,
+          init_params: Any,
           hyperparams: Optional[Any] = None,
-          data: Optional[Any] = None,
-          init_params: Any = None) -> Tuple[Any, NamedTuple]:
+          data: Optional[Any] = None) -> base.OptStep:
     """Runs proximal gradient until convergence or max number of iterations.
 
     Args:
+      init_params: pytree containing the initial parameters.
       hyperparams: tuple ``(hyperparams_fun, hyperparams_prox)`` containing the
         hyper-parameters (i.e., differentiable arguments) of ``fun`` and
         ``prox``.
       data: pytree containing data, i.e., differentiable arguments to be passed
         to ``fun``.
-      init_params: pytree containing the initial parameters.
     Return type:
       base.OptStep
     Returns:
@@ -257,17 +264,14 @@ class ProximalGradient:
       params, state = pair
       return self.update(params, state, hyperparams, data)
 
-    if init_params is None:
-      raise ValueError("`init_params` cannot be None.")
-
     return loop.while_loop(cond_fun=cond_fun, body_fun=body_fun,
                            init_val=self.init(init_params),
-                           maxiter=self.maxiter, jit=self.jit,
-                           unroll=self.unroll)
+                           maxiter=self.maxiter, jit=self._jit,
+                           unroll=self._unroll)
 
   def _fixed_point_fun(self, sol, hyperparams, data):
     hyperparams_fun, hyperparams_prox = hyperparams
-    step = tree_sub(sol, self.grad_fun(sol, hyperparams_fun, data))
+    step = tree_sub(sol, self._grad_fun(sol, hyperparams_fun, data))
     return self.prox(step, hyperparams_prox, 1.0)
 
   def optimality_fun(self, sol, hyperparams, data):
@@ -279,13 +283,17 @@ class ProximalGradient:
       self.fun = jax.jit(lambda x, par: self.fun(x, par)[0])
     else:
       self.fun = jax.jit(self.fun)
-    self.value_and_grad_fun = jax.jit(jax.value_and_grad(self.fun))
-    self.grad_fun = jax.jit(jax.grad(self.fun))
-    # We always jit unless verbose mode is enabled.
-    self.jit = not self.verbose
-    # We unroll when implicit diff is disabled or when jit is disabled.
-    self.unroll = not self.implicit_diff or not self.jit
 
+    # Pre-compile useful functions.
+    self._value_and_grad_fun = jax.jit(jax.value_and_grad(self.fun))
+    self._grad_fun = jax.jit(jax.grad(self.fun))
+
+    # We always jit unless verbose mode is enabled.
+    self._jit = not self.verbose
+    # We unroll when implicit diff is disabled or when jit is disabled.
+    self._unroll = not self.implicit_diff or not self._jit
+
+    # Set up implicit diff.
     if self.implicit_diff:
       if isinstance(self.implicit_diff, Callable):
         solve = self.implicit_diff
@@ -295,4 +303,5 @@ class ProximalGradient:
       decorator = idf.custom_root(self.optimality_fun,
                                   has_aux=True,
                                   solve=solve)
+      # pylint: disable=g-missing-from-attributes
       self.run = decorator(self.run)

@@ -35,7 +35,7 @@ def ridge_objective(params, lam, data):
 
 
 @implicit_diff.custom_root(jax.grad(ridge_objective))
-def ridge_solver(lam, data, init_params):
+def ridge_solver(init_params, lam, data):
   """Solve ridge regression by conjugate gradient."""
   X_tr, y_tr = data
 
@@ -48,16 +48,17 @@ def ridge_solver(lam, data, init_params):
                                x0=init_params,
                                maxiter=20)
 
+
 # Perhaps confusingly, theta is a parameter of the outer objective,
 # but lam = jnp.exp(theta) is an hyper-parameter of the inner objective.
-def outer_objective(theta, hyperparams, args):
+def outer_objective(theta, hyperparams, data):
   """Validation loss."""
   del hyperparams  # not used
-  data, init_params = args
+  data, init_params = data
   X_tr, X_val, y_tr, y_val = data
   # We use the bijective mapping lam = jnp.exp(theta) to ensure positivity.
   lam = jnp.exp(theta)
-  w_fit = ridge_solver(lam, (X_tr, y_tr), init_params)
+  w_fit = ridge_solver(init_params, lam, (X_tr, y_tr))
   y_pred = jnp.dot(X_val, w_fit)
   loss_value = jnp.mean((y_pred - y_val) ** 2)
   # We return w_fit as auxiliary data.
@@ -66,6 +67,8 @@ def outer_objective(theta, hyperparams, args):
 
 
 def main(argv):
+  del argv
+
   # Prepare data.
   X, y = datasets.load_boston(return_X_y=True)
   X = preprocessing.normalize(X)

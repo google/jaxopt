@@ -18,7 +18,6 @@ from typing import Any
 from typing import Callable
 from typing import NamedTuple
 from typing import Optional
-from typing import Tuple
 from typing import Union
 
 from dataclasses import dataclass
@@ -78,16 +77,22 @@ class OptaxSolver:
   implicit_diff: Union[bool, Callable] = True
   has_aux: bool = False
 
-  def init(self, init_params: Any) -> base.OptStep:
+  def init(self,
+           init_params: Any,
+           hyperparams: Optional[Any] = None,
+           data: Optional[Any] = None) -> base.OptStep:
     """Initialize the ``(params, state)`` pair.
 
     Args:
       init_params: pytree containing the initial parameters.
+      hyperparams: not used in this initialization.
+      data: not used in this initialization.
     Return type:
       base.OptStep
     Returns:
       (params, state)
     """
+    del hyperparams, data  # Not used
     opt_state = self.opt.init(init_params)
     state = OptaxState(iter_num=0,
                        value=jnp.inf,
@@ -121,9 +126,9 @@ class OptaxSolver:
       params, state = self.pre_update_fun(params, state, hyperparams, data)
 
     if self.has_aux:
-      (value, aux), grad = self.value_and_grad_fun(params, hyperparams, data)
+      (value, aux), grad = self._value_and_grad_fun(params, hyperparams, data)
     else:
-      value, grad = self.value_and_grad_fun(params, hyperparams, data)
+      value, grad = self._value_and_grad_fun(params, hyperparams, data)
       aux = None
 
     delta, opt_state = self.opt.update(grad, state.internal_state, params)
@@ -137,15 +142,15 @@ class OptaxSolver:
     return base.OptStep(params=params, state=new_state)
 
   def run(self,
+          init_params: Any,
           hyperparams: Any,
-          data: Any,
-          init_params: Any) -> base.OptStep:
+          data: Any) -> base.OptStep:
     """Runs the optax solver on a fixed dataset.
 
     Args:
+      init_params: pytree containing the initial parameters.
       hyperparams: pytree containing hyper-parameters.
       data: pytree containing the entire data.
-      init_params: pytree containing the initial parameters.
     Return type:
       base.OptStep
     Returns:
@@ -163,19 +168,19 @@ class OptaxSolver:
 
     return loop.while_loop(cond_fun=cond_fun, body_fun=body_fun,
                            init_val=self.init(init_params),
-                           maxiter=self.maxiter, jit=self.jit,
-                           unroll=self.unroll)
+                           maxiter=self.maxiter, jit=self._jit,
+                           unroll=self._unroll)
 
   def run_iterator(self,
+                   init_params: Any,
                    hyperparams: Any,
-                   iterator: Any,
-                   init_params: Any) -> Tuple[Any, NamedTuple]:
+                   iterator: Any) -> base.OptStep:
     """Runs the optax solver on a dataset iterator.
 
     Args:
+      init_params: pytree containing the initial parameters.
       hyperparams: pytree containing hyper-parameters.
       iterator: iterator generating data batches.
-      init_params: pytree containing the initial parameters.
     Return type:
       base.OptStep
     Returns:
@@ -197,9 +202,9 @@ class OptaxSolver:
   def optimality_fun(self, sol, hyperparams, data):
     """Optimality function mapping compatible with ``@custom_root``."""
     if self.has_aux:
-      return self.grad_fun(sol, hyperparams, data)[0]
+      return self._grad_fun(sol, hyperparams, data)[0]
     else:
-      return self.grad_fun(sol, hyperparams, data)
+      return self._grad_fun(sol, hyperparams, data)
 
   def l2_optimality_error(self, params, hyperparams, data):
     """Computes the L2 optimality error."""
@@ -207,21 +212,26 @@ class OptaxSolver:
     return tree_util.tree_l2_norm(optimality)
 
   def __post_init__(self):
-    self.value_and_grad_fun = jax.value_and_grad(self.fun, has_aux=self.has_aux)
-    self.grad_fun = jax.grad(self.fun, has_aux=self.has_aux)
-    # We always jit unless verbose mode is enabled.
-    self.jit = not self.verbose
-    # We unroll when implicit diff is disabled or when jit is disabled.
-    self.unroll = not self.implicit_diff or not self.jit
+    # Pre-compile useful functions.
+    self._value_and_grad_fun = jax.value_and_grad(self.fun,
+                                                  has_aux=self.has_aux)
+    self._grad_fun = jax.grad(self.fun, has_aux=self.has_aux)
 
+    # We always jit unless verbose mode is enabled.
+    self._jit = not self.verbose
+    # We unroll when implicit diff is disabled or when jit is disabled.
+    self._unroll = not self.implicit_diff or not self._jit
+
+    # Set up implicit diff.
     if self.implicit_diff:
       if isinstance(self.implicit_diff, Callable):
-        solve = implicit_diff
+        solve = self.implicit_diff
       else:
         solve = linear_solve.solve_normal_cg
 
       decorator = idf.custom_root(self.optimality_fun,
                                   has_aux=True,
                                   solve=solve)
+      # pylint: disable=g-missing-from-attributes
       self.run = decorator(self.run)
 

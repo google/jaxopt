@@ -17,10 +17,10 @@
 from typing import Any
 from typing import NamedTuple
 from typing import Optional
-from typing import Tuple
 
 from dataclasses import dataclass
 
+from jaxopt import base
 from jaxopt import proximal_gradient2 as proximal_gradient
 
 
@@ -51,7 +51,7 @@ class GradientDescent(proximal_gradient.ProximalGradient):
              params: Any,
              state: NamedTuple,
              hyperparams: Optional[Any] = None,
-             data: Optional[Any] = None) -> Tuple[Any, NamedTuple]:
+             data: Optional[Any] = None) -> base.OptStep:
     """Performs one iteration of proximal gradient.
 
     Args:
@@ -70,24 +70,24 @@ class GradientDescent(proximal_gradient.ProximalGradient):
 
   # pylint: disable=useless-super-delegation
   def run(self,
+          init_params: Any,
           hyperparams: Optional[Any] = None,
-          data: Optional[Any] = None,
-          init_params: Any = None) -> Tuple[Any, NamedTuple]:
+          data: Optional[Any] = None) -> base.OptStep:
     """Runs gradient descent until convergence or max number of iterations.
 
     Args:
+      init_params: pytree containing the initial parameters.
       hyperparams: pytree containing hyper-parameters, i.e.,
         differentiable arguments to be passed to ``fun``.
       data: pytree containing data, i.e.,
         non-differentiable arguments to be passed to ``fun``.
-      init_params: pytree containing the initial parameters.
     Return type:
       base.OptStep
     Returns:
       (params, state)
     """
-    return super().run(hyperparams, data, init_params)
+    return super().run(init_params, hyperparams, data)
 
   def optimality_fun(self, sol, hyperparams, data):
     """Optimality function mapping compatible with ``@custom_root``."""
-    return self.grad_fun(sol, hyperparams, data)
+    return self._grad_fun(sol, hyperparams, data)

@@ -36,17 +36,16 @@ def ridge_objective(params, hyperparams, data):
           0.5 * hyperparams * jnp.sum(params ** 2))
 
 
-def ridge_solver(hparams, data):
-  X, y = data
+def ridge_solver(X, y, lam):
   XX = jnp.dot(X.T, X)
   Xy = jnp.dot(X.T, y)
   I = jnp.eye(X.shape[1])
-  return jnp.linalg.solve(XX + hparams * len(y) * I, Xy)
+  return jnp.linalg.solve(XX + lam * len(y) * I, Xy)
 
 
-def ridge_solver_jac(hparams, data, eps=1e-4):
-  return (ridge_solver(hparams + eps, data) -
-          ridge_solver(hparams - eps, data)) / (2 * eps)
+def ridge_solver_jac(X, y, lam, eps=1e-4):
+  return (ridge_solver(X, y, lam + eps) -
+          ridge_solver(X, y, lam - eps)) / (2 * eps)
 
 
 def lasso_skl(X, y, lam, tol=1e-5, fit_intercept=False):
@@ -73,20 +72,20 @@ def lasso_skl_jac(X, y, lam, tol=1e-5, fit_intercept=False, eps=1e-4):
 logloss_vmap = jax.vmap(loss.multiclass_logistic_loss)
 
 
-def l2_logreg_objective(params, hparams, data):
+def l2_logreg_objective(params, hyperparams, data):
   X, y = data
   y_pred = jnp.dot(X, params)
   ret = jnp.mean(logloss_vmap(y, y_pred))
-  ret += 0.5 * hparams * jnp.sum(params ** 2)
+  ret += 0.5 * hyperparams * jnp.sum(params ** 2)
   return ret
 
 
-def l2_logreg_objective_with_intercept(params, hparams, data):
+def l2_logreg_objective_with_intercept(params, hyperparams, data):
   X, y = data
   W, b = params
   y_pred = jnp.dot(X, W) + b
   ret = jnp.mean(logloss_vmap(y, y_pred))
-  ret += 0.5 * hparams * jnp.sum(W ** 2)
+  ret += 0.5 * hyperparams * jnp.sum(W ** 2)
   return ret
 
 
@@ -125,9 +124,3 @@ def logreg_skl_jac(X, y, lam, tol=1e-5, fit_intercept=False, penalty="l2",
     return (res1[0] - res2[0]) / twoeps, (res1[1] - res2[1]) / twoeps
   else:
     return (res1 - res2) / twoeps
-
-
-def first(fun):
-  def _fun(*args, **kw):
-    return fun(*args, **kw)[0]
-  return _fun

@@ -53,6 +53,8 @@ class CNN(nn.Module):
 
 
 def main(argv):
+  del argv
+  
   net = CNN()
 
   @jax.jit
@@ -102,10 +104,9 @@ def main(argv):
   #   params, state = opt.update(params=params, state=state,
   #                              hyperparams=l2_regul, data=next(train_ds))
   # except that implicit diff w.r.t. `hyperparams` will be supported.
-  solver.run_iterator(hyperparams=l2_regul,
-                      iterator=train_ds,
-                      init_params=init_params)
-
+  solver.run_iterator(init_params=init_params,
+                      hyperparams=l2_regul,
+                      iterator=train_ds)
 
 if __name__ == "__main__":
   app.run(main)
