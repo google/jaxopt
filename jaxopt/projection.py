@@ -241,9 +241,10 @@ def projection_affine_set(x: jnp.ndarray, hyperparams: Tuple) -> jnp.ndarray:
   """
 
   A, b = hyperparams
-  solver_fun = quadratic_prog.make_solver_fun()
+  qp = quadratic_prog.QuadraticProgramming()
   I = jnp.eye(len(x))
-  return solver_fun((I, -x), (A, b))[0]
+  hyperparams = (I, -x), (A, b), None
+  return qp.run(hyperparams=hyperparams).params[0]
 
 
 def projection_polyhedron(x: jnp.ndarray, hyperparams: Tuple) -> jnp.ndarray:
@@ -262,9 +263,10 @@ def projection_polyhedron(x: jnp.ndarray, hyperparams: Tuple) -> jnp.ndarray:
   """
 
   A, b, G, h = hyperparams
-  solver_fun = quadratic_prog.make_solver_fun()
+  qp = quadratic_prog.QuadraticProgramming()
   I = jnp.eye(len(x))
-  return solver_fun((I, -x), (A, b), (G, h))[0]
+  hyperparams = (I, -x), (A, b), (G, h)
+  return qp.run(hyperparams=hyperparams).params[0]
 
 
 def _optimality_fun_proj_box_sec(tau, args, data):

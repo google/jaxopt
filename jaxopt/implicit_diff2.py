@@ -172,3 +172,51 @@ def custom_root(optimality_fun: Callable,
   def wrapper(solver_fun):
     return _custom_root(solver_fun, optimality_fun, solve, has_aux)
   return wrapper
+
+
+def make_kkt_optimality_fun(obj_fun, eq_fun, ineq_fun=None):
+  """Makes the optimality function for KKT conditions.
+
+  Args:
+    obj_fun: objective function ``obj_fun(primal_var, params_obj)``.
+    eq_fun: equality constraint function, so that
+      ``eq_fun(primal_var, params_eq) == 0`` is imposed.
+    ineq_fun: inequality constraint function, so that
+      ``ineq_fun(primal_var, params_ineq) <= 0`` is imposed (optional).
+  Returns:
+    optimality_fun(x, params) where
+      x = (primal_var, eq_dual_var, ineq_dual_var)
+      params = (params_obj, params_eq, params_ineq)
+
+    If ``ineq_fun`` is None, ``ineq_dual_var`` and ``params_ineq`` are
+    ignored (i.e., they can be set to ``None``).
+  """
+  grad_fun = jax.grad(obj_fun)
+
+  # We only consider the stationarity, primal_feasability and comp_slackness
+  # conditions, as primal and dual feasibility conditions can be ignored
+  # almost everywhere.
+  def optimality_fun(x, params, data):
+    del data  # Not used
+
+    primal_var, eq_dual_var, ineq_dual_var = x
+    params_obj, params_eq, params_ineq = params
+
+    # Size: number of primal variables.
+    _, eq_vjp_fun = jax.vjp(eq_fun, primal_var, params_eq)
+    stationarity = (grad_fun(primal_var, params_obj) +
+                    eq_vjp_fun(eq_dual_var)[0])
+
+    # Size: number of equality constraints.
+    primal_feasability = eq_fun(primal_var, params_eq)
+
+    if params_ineq is not None:
+      _, ineq_vjp_fun = jax.vjp(ineq_fun, primal_var, params_ineq)
+      stationarity += ineq_vjp_fun(ineq_dual_var)[0]
+      # Size: number of inequality constraints.
+      comp_slackness = ineq_fun(primal_var, params_ineq) * ineq_dual_var
+      return stationarity, primal_feasability, comp_slackness
+    else:
+      return stationarity, primal_feasability, None
+
+  return optimality_fun

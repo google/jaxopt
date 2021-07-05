@@ -28,10 +28,11 @@ import numpy as onp
 
 class QuadraticProgTest(jtu.JaxTestCase):
 
-  def _check_derivative_A_and_b(self, solver_fun, params, A, b):
+  def _check_derivative_A_and_b(self, solver, params, A, b):
     def fun(A, b):
-      # reduce the primal variables to a scalar value
-      return jnp.sum(solver_fun(params[0], (A, b), params[2])[0])
+      # reduce the primal variables to a scalar value for test purpose.
+      hyperparams = (params[0], (A, b), params[2])
+      return jnp.sum(solver.run(hyperparams=hyperparams).params[0])
 
     # Derivative w.r.t. A.
     rng = onp.random.RandomState(0)
@@ -57,26 +58,22 @@ class QuadraticProgTest(jtu.JaxTestCase):
     b = jnp.array([1.0])
     G = jnp.array([[-1.0, 0.0], [0.0, -1.0]])
     h = jnp.array([0.0, 0.0])
-    solver_fun = quadratic_prog.make_solver_fun()
-    params = ((Q, c), (A, b), (G, h))
-    x = solver_fun(*params)
-    optimality_fun = implicit_diff.make_quadratic_prog_optimality_fun()
-    res = optimality_fun(x, params)
-    self.assertAllClose(tree_util.tree_l2_norm(res), 0.0)
-    self._check_derivative_A_and_b(solver_fun, params, A, b)
+    qp = quadratic_prog.QuadraticProgramming()
+    hyperparams = ((Q, c), (A, b), (G, h))
+    sol = qp.run(hyperparams=hyperparams).params
+    self.assertAllClose(qp.l2_optimality_error(sol, hyperparams), 0.0)
+    self._check_derivative_A_and_b(qp, hyperparams, A, b)
 
   def test_qp_eq_only(self):
     Q = 2 * jnp.array([[2.0, 0.5], [0.5, 1]])
     c = jnp.array([1.0, 1.0])
     A = jnp.array([[1.0, 1.0]])
     b = jnp.array([1.0])
-    solver_fun = quadratic_prog.make_solver_fun()
-    params = ((Q, c), (A, b), None)
-    x = solver_fun(*params)
-    optimality_fun = implicit_diff.make_quadratic_prog_optimality_fun()
-    res = optimality_fun(x, params)[:1]
-    self.assertAllClose(tree_util.tree_l2_norm(res), 0.0)
-    self._check_derivative_A_and_b(solver_fun, params, A, b)
+    qp = quadratic_prog.QuadraticProgramming()
+    hyperparams = ((Q, c), (A, b), None)
+    sol = qp.run(hyperparams=hyperparams).params
+    self.assertAllClose(qp.l2_optimality_error(sol, hyperparams), 0.0)
+    self._check_derivative_A_and_b(qp, hyperparams, A, b)
 
   def test_projection_simplex(self):
     def _projection_simplex_qp(x, s=1.0):
@@ -85,10 +82,11 @@ class QuadraticProgTest(jtu.JaxTestCase):
       b = jnp.array([s])
       G = -jnp.eye(len(x))
       h = jnp.zeros_like(x)
-      params = ((Q, -x), (A, b), (G, h))
+      hyperparams = ((Q, -x), (A, b), (G, h))
 
-      solver_fun = quadratic_prog.make_solver_fun()
-      return solver_fun(*params)[0]
+      qp = quadratic_prog.QuadraticProgramming()
+      # Returns the primal solution only.
+      return qp.run(hyperparams=hyperparams).params[0]
 
     rng = onp.random.RandomState(0)
     x = jnp.array(rng.randn(10).astype(onp.float32))

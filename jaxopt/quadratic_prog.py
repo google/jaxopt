@@ -14,10 +14,17 @@
 
 """Quadratic programming in JAX."""
 
+from typing import Any
+from typing import Optional
+
+from dataclasses import dataclass
+
 import jax.numpy as jnp
 
-from jaxopt import implicit_diff
+from jaxopt import base
+from jaxopt import implicit_diff2 as idf
 from jaxopt import linear_solve
+from jaxopt import tree_util
 
 
 def _check_params(params_obj, params_eq=None, params_ineq=None):
@@ -57,6 +64,10 @@ def _solve_eq_constrained_qp(params_obj, params_eq):
 
 def _solve_constrained_qp_cvxpy(params_obj, params_eq, params_ineq):
   """Solve 0.5 * x^T Q x + c^T x subject to Gx <= h, Ax = b."""
+
+  # CVXPY runs on CPU. Hopefully, we can implement our own pure JAX solvers
+  # and remove this dependency in the future.
+
   import cvxpy as cp
 
   Q, c = params_obj
@@ -72,28 +83,92 @@ def _solve_constrained_qp_cvxpy(params_obj, params_eq, params_ineq):
           jnp.array(pb.constraints[1].dual_value))
 
 
-def make_solver_fun():
-  """Creates a quadratic programming solver.
+def _make_quadratic_prog_optimality_fun():
+  """Makes the optimality function for quadratic programming.
+
+  Returns:
+    optimality_fun(x, params) where
+      x = (primal_var, eq_dual_var, ineq_dual_var)
+      params = (params_obj, params_eq, params_ineq)
+      params_obj = (Q, c)
+      params_eq = (A, b)
+      params_ineq = (G, h) or None
+  """
+  def obj_fun(primal_var, params_obj):
+    Q, c = params_obj
+    return (0.5 * jnp.dot(primal_var, jnp.dot(Q, primal_var)) +
+            jnp.dot(primal_var, c))
+
+  def eq_fun(primal_var, params_eq):
+    A, b = params_eq
+    return jnp.dot(A, primal_var) - b
+
+  def ineq_fun(primal_var, params_ineq):
+    G, h = params_ineq
+    return jnp.dot(G, primal_var) - h
+
+  return idf.make_kkt_optimality_fun(obj_fun, eq_fun, ineq_fun)
+
+
+@dataclass
+class QuadraticProgramming:
+  """Quadratic programming solver.
 
   The objective function is::
 
     0.5 * x^T Q x + c^T x subject to Gx <= h, Ax = b.
-
-  Returns:
-    sol = solver_fun(params_obj, params_eq, params_ineq=None) where
-      params_obj = (Q, c)
-      params_eq = (A, b)
-      params_ineq = (G, h) or None
-      sol = (primal_var, dual_var_eq, dual_var_ineq)
   """
-  def solver_fun(params_obj, params_eq, params_ineq=None):
-    _check_params(params_obj, params_eq=params_eq, params_ineq=params_ineq)
+
+  def run(self,
+          init_params: Optional[Any] = None,
+          hyperparams: Optional[Any] = None,
+          data: Optional[Any] = None) -> base.OptStep:
+    """Runs the quadratic programming solver in CVXPY.
+
+    The returned params contains both the primal and dual solutions.
+
+    Args:
+      init_params: ignored.
+      hyperparams: triplet
+        ``hyperparams = (params_obj, params_eq, params_ineq)``
+        where ``params_obj = (Q, c)``,  ``params_eq = (A, b)``, and
+        ``params_ineq = (G, h)`` or ``None`` if no inequality constraints.
+      data: ignored.
+    Return type:
+      base.OptStep
+    Returns:
+      (params, state), ``params = (primal_var, dual_var_eq, dual_var_ineq)``
+    """
+    del init_params, data  # Not used.
+
+    if hyperparams is None:
+      raise ValueError("`hyperparameters` should contain the QP parameters.""")
+
+    params_obj, params_eq, params_ineq = hyperparams
+
+    _check_params(params_obj, params_eq, params_ineq)
 
     if params_ineq is None:
       primal, dual_eq = _solve_eq_constrained_qp(params_obj, params_eq)
-      return primal, dual_eq, None
+      params = (primal, dual_eq, None)
     else:
-      return _solve_constrained_qp_cvxpy(params_obj, params_eq, params_ineq)
+      params = _solve_constrained_qp_cvxpy(params_obj, params_eq, params_ineq)
 
-  fun = implicit_diff.make_quadratic_prog_optimality_fun()
-  return implicit_diff.custom_root(fun, unpack_params=True)(solver_fun)
+    # No state needed currently as we use CVXPY.
+    return base.OptStep(params=params, state=None)
+
+  def l2_optimality_error(self,
+                          params: Any,
+                          hyperparams: Any,
+                          data: Optional[Any] = None) -> float:
+    """Computes the L2 norm of the KKT residuals."""
+    pytree = self.optimality_fun(params, hyperparams, data)
+    return tree_util.tree_l2_norm(pytree)
+
+  def __post_init__(self):
+    self.optimality_fun = _make_quadratic_prog_optimality_fun()
+
+    # Set up implicit diff.
+    decorator = idf.custom_root(self.optimality_fun, has_aux=True)
+    # pylint: disable=g-missing-from-attributes
+    self.run = decorator(self.run)
