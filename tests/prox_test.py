@@ -18,6 +18,7 @@ import jax
 from jax import test_util as jtu
 import jax.numpy as jnp
 
+from jaxopt import projection
 from jaxopt import prox
 
 import numpy as onp
@@ -152,6 +153,12 @@ class ProxTest(jtu.JaxTestCase):
 
     got = prox.prox_ridge(x, alpha)
     self.assertArraysAllClose(jax.grad(fun)(got), jnp.zeros_like(got))
+
+  def test_make_prox_from_projection(self):
+    rng = onp.random.RandomState(0)
+    x = rng.rand(10)
+    proxop = prox.make_prox_from_projection(projection.projection_simplex)
+    self.assertArraysAllClose(proxop(x), projection.projection_simplex(x))
 
 if __name__ == '__main__':
   absltest.main(testLoader=jtu.JaxTestLoader())

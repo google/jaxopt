@@ -18,7 +18,6 @@ from typing import Any
 from typing import Callable
 from typing import NamedTuple
 from typing import Optional
-from typing import Tuple
 from typing import Union
 
 from dataclasses import dataclass
@@ -57,9 +56,18 @@ class AccelProxGradState(NamedTuple):
 class ProximalGradient:
   """Proximal gradient solver.
 
+  This solver minimizes::
+
+    objective(params, hyperparams, data) =
+      fun(params, hyperparams_fun, data) + non_smooth(params, hyperparams_prox)
+
+  where ``(hyperparams_fun, hyperparams_prox) = hyperparams``
+
   Attributes:
     fun: a smooth function of the form ``fun(x, hyperparams_fun, data)``.
-    prox: proximity operator associated with the function g.
+    prox: proximity operator associated with the function ``non_smooth``.
+      It should be of the form ``prox(params, hyperparams_prox, scale=1.0)``.
+      See ``jaxopt.prox`` for examples.
     stepsize: a stepsize to use (if <= 0, use backtracking line search).
     maxiter: maximum number of proximal gradient descent iterations.
     maxls: maximum number of iterations to use in the line search.
@@ -112,13 +120,13 @@ class ProximalGradient:
     del hyperparams, data  # Not used
 
     if self.acceleration:
-      state = AccelProxGradState(iter_num=0.0,
+      state = AccelProxGradState(iter_num=0,
                                  y=init_params,
                                  t=1.0,
                                  stepsize=1.0,
                                  error=jnp.inf)
     else:
-      state = ProxGradState(iter_num=0.0,
+      state = ProxGradState(iter_num=0,
                             stepsize=1.0,
                             error=jnp.inf)
 
@@ -212,7 +220,7 @@ class ProximalGradient:
              params: Any,
              state: NamedTuple,
              hyperparams: Optional[Any] = None,
-             data: Optional[Any] = None) -> Tuple[Any, NamedTuple]:
+             data: Optional[Any] = None) -> base.OptStep:
     """Performs one iteration of proximal gradient.
 
     Args:

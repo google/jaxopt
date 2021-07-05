@@ -53,11 +53,6 @@ class OptaxWrapperTest(jtu.JaxTestCase):
     error = opt.l2_optimality_error(params, hyperparams, data)
     self.assertLessEqual(error, 0.01)
 
-    # Compare against sklearn.
-    W_skl, b_skl = test_util.logreg_skl(X, y, hyperparams, fit_intercept=True)
-    self.assertArraysAllClose(params[0], W_skl, atol=5e-2)
-    self.assertArraysAllClose(params[1], b_skl, atol=5e-2)
-
   @parameterized.product(has_aux=[True, False])
   def test_logreg_with_intercept_run(self, has_aux):
     X, y = datasets.make_classification(n_samples=10, n_features=5, n_classes=3,
@@ -79,7 +74,7 @@ class OptaxWrapperTest(jtu.JaxTestCase):
     pytree_init = (W_init, b_init)
 
     opt = optax_wrapper.OptaxSolver(opt=optax.adam(1e-3), fun=fun,
-                                    maxiter=200, has_aux=has_aux)
+                                    maxiter=300, has_aux=has_aux)
     params, _ = opt.run(pytree_init, hyperparams, data)
 
     # Check optimality conditions.
@@ -109,6 +104,7 @@ class OptaxWrapperTest(jtu.JaxTestCase):
     b_init = jnp.zeros(n_classes)
     pytree_init = (W_init, b_init)
 
+    # We set a larger maxiter than n_iter in order to trigger StopIteration.
     opt = optax_wrapper.OptaxSolver(opt=optax.adam(1e-3), fun=fun, maxiter=1000)
     iterable = dataset_loader(X, y, n_iter=200)
     params, _ = opt.run_iterator(pytree_init, hyperparams, iterable)

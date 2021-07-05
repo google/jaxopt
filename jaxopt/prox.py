@@ -122,3 +122,10 @@ def prox_ridge(x: Any, hyperparam: float, scaling=1.0):
   """
   factor = 1. / (1 + scaling * hyperparam)
   return tree_util.tree_scalar_mul(factor, x)
+
+
+def make_prox_from_projection(projection):
+  def prox(x, hyperparams=None, scaling=1.0):
+    del scaling  # The scaling parameter is meaningless for projections.
+    return projection(x, hyperparams)
+  return prox

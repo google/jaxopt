@@ -21,6 +21,7 @@ import jax.numpy as jnp
 from jaxopt import base
 from jaxopt import loss
 from jaxopt import test_util
+from jaxopt import test_util2
 
 import numpy as onp
 
@@ -98,24 +99,30 @@ class BaseTest(jtu.JaxTestCase):
     self.assertAllClose(fun(Xy, 5.0), fun2(Xy, 5.0))
     self.assertAllClose(jax.grad(fun)(Xy, 5.0), jax.grad(fun2)(Xy, 5.0))
 
-  def test_composite_linear_function_logreg(self):
-    n_samples, n_features, n_classes = 20, 5, 3
-    X, y = datasets.make_classification(n_samples=n_samples,
-                                        n_features=n_features,
-                                        n_informative=3, n_classes=n_classes,
-                                        random_state=0)
-    fun = test_util.make_logreg_objective(X, y, preprocess_X=False,
-                                          l2_penalty=False)
-    loss_vmap = jax.vmap(loss.multiclass_logistic_loss)
+  def test_composite_linear_function_from_class(self):
+    X, y = datasets.make_regression(n_samples=50, n_features=10, random_state=0)
 
-    def fun2(W, lam):
-      logits = jnp.dot(X, W)
-      return jnp.sum(loss_vmap(y, logits))
+    class LeastSquaresFunction(base.CompositeLinearFunction2):
 
-    rng = onp.random.RandomState(0)
-    W = rng.randn(n_features, n_classes)
-    self.assertAllClose(fun(W, 1.0), fun2(W, 1.0))
-    self.assertAllClose(jax.grad(fun)(W, 1.0), jax.grad(fun2)(W, 1.0))
+      def subfun(self, predictions, hyperparams, data):
+        del hyperparams  # not used
+        y = data[1]
+        residuals = predictions - y
+        return 0.5 * jnp.mean(residuals ** 2)
+
+    fun = LeastSquaresFunction()
+
+    def fun2(params, hyperparams, data):
+      del hyperparams  # not used
+      X, y = data
+      residuals = jnp.dot(X, params) - y
+      return 0.5 * jnp.mean(residuals ** 2)
+
+    weights = jnp.dot(X.T, y)  # dummy weights
+    data = (X, y)
+    self.assertAllClose(fun(weights, 5.0, data), fun2(weights, 5.0, data))
+    self.assertAllClose(jax.grad(fun)(weights, 5.0, data),
+                        jax.grad(fun2)(weights, 5.0, data))
 
 if __name__ == '__main__':
   absltest.main(testLoader=jtu.JaxTestLoader())

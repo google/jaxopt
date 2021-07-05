@@ -93,6 +93,8 @@ def projection_simplex(x: jnp.ndarray, s: float = 1.0) -> jnp.ndarray:
   Returns:
     p: projected vector, an array of shape (n,).
   """
+  if s is None:
+    s = 1.0
   return s * _projection_unit_simplex(x / s)
 
 
