@@ -133,3 +133,8 @@ def multiclass_linear_svm_skl(X, y, lam, tol=1e-5):
   svc = svm.LinearSVC(loss="hinge", dual=True, multi_class="crammer_singer",
                       C=1.0 / lam, fit_intercept=False, tol=tol).fit(X, y)
   return svc.coef_.T
+
+
+def multiclass_linear_svm_skl_jac(X, y, lam, tol=1e-5, eps=1e-5):
+  return (multiclass_linear_svm_skl(X, y, lam + eps, tol=tol) -
+          multiclass_linear_svm_skl(X, y, lam - eps, tol=tol)) / (2 * eps)
