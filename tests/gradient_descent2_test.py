@@ -20,6 +20,7 @@ from jax import test_util as jtu
 import jax.numpy as jnp
 
 from jaxopt import gradient_descent2 as gradient_descent
+from jaxopt import objectives
 from jaxopt import test_util2 as test_util
 
 from sklearn import datasets
@@ -32,21 +33,21 @@ class GradientDescentTest(jtu.JaxTestCase):
     X, y = datasets.make_classification(n_samples=10, n_features=5, n_classes=3,
                                         n_informative=3, random_state=0)
     data = (X, y)
-    hyperparams = 100.0
-    fun = test_util.l2_logreg_objective_with_intercept
+    lam = 100.0
+    fun = objectives.l2_multiclass_logreg_with_intercept
     n_classes = len(jnp.unique(y))
 
     W_init = jnp.zeros((X.shape[1], n_classes))
     b_init = jnp.zeros(n_classes)
     pytree_init = (W_init, b_init)
     gd = gradient_descent.GradientDescent(fun=fun, tol=1e-3, maxiter=500)
-    pytree_fit, info = gd.run(pytree_init, hyperparams, data)
+    pytree_fit, info = gd.run(pytree_init, lam=lam, data=data)
 
     # Check optimality conditions.
     self.assertLessEqual(info.error, 1e-3)
 
     # Compare against sklearn.
-    W_skl, b_skl = test_util.logreg_skl(X, y, hyperparams, fit_intercept=True)
+    W_skl, b_skl = test_util.logreg_skl(X, y, lam, fit_intercept=True)
     self.assertArraysAllClose(pytree_fit[0], W_skl, atol=5e-2)
     self.assertArraysAllClose(pytree_fit[1], b_skl, atol=5e-2)
 
@@ -54,7 +55,7 @@ class GradientDescentTest(jtu.JaxTestCase):
     X, y = datasets.load_digits(return_X_y=True)
     data = (X, y)
     lam = float(X.shape[0])
-    fun = test_util.l2_logreg_objective
+    fun = objectives.l2_multiclass_logreg
 
     jac_num = test_util.logreg_skl_jac(X, y, lam)
     W_skl = test_util.logreg_skl(X, y, lam)
@@ -72,7 +73,7 @@ class GradientDescentTest(jtu.JaxTestCase):
     X, y = datasets.load_digits(return_X_y=True)
     data = (X, y)
     lam = float(X.shape[0])
-    fun = test_util.l2_logreg_objective
+    fun = objectives.l2_multiclass_logreg
     n_classes = len(jnp.unique(y))
 
     jac_lam = test_util.logreg_skl_jac(X, y, lam)
@@ -93,7 +94,7 @@ class GradientDescentTest(jtu.JaxTestCase):
                                         n_informative=3, n_classes=2,
                                         random_state=0)
     data = (X, y)
-    fun = test_util.l2_logreg_objective
+    fun = objectives.l2_multiclass_logreg
     hyperparams_list = jnp.array([1.0, 10.0])
     W_init = jnp.zeros((X.shape[1], 2))
     gd = gradient_descent.GradientDescent(fun=fun, tol=1e-3, maxiter=100)

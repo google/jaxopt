@@ -17,7 +17,6 @@
 from typing import Any
 from typing import Callable
 from typing import NamedTuple
-from typing import Optional
 from typing import Union
 
 from dataclasses import dataclass
@@ -26,7 +25,7 @@ import jax
 import jax.numpy as jnp
 
 from jaxopt import base
-from jaxopt import implicit_diff2 as idf
+from jaxopt import implicit_diff3 as idf
 from jaxopt import linear_solve
 from jaxopt import loop
 from jaxopt.prox import prox_none
@@ -58,13 +57,11 @@ class ProximalGradient:
 
   This solver minimizes::
 
-    objective(params, hyperparams, data) =
-      fun(params, hyperparams_fun, data) + non_smooth(params, hyperparams_prox)
-
-  where ``(hyperparams_fun, hyperparams_prox) = hyperparams``
+    objective(params, hyperparams_prox, *args, **kwargs) =
+      fun(params, *args, **kwargs) + non_smooth(params, hyperparams_prox)
 
   Attributes:
-    fun: a smooth function of the form ``fun(x, hyperparams_fun, data)``.
+    fun: a smooth function of the form ``fun(x, *args, **kwargs)``.
     prox: proximity operator associated with the function ``non_smooth``.
       It should be of the form ``prox(params, hyperparams_prox, scale=1.0)``.
       See ``jaxopt.prox`` for examples.
@@ -99,26 +96,20 @@ class ProximalGradient:
   acceleration: bool = True
   stepfactor: float = 0.5
   verbose: int = 0
-  implicit_diff: Union[bool, Callable] = True
+  implicit_diff: Union[bool, Callable] = False
   has_aux: bool = False
 
   def init(self,
-           init_params: Any,
-           hyperparams: Optional[Any] = None,
-           data: Optional[Any] = None) -> base.OptStep:
+           init_params: Any) -> base.OptStep:
     """Initialize the ``(params, state)`` pair.
 
     Args:
       init_params: pytree containing the initial parameters.
-      hyperparams: not used in this initialization.
-      data: not used in this initialization.
     Return type:
       base.OptStep
     Returns:
       (params, state)
     """
-    del hyperparams, data  # Not used
-
     if self.acceleration:
       state = AccelProxGradState(iter_num=0,
                                  y=init_params,
@@ -141,27 +132,31 @@ class ProximalGradient:
     update = tree_add_scalar_mul(x, -stepsize, x_fun_grad)
     return self.prox(update, hyperparams_prox, stepsize)
 
-  def _ls(self, x, x_fun_val, x_fun_grad, stepsize, hyperparams, data):
-    hyperparams_fun, hyperparams_prox = hyperparams
-
+  def _ls(self,
+          x,
+          x_fun_val,
+          x_fun_grad,
+          stepsize,
+          hyperparams_prox,
+          args,
+          kwargs):
     # epsilon of current dtype for robust checking of
     # sufficient decrease condition
     eps = jnp.finfo(x_fun_val.dtype).eps
 
-    def cond_fun(args):
-      next_x, stepsize = args
+    def cond_fun(pair):
+      next_x, stepsize = pair
       diff_x = tree_sub(next_x, x)
       sqdist = tree_l2_norm(diff_x, squared=True)
       # The expression below checks the sufficient decrease condition
       # f(next_x) < f(x) + dot(grad_f(x), diff_x) + (0.5/stepsize) ||diff_x||^2
       # where the terms have been reordered for numerical stability.
-      fun_decrease = stepsize * (self.fun(next_x, hyperparams_fun, data)
-                                 - x_fun_val)
+      fun_decrease = stepsize * (self.fun(next_x, *args, **kwargs) - x_fun_val)
       condition = stepsize * tree_vdot(diff_x, x_fun_grad) + 0.5 * sqdist
       return fun_decrease > condition + eps
 
-    def body_fun(args):
-      stepsize = args[1]
+    def body_fun(pair):
+      stepsize = pair[1]
       next_stepsize = stepsize * self.stepfactor
       next_x = self._prox_grad(x, x_fun_grad, next_stepsize, hyperparams_prox)
       return next_x, next_stepsize
@@ -173,11 +168,18 @@ class ProximalGradient:
                            init_val=init_val, maxiter=self.maxls,
                            unroll=self._unroll, jit=True)
 
-  def _iter(self, x, x_fun_val, x_fun_grad, stepsize, hyperparams, data):
+  def _iter(self,
+            x,
+            x_fun_val,
+            x_fun_grad,
+            stepsize,
+            hyperparams_prox,
+            args,
+            kwargs):
     if self.stepsize <= 0:
       # With line search.
       next_x, next_stepsize = self._ls(x, x_fun_val, x_fun_grad, stepsize,
-                                       hyperparams, data)
+                                       hyperparams_prox, args, kwargs)
 
       # If step size becomes too small, we restart it to 1.0.
       # Otherwise, we attempt to increase it.
@@ -187,30 +189,29 @@ class ProximalGradient:
       return next_x, next_stepsize
     else:
       # Without line search.
-      next_x = self._prox_grad(x, x_fun_grad, self.stepsize, hyperparams[1])
+      next_x = self._prox_grad(x, x_fun_grad, self.stepsize, hyperparams_prox)
       return next_x, self.stepsize
 
-  def _update(self, x, state, hyperparams, data):
+  def _update(self, x, state, hyperparams_prox, args, kwargs):
     iter_num, stepsize, _ = state
-    hyperparams_fun, hyperparams_prox = hyperparams
-    x_fun_val, x_fun_grad = self._value_and_grad_fun(x, hyperparams_fun, data)
+    x_fun_val, x_fun_grad = self._value_and_grad_fun(x, *args, **kwargs)
     next_x, next_stepsize = self._iter(x, x_fun_val, x_fun_grad, stepsize,
-                                       hyperparams, data)
+                                       hyperparams_prox, args, kwargs)
     error = self._error(x, x_fun_grad, hyperparams_prox)
-    next_state = ProxGradState(iter_num=iter_num + 1, stepsize=next_stepsize,
+    next_state = ProxGradState(iter_num=iter_num + 1,
+                               stepsize=next_stepsize,
                                error=error)
     return base.OptStep(params=next_x, state=next_state)
 
-  def _update_accel(self, x, state, hyperparams, data):
+  def _update_accel(self, x, state, hyperparams_prox, args, kwargs):
     iter_num, y, t, stepsize, _ = state
-    hyperparams_fun, hyperparams_prox = hyperparams
-    y_fun_val, y_fun_grad = self._value_and_grad_fun(y, hyperparams_fun, data)
+    y_fun_val, y_fun_grad = self._value_and_grad_fun(y, *args, **kwargs)
     next_x, next_stepsize = self._iter(y, y_fun_val, y_fun_grad, stepsize,
-                                       hyperparams, data)
+                                       hyperparams_prox, args, kwargs)
     next_t = 0.5 * (1 + jnp.sqrt(1 + 4 * t ** 2))
     diff_x = tree_sub(next_x, x)
     next_y = tree_add_scalar_mul(next_x, (t - 1) / next_t, diff_x)
-    next_x_fun_grad = self._grad_fun(next_x, hyperparams_fun, data)
+    next_x_fun_grad = self._grad_fun(next_x, *args, **kwargs)
     next_error = self._error(next_x, next_x_fun_grad, hyperparams_prox)
     next_state = AccelProxGradState(iter_num=iter_num + 1, y=next_y, t=next_t,
                                     stepsize=next_stepsize, error=next_error)
@@ -219,44 +220,37 @@ class ProximalGradient:
   def update(self,
              params: Any,
              state: NamedTuple,
-             hyperparams: Optional[Any] = None,
-             data: Optional[Any] = None) -> base.OptStep:
+             hyperparams_prox: Any,
+             *args,
+             **kwargs) -> base.OptStep:
     """Performs one iteration of proximal gradient.
 
     Args:
       params: pytree containing the parameters.
       state: named tuple containing the solver state.
-      hyperparams: tuple ``(hyperparams_fun, hyperparams_prox)`` containing the
-        hyper-parameters (i.e., differentiable arguments) of ``fun`` and
-        ``prox``.
-      data: pytree containing data, i.e., differentiable arguments to be passed
-        to ``fun``.
+      hyperparams_prox: pytree containing hyperparameters of prox.
+      *args: additional positional arguments to be passed to ``fun``.
+      **kwargs: additional keyword arguments to be passed to ``fun``.
     Return type:
       base.OptStep
     Returns:
       (params, state)
     """
-    if hyperparams is None:
-      hyperparams = None, None
-
-    if self.acceleration:
-      return self._update_accel(params, state, hyperparams, data)
-    else:
-      return self._update(params, state, hyperparams, data)
+    f = self._update_accel if self.acceleration else self._update
+    return f(params, state, hyperparams_prox, args, kwargs)
 
   def run(self,
           init_params: Any,
-          hyperparams: Optional[Any] = None,
-          data: Optional[Any] = None) -> base.OptStep:
+          hyperparams_prox: Any,
+          *args,
+          **kwargs) -> base.OptStep:
     """Runs proximal gradient until convergence or max number of iterations.
 
     Args:
       init_params: pytree containing the initial parameters.
-      hyperparams: tuple ``(hyperparams_fun, hyperparams_prox)`` containing the
-        hyper-parameters (i.e., differentiable arguments) of ``fun`` and
-        ``prox``.
-      data: pytree containing data, i.e., differentiable arguments to be passed
-        to ``fun``.
+      hyperparams_prox: pytree containing hyperparameters of prox.
+      *args: additional positional arguments to be passed to ``fun``.
+      **kwargs: additional keyword arguments to be passed to ``fun``.
     Return type:
       base.OptStep
     Returns:
@@ -270,21 +264,21 @@ class ProximalGradient:
 
     def body_fun(pair):
       params, state = pair
-      return self.update(params, state, hyperparams, data)
+      return self.update(params, state, hyperparams_prox, *args, **kwargs)
 
     return loop.while_loop(cond_fun=cond_fun, body_fun=body_fun,
                            init_val=self.init(init_params),
                            maxiter=self.maxiter, jit=self._jit,
                            unroll=self._unroll)
 
-  def _fixed_point_fun(self, sol, hyperparams, data):
-    hyperparams_fun, hyperparams_prox = hyperparams
-    step = tree_sub(sol, self._grad_fun(sol, hyperparams_fun, data))
+  def _fixed_point_fun(self, sol, hyperparams_prox, args, kwargs):
+    step = tree_sub(sol, self._grad_fun(sol, *args, **kwargs))
     return self.prox(step, hyperparams_prox, 1.0)
 
-  def optimality_fun(self, sol, hyperparams, data):
+  def optimality_fun(self, sol, hyperparams_prox, *args, **kwargs):
     """Optimality function mapping compatible with ``@custom_root``."""
-    return tree_sub(self._fixed_point_fun(sol, hyperparams, data), sol)
+    fp = self._fixed_point_fun(sol, hyperparams_prox, args, kwargs)
+    return tree_sub(fp, sol)
 
   def __post_init__(self):
     if self.has_aux:

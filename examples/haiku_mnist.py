@@ -52,30 +52,33 @@ def net_fun(batch):
   return mlp(x)
 
 
+net = hk.without_apply_rng(hk.transform(net_fun))
+
+
+@jax.jit
+def accuracy(params, data):
+  predictions = net.apply(params, data)
+  return jnp.mean(jnp.argmax(predictions, axis=-1) == data["label"])
+
+logistic_loss = jax.vmap(loss.multiclass_logistic_loss)
+
+
+def loss_fun(params, l2_regul, data):
+  """Compute the loss of the network."""
+  logits = net.apply(params, data)
+  labels = data["label"]
+  sqnorm = tree_util.tree_l2_norm(params, squared=True)
+  loss_value = jnp.mean(logistic_loss(labels, logits))
+  return loss_value + 0.5 * l2_regul * sqnorm
+
+
 def main(argv):
-  net = hk.without_apply_rng(hk.transform(net_fun))
-
-  @jax.jit
-  def accuracy(params, batch):
-    predictions = net.apply(params, batch)
-    return jnp.mean(jnp.argmax(predictions, axis=-1) == batch["label"])
-
-  logistic_loss = jax.vmap(loss.multiclass_logistic_loss)
-
-  # Objective / loss functions in JAXopt must have the form
-  # loss_fun(params, hyperparams, data).
-  def loss_fun(params, l2_regul, batch):
-    """Compute the loss of the network."""
-    logits = net.apply(params, batch)
-    labels = batch["label"]
-    sqnorm = tree_util.tree_l2_norm(params, squared=True)
-    loss_value = jnp.mean(logistic_loss(labels, logits))
-    return loss_value + 0.5 * l2_regul * sqnorm
+  del argv
 
   train_ds = load_dataset("train", is_training=True, batch_size=1000)
   test_ds = load_dataset("test", is_training=False, batch_size=10000)
 
-  def pre_update(params, state, hyperparams, data):
+  def pre_update(params, state, *args, **kwargs):
     if state.iter_num % 10 == 0:
       # Periodically evaluate classification accuracy on test set.
       test_accuracy = accuracy(params, next(test_ds))
@@ -100,11 +103,11 @@ def main(argv):
   # params, state = opt.init(init_params)
   # for _ in range(100):
   #   params, state = opt.update(params=params, state=state,
-  #                              hyperparams=l2_regul, data=next(train_ds))
-  # except that implicit diff w.r.t. `hyperparams` will be supported.
+  #                              l2_regul=l2_regul, data=next(train_ds))
+  # except that implicit diff w.r.t. `l2_regul` will be supported.
   solver.run_iterator(init_params=init_params,
-                      hyperparams=l2_regul,
-                      iterator=train_ds)
+                      iterator=train_ds,
+                      l2_regul=l2_regul)
 
 
 if __name__ == "__main__":

@@ -23,9 +23,7 @@ import jax.numpy as jnp
 from jaxopt import block_cd2 as block_cd
 from jaxopt import prox
 
-# Ideally, test utils should not be part of the public API.
-# We may want to expose a few reusable objectives in a dedicated module.
-from jaxopt.test_util2 import least_squares_objective
+from jaxopt.objectives import least_squares_objective
 
 import numpy as onp
 
@@ -58,8 +56,7 @@ def nnreg(U, V_init, X, maxiter=150):
   bcd = block_cd.BlockCoordinateDescent(fun=least_squares_objective,
                                         block_prox=block_prox,
                                         maxiter=maxiter)
-  hyperparams = (None, FLAGS.gamma)  # (hyperparams_fun, hyperparams_prox)
-  sol = bcd.run(init_params=V_init.T, hyperparams=hyperparams, data=(U, X))
+  sol = bcd.run(init_params=V_init.T, hyperparams_prox=FLAGS.gamma, data=(U, X))
   return sol.params.T  # approximate solution V
 
 

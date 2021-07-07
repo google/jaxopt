@@ -138,19 +138,22 @@ def kl_gaussian(mean: jnp.ndarray, var: jnp.ndarray) -> jnp.ndarray:
   return 0.5 * jnp.sum(-jnp.log(var) - 1.0 + var + jnp.square(mean), axis=-1)
 
 
-def main(argv):
-  # pylint: disable=unnecessary-lambda
-  model = hk.transform(lambda x: VariationalAutoEncoder()(x))
+# pylint: disable=unnecessary-lambda
+model = hk.transform(lambda x: VariationalAutoEncoder()(x))
 
-  @jax.jit
-  def loss_fun(params, hyperparams, args):
-    """ELBO loss: E_p[log(x)] - KL(d||q), where p ~ Be(0.5) and q ~ N(0,1)."""
-    rng_key, batch = args
-    outputs = model.apply(params, rng_key, batch["image"])
-    log_likelihood = -binary_cross_entropy(batch["image"], outputs.logits)
-    kl = kl_gaussian(outputs.mean, jnp.square(outputs.stddev))
-    elbo = log_likelihood - kl
-    return -jnp.mean(elbo)
+
+@jax.jit
+def loss_fun(params, rng_key, batch):
+  """ELBO loss: E_p[log(x)] - KL(d||q), where p ~ Be(0.5) and q ~ N(0,1)."""
+  outputs = model.apply(params, rng_key, batch["image"])
+  log_likelihood = -binary_cross_entropy(batch["image"], outputs.logits)
+  kl = kl_gaussian(outputs.mean, jnp.square(outputs.stddev))
+  elbo = log_likelihood - kl
+  return -jnp.mean(elbo)
+
+
+def main(argv):
+  del argv
 
   # Initialize solver.
   solver = optax_wrapper.OptaxSolver(opt=optax.adam(FLAGS.learning_rate),
@@ -167,11 +170,12 @@ def main(argv):
 
   # Run training loop.
   for step in range(FLAGS.training_steps):
-    params, state = solver.update(params=params, state=state, hyperparams=None,
-                                  data=(next(rng_seq), next(train_ds)))
+    params, state = solver.update(params=params, state=state,
+                                  rng_key=next(rng_seq),
+                                  batch=next(train_ds))
 
     if step % FLAGS.eval_frequency == 0:
-      val_loss = loss_fun(params, None, (next(rng_seq), next(test_ds)))
+      val_loss = loss_fun(params, next(rng_seq), next(test_ds))
       print(f"STEP: {step}; Validation ELBO: {val_loss:.3f}")
 
 if __name__ == "__main__":

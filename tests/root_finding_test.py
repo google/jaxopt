@@ -49,7 +49,7 @@ def _threshold_proj_simplex(x, s):
                                   lower=lower,
                                   upper=upper,
                                   increasing=False)
-  return bisect.run(hyperparams=x, data=s).params
+  return bisect.run(None, x, s).params
 
 
 def _projection_simplex_bisect(x, s=1.0):
@@ -78,7 +78,7 @@ class RootFindingTest(jtu.JaxTestCase):
     upper = jnp.max(x)
     bisect = root_finding.Bisection(optimality_fun=_optimality_fun_proj_simplex,
                                     lower=upper, upper=upper, increasing=False)
-    self.assertRaises(ValueError, bisect.run, hyperparams=x, data=s)
+    self.assertRaises(ValueError, bisect.run, None, x, s)
 
   def test_bisect_wrong_upper_bracket(self):
     rng = onp.random.RandomState(0)
@@ -87,7 +87,7 @@ class RootFindingTest(jtu.JaxTestCase):
     lower = jnp.min(x) - s / len(x)
     bisect = root_finding.Bisection(optimality_fun=_optimality_fun_proj_simplex,
                                     lower=lower, upper=lower, increasing=False)
-    self.assertRaises(ValueError, bisect.run, hyperparams=x, data=s)
+    self.assertRaises(ValueError, bisect.run, None, x, s)
 
 if __name__ == '__main__':
   absltest.main(testLoader=jtu.JaxTestLoader())

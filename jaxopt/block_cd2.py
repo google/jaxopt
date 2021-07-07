@@ -17,7 +17,6 @@
 from typing import Any
 from typing import Callable
 from typing import NamedTuple
-from typing import Optional
 from typing import Union
 
 from dataclasses import dataclass
@@ -26,7 +25,7 @@ import jax
 import jax.numpy as jnp
 
 from jaxopt import base
-from jaxopt import implicit_diff2 as idf
+from jaxopt import implicit_diff3 as idf
 from jaxopt import linear_solve
 from jaxopt import loop
 from jaxopt import tree_util
@@ -46,16 +45,14 @@ class BlockCoordinateDescent:
 
   This solver minimizes::
 
-    objective(params, hyperparams, data) =
-      fun(params, hyperparams_fun, data) + non_smooth(params, hyperparams_prox)
-
-  where ``(hyperparams_fun, hyperparams_prox) = hyperparams``
+    objective(params, hyperparams_prox, *args, **kwargs) =
+      fun(params, *args, **kwargs) + non_smooth(params, hyperparams_prox)
 
   Attributes:
-    fun: a smooth function of the form ``fun(x, hyperparams_fun, data)``.
-      It should be a ``base.CompositeLinearFunction`` object.
+    fun: a smooth function of the form ``fun(params, *args, **kwargs)``.
+      It should be a ``objectives.CompositeLinearFunction`` object.
     block_prox: block-wise proximity operator associated with ``non_smooth``,
-      a function of the form ``block_prox(x[j], params_prox, scaling=1.0)``.
+      a function of the form ``block_prox(x[j], hyperparams_prox, scaling=1.0)``.
       See ``jaxopt.prox`` for examples.
     maxiter: maximum number of proximal gradient descent iterations.
     tol: tolerance to use.
@@ -71,45 +68,51 @@ class BlockCoordinateDescent:
   maxiter: int = 500
   tol: float = 1e-4
   verbose: int = 0
-  implicit_diff: Union[bool, Callable] = True
+  implicit_diff: Union[bool, Callable] = False
 
   def init(self,
            init_params: Any,
-           hyperparams: Optional[jnp.ndarray] = None,
-           data: Optional[jnp.ndarray] = None) -> base.OptStep:
+           *args,
+           **kwargs) -> base.OptStep:
     """Initialize the ``(params, state)`` pair.
 
     Args:
       init_params: pytree containing the initial parameters.
-      hyperparams: tuple ``(hyperparams_fun, hyperparams_prox)`` containing the
-        hyper-parameters (i.e., differentiable arguments) of ``fun`` and
-        ``prox``.
-      data: pytree containing data, i.e., differentiable arguments to be passed
-        to ``fun``.
     Return type:
       base.OptStep
     Returns:
       (params, state)
     """
-    if hyperparams is None:
-      hyperparams = None, None
-
-    linop = self.fun.make_linop(data)
+    linop = self.fun.make_linop(*args, **kwargs)
     predictions = linop.matvec(init_params)
-    hyperparams_fun, _ = hyperparams
-    subfun_g = self._grad_subfun(predictions, hyperparams_fun, data)
+    subfun_g = self._grad_subfun(predictions, *args, **kwargs)
     state = BlockCDState(iter_num=0,
                          predictions=predictions,
                          subfun_g=subfun_g,
                          error=jnp.inf)
     return base.OptStep(params=init_params, state=state)
 
-  def _update_composite(self, params, state, hyperparams, data):
-    """Performs one epoch of block CD in the composite case."""
+  def update(self,
+             params: Any,
+             state: NamedTuple,
+             hyperparams_prox: Any,
+             *args,
+             **kwargs) -> base.OptStep:
+    """Performs one epoch of block CD.
 
-    hyperparams_fun, hyperparams_prox = hyperparams
-    linop = self.fun.make_linop(data)
-    stepsizes = 1.0 / self.fun.columnwise_lipschitz_const(hyperparams_fun, data)
+    Args:
+      params: pytree containing the parameters.
+      state: named tuple containing the solver state.
+      hyperparams_prox: pytree containing hyperparameters of block_prox.
+      *args: additional positional arguments to be passed to ``fun``.
+      **kwargs: additional keyword arguments to be passed to ``fun``.
+    Return type:
+      base.OptStep
+    Returns:
+      (params, state)
+    """
+    linop = self.fun.make_linop(*args, **kwargs)
+    stepsizes = 1.0 / self.fun.columnwise_lipschitz_const(*args, **kwargs)
 
 
 
@@ -117,7 +120,7 @@ class BlockCoordinateDescent:
       x, subfun_g, predictions, sqerror_sum = tup
       x_i_old = x[i]
       g_i = linop.rmatvec_element(subfun_g, i)
-      b = self.fun.b(data)
+      b = self.fun.b(*args, **kwargs)
       if b is not None:
         g_i += b[i]
       x_i_new = self.block_prox(x[i] - stepsizes[i] * g_i,
@@ -128,7 +131,7 @@ class BlockCoordinateDescent:
       sqerror_sum += jnp.sum(diff_i ** 2)
       x = jax.ops.index_update(x, i, x_i_new)
       predictions = linop.update_matvec(predictions, diff_i, i)
-      subfun_g = self._grad_subfun(predictions, hyperparams_fun, data)
+      subfun_g = self._grad_subfun(predictions, *args, **kwargs)
       return x, subfun_g, predictions, sqerror_sum
 
     init = (params, state.subfun_g, state.predictions, 0)
@@ -140,45 +143,18 @@ class BlockCoordinateDescent:
                          error=jnp.sqrt(sqerror_sum))
     return base.OptStep(params=params, state=state)
 
-  def update(self,
-             params: Any,
-             state: NamedTuple,
-             hyperparams: Optional[Any] = None,
-             data: Optional[Any] = None) -> base.OptStep:
-    """Performs one epoch of block CD.
-
-    Args:
-      params: pytree containing the parameters.
-      state: named tuple containing the solver state.
-      hyperparams: tuple ``(hyperparams_fun, hyperparams_prox)`` containing the
-        hyper-parameters (i.e., differentiable arguments) of ``fun`` and
-        ``prox``.
-      data: pytree containing data, i.e., differentiable arguments to be passed
-        to ``fun``.
-    Return type:
-      base.OptStep
-    Returns:
-      (params, state)
-    """
-    if hyperparams is None:
-      hyperparams = None, None
-
-
-    return self._update_composite(params, state, hyperparams, data)
-
   def run(self,
           init_params: Any,
-          hyperparams: Optional[Any] = None,
-          data: Optional[Any] = None) -> base.OptStep:
+          hyperparams_prox,
+          *args,
+          **kwargs) -> base.OptStep:
     """Runs block CD until convergence or max number of iterations.
 
     Args:
       init_params: pytree containing the initial parameters.
-      hyperparams: tuple ``(hyperparams_fun, hyperparams_prox)`` containing the
-        hyper-parameters (i.e., differentiable arguments) of ``fun`` and
-        ``prox``.
-      data: pytree containing data, i.e., differentiable arguments to be passed
-        to ``fun``.
+      hyperparams_prox: pytree containing hyperparameters of block_prox.
+      *args: additional positional arguments to be passed to ``fun``.
+      **kwargs: additional keyword arguments to be passed to ``fun``.
     Return type:
       base.OptStep
     Returns:
@@ -192,70 +168,66 @@ class BlockCoordinateDescent:
 
     def body_fun(opt_step):
       params, state = opt_step
-      return self.update(params, state, hyperparams, data)
+      return self.update(params, state, hyperparams_prox, *args, **kwargs)
 
     return loop.while_loop(cond_fun=cond_fun, body_fun=body_fun,
-                           init_val=self.init(init_params, hyperparams, data),
+                           init_val=self.init(init_params, *args, **kwargs),
                            maxiter=self.maxiter, jit=self._jit,
                            unroll=self._unroll)
 
-  def _fixed_point_fun(self, params, hyperparams, data):
-    hyperparams_fun, hyperparams_prox = hyperparams
-    grad_step = params - self._grad_fun(params, hyperparams_fun, data)
+  def _fixed_point_fun(self, params, hyperparams_prox, *args, **kwargs):
+    grad_step = params - self._grad_fun(params, *args, **kwargs)
     return self._prox(grad_step, hyperparams_prox)
 
   def optimality_fun(self,
                      params: Any,
-                     hyperparams: Any,
-                     data: Any) -> Any:
+                     hyperparams_prox: Any,
+                     *args,
+                     **kwargs) -> Any:
     """Proximal-gradient fixed point residual.
 
     This function is compatible with ``@custom_root``.
 
     The fixed point function is defined as::
 
-      fixed_point_fun(params, hyperparams, data) =
-        prox(params - grad(fun)(params, hyperparams_fun), hyperparams_prox)
+      fixed_point_fun(params, hyperparams_prox, *args, **kwargs) =
+        prox(params - grad(fun)(params, *args, **kwargs), hyperparams_prox)
 
     where::
 
-      hyperparams = (params_fun, params_prox)
       prox = jax.vmap(block_prox, in_axes=(0, None))
 
     The residual is defined as::
 
-      optimality_fun(params, hyperparams, data) =
-        fixed_point_fun(params, hyperparams, data) - params
+      optimality_fun(params, hyperparams_prox*args, **kwargs) =
+        fixed_point_fun(params, hyperparams_prox, *args, **kwargs) - params
 
     Args:
       params: pytree containing the parameters.
-      hyperparams: tuple ``(hyperparams_fun, hyperparams_prox)`` containing the
-        hyper-parameters (i.e., differentiable arguments) of ``fun`` and
-        ``prox``.
-      data: pytree containing data, i.e., differentiable arguments to be passed
-        to ``fun``.
+      hyperparams_prox: pytree containing hyperparameters of block_prox.
+      *args: additional positional arguments to be passed to ``fun``.
+      **kwargs: additional keyword arguments to be passed to ``fun``.
     Returns:
       residual: pytree with same structure as ``params``.
     """
-    return self._fixed_point_fun(params, hyperparams, data) - params
+    fp = self._fixed_point_fun(params, hyperparams_prox, *args, **kwargs)
+    return  fp - params
 
   def l2_optimality_error(self,
                           params: Any,
-                          hyperparams: Any,
-                          data: Any) -> float:
+                          *args,
+                          **kwargs) -> float:
     """L2 norm of the proximal-gradient fixed point residual.
 
     Args:
       params: pytree containing the parameters.
-      hyperparams: tuple ``(hyperparams_fun, hyperparams_prox)`` containing the
-        hyper-parameters (i.e., differentiable arguments) of ``fun`` and
-        ``prox``.
-      data: pytree containing data, i.e., differentiable arguments to be passed
-        to ``fun``.
+      hyperparams_prox: pytree containing hyperparameters of block_prox.
+      *args: additional positional arguments to be passed to ``fun``.
+      **kwargs: additional keyword arguments to be passed to ``fun``.
     Returns:
       l2_norm
     """
-    optimality = self.optimality_fun(params, hyperparams, data)
+    optimality = self.optimality_fun(params, hyperparams_prox, *args, **kwargs)
     return tree_util.tree_l2_norm(optimality)
 
   def __post_init__(self):

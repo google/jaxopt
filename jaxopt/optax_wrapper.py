@@ -26,7 +26,7 @@ import jax
 import jax.numpy as jnp
 
 from jaxopt import base
-from jaxopt import implicit_diff2 as idf
+from jaxopt import implicit_diff3 as idf
 from jaxopt import linear_solve
 from jaxopt import loop
 from jaxopt import tree_util
@@ -46,15 +46,14 @@ class OptaxSolver:
   """Optax solver.
 
   Attributes:
-    fun: a function of the form ``fun(params, hyperparams, data)``, where
+    fun: a function of the form ``fun(params, *args, **kwargs)``, where
       ``params`` are parameters of the model,
-      ``hyperparams`` are hyper-parameters of the model, and
-      ``data`` are any extra arguments such as data, rng, etc.
+      ``*args`` and ``**kwargs`` are additional arguments.
     opt: the optimizer to use, an optax.GradientTransformation, which is just a
       NamedTuple with ``init`` and ``update`` functions.
     pre_update_fun: a function to execute before Optax's update.
       The function signature must be
-      ``params, state = pre_update_fun(params, state, hyperparams, data)``.
+      ``params, state = pre_update_fun(params, state, *args, **kwargs)``.
     maxiter: maximum number of solver iterations.
     tol: tolerance to use.
     verbose: whether to print error on every iteration or not. verbose=True will
@@ -74,25 +73,20 @@ class OptaxSolver:
   maxiter: int = 500
   tol: float = 1e-3
   verbose: int = 0
-  implicit_diff: Union[bool, Callable] = True
+  implicit_diff: Union[bool, Callable] = False
   has_aux: bool = False
 
   def init(self,
-           init_params: Any,
-           hyperparams: Optional[Any] = None,
-           data: Optional[Any] = None) -> base.OptStep:
+           init_params: Any) -> base.OptStep:
     """Initialize the ``(params, state)`` pair.
 
     Args:
       init_params: pytree containing the initial parameters.
-      hyperparams: not used in this initialization.
-      data: not used in this initialization.
     Return type:
       base.OptStep
     Returns:
       (params, state)
     """
-    del hyperparams, data  # Not used
     opt_state = self.opt.init(init_params)
     state = OptaxState(iter_num=0,
                        value=jnp.inf,
@@ -108,32 +102,32 @@ class OptaxSolver:
   def update(self,
              params: Any,
              state: NamedTuple,
-             hyperparams: Optional[Any] = None,
-             data: Optional[Any] = None) -> base.OptStep:
+             *args,
+             **kwargs) -> base.OptStep:
     """Performs one iteration of the optax solver.
 
     Args:
       params: pytree containing the parameters.
       state: named tuple containing the solver state.
-      hyperparams: pytree containing hyper-parameters (default: None).
-      data: pytree containing data (default: None).
+      *args: additional positional arguments to be passed to ``fun``.
+      **kwargs: additional keyword arguments to be passed to ``fun``.
     Return type:
       base.OptStep
     Returns:
       (params, state)
     """
     if self.pre_update_fun:
-      params, state = self.pre_update_fun(params, state, hyperparams, data)
+      params, state = self.pre_update_fun(params, state, *args, **kwargs)
 
     if self.has_aux:
-      (value, aux), grad = self._value_and_grad_fun(params, hyperparams, data)
+      (value, aux), grad = self._value_and_grad_fun(params, *args, **kwargs)
     else:
-      value, grad = self._value_and_grad_fun(params, hyperparams, data)
+      value, grad = self._value_and_grad_fun(params, *args, **kwargs)
       aux = None
 
     delta, opt_state = self.opt.update(grad, state.internal_state, params)
     params = self._apply_updates(params, delta)
-    error = self.l2_optimality_error(params, hyperparams, data)
+    error = self.l2_optimality_error(params, *args, **kwargs)
     new_state = OptaxState(iter_num=state.iter_num + 1,
                            error=error,
                            value=value,
@@ -143,14 +137,15 @@ class OptaxSolver:
 
   def run(self,
           init_params: Any,
-          hyperparams: Any,
-          data: Any) -> base.OptStep:
+          *args,
+          **kwargs) -> base.OptStep:
     """Runs the optax solver on a fixed dataset.
 
     Args:
       init_params: pytree containing the initial parameters.
-      hyperparams: pytree containing hyper-parameters.
-      data: pytree containing the entire data.
+      *args: additional positional arguments to be passed to ``fun``.
+      **kwargs: additional keyword arguments to be passed to ``fun``.
+    Return type:
     Return type:
       base.OptStep
     Returns:
@@ -164,7 +159,7 @@ class OptaxSolver:
 
     def body_fun(pair):
       params, state = pair
-      return self.update(params, state, hyperparams, data)
+      return self.update(params, state, *args, **kwargs)
 
     return loop.while_loop(cond_fun=cond_fun, body_fun=body_fun,
                            init_val=self.init(init_params),
@@ -173,14 +168,16 @@ class OptaxSolver:
 
   def run_iterator(self,
                    init_params: Any,
-                   hyperparams: Any,
-                   iterator: Any) -> base.OptStep:
+                   iterator,
+                   *args,
+                   **kwargs) -> base.OptStep:
     """Runs the optax solver on a dataset iterator.
 
     Args:
       init_params: pytree containing the initial parameters.
-      hyperparams: pytree containing hyper-parameters.
       iterator: iterator generating data batches.
+      *args: additional positional arguments to be passed to ``fun``.
+      **kwargs: additional keyword arguments to be passed to ``fun``.
     Return type:
       base.OptStep
     Returns:
@@ -195,20 +192,20 @@ class OptaxSolver:
       except StopIteration:
         break
 
-      params, state = self.update(params, state, hyperparams, data)
+      params, state = self.update(params, state, *args, **kwargs, data=data)
 
     return base.OptStep(params=params, state=state)
 
-  def optimality_fun(self, sol, hyperparams, data):
+  def optimality_fun(self, params, *args, **kwargs):
     """Optimality function mapping compatible with ``@custom_root``."""
     if self.has_aux:
-      return self._grad_fun(sol, hyperparams, data)[0]
+      return self._grad_fun(params, *args, **kwargs)[0]
     else:
-      return self._grad_fun(sol, hyperparams, data)
+      return self._grad_fun(params, *args, **kwargs)
 
-  def l2_optimality_error(self, params, hyperparams, data):
+  def l2_optimality_error(self, params, *args, **kwargs):
     """Computes the L2 optimality error."""
-    optimality = self.optimality_fun(params, hyperparams, data)
+    optimality = self.optimality_fun(params, *args, **kwargs)
     return tree_util.tree_l2_norm(optimality)
 
   def __post_init__(self):

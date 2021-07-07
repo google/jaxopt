@@ -12,52 +12,58 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Implicit differentiation of ridge regression."""
+"""Implicit differentiation of lasso."""
 
 from absl import app
+from absl import flags
+
 import jax
 import jax.numpy as jnp
-from jaxopt import implicit_diff3 as implicit_diff
-from jaxopt import linear_solve
+
+from jaxopt import block_cd2 as block_cd
+from jaxopt import objectives
 from jaxopt import optax_wrapper
+from jaxopt import prox
+from jaxopt import proximal_gradient2 as proximal_gradient
 import optax
+
 from sklearn import datasets
 from sklearn import model_selection
 from sklearn import preprocessing
 
-
-def ridge_objective(params, lam, data):
-  """Ridge objective function."""
-  X_tr, y_tr = data
-  residuals = jnp.dot(X_tr, params) - y_tr
-  return 0.5 * jnp.mean(residuals ** 2) + 0.5 * lam * jnp.sum(params ** 2)
+flags.DEFINE_bool("unrolling", False, "Whether to use unrolling.")
+flags.DEFINE_string("solver", "bcd", "Solver to use (bcd or pg).")
+FLAGS = flags.FLAGS
 
 
-@implicit_diff.custom_root(jax.grad(ridge_objective))
-def ridge_solver(init_params, lam, data):
-  """Solve ridge regression by conjugate gradient."""
-  X_tr, y_tr = data
-
-  def matvec(u):
-    return jnp.dot(X_tr.T, jnp.dot(X_tr, u))
-
-  return linear_solve.solve_cg(matvec=matvec,
-                               b=jnp.dot(X_tr.T, y_tr),
-                               ridge=len(y_tr) * lam,
-                               x0=init_params,
-                               maxiter=20)
-
-
-# Perhaps confusingly, theta is a parameter of the outer objective,
-# but lam = jnp.exp(theta) is an hyper-parameter of the inner objective.
 def outer_objective(theta, init_inner, data):
   """Validation loss."""
   X_tr, X_val, y_tr, y_val = data
   # We use the bijective mapping lam = jnp.exp(theta) to ensure positivity.
   lam = jnp.exp(theta)
-  w_fit = ridge_solver(init_inner, lam, (X_tr, y_tr))
+
+  if FLAGS.solver == "pg":
+    solver = proximal_gradient.ProximalGradient(
+        fun=objectives.least_squares,
+        prox=prox.prox_lasso,
+        implicit_diff=not FLAGS.unrolling,
+        maxiter=500)
+  elif FLAGS.solver == "bcd":
+    solver = block_cd.BlockCoordinateDescent(
+        fun=objectives.least_squares,
+        block_prox=prox.prox_lasso,
+        implicit_diff=not FLAGS.unrolling,
+        maxiter=500)
+  else:
+    raise ValueError("Unknown solver.")
+
+  # The format is run(init_params, hyperparams_prox, *args, **kwargs)
+  # where *args and **kwargs are passed to `fun`.
+  w_fit = solver.run(init_inner, lam, (X_tr, y_tr)).params
+
   y_pred = jnp.dot(X_val, w_fit)
   loss_value = jnp.mean((y_pred - y_val) ** 2)
+
   # We return w_fit as auxiliary data.
   # Auxiliary data is stored in the optimizer state (see below).
   return loss_value, w_fit
@@ -65,6 +71,9 @@ def outer_objective(theta, init_inner, data):
 
 def main(argv):
   del argv
+
+  print("Solver:", FLAGS.solver)
+  print("Unrolling:", FLAGS.unrolling)
 
   # Prepare data.
   X, y = datasets.load_boston(return_X_y=True)
@@ -81,7 +90,7 @@ def main(argv):
   init_w = jnp.zeros(X.shape[1])
 
   # Run outer loop.
-  for _ in range(50):
+  for _ in range(10):
     theta, state = solver.update(params=theta, state=state, init_inner=init_w,
                                  data=data)
     # The auxiliary data returned by the outer loss is stored in the state.

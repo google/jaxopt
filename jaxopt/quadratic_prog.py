@@ -16,18 +16,24 @@
 
 from typing import Any
 from typing import Optional
+from typing import Tuple
 
 from dataclasses import dataclass
 
 import jax.numpy as jnp
 
 from jaxopt import base
-from jaxopt import implicit_diff2 as idf
+from jaxopt import implicit_diff3 as idf
 from jaxopt import linear_solve
 from jaxopt import tree_util
 
 
+ArrayPair = Tuple[jnp.ndarray, jnp.ndarray]
+
+
 def _check_params(params_obj, params_eq=None, params_ineq=None):
+  if params_obj is None:
+    raise ValueError("params_obj should be a tuple (Q, c)")
   Q, c = params_obj
   if Q.shape[0] != Q.shape[1]:
     raise ValueError("Q must be a square matrix.")
@@ -87,9 +93,8 @@ def _make_quadratic_prog_optimality_fun():
   """Makes the optimality function for quadratic programming.
 
   Returns:
-    optimality_fun(x, params) where
-      x = (primal_var, eq_dual_var, ineq_dual_var)
-      params = (params_obj, params_eq, params_ineq)
+    optimality_fun(params, params_obj, params_eq, params_ineq) where
+      params = (primal_var, eq_dual_var, ineq_dual_var)
       params_obj = (Q, c)
       params_eq = (A, b)
       params_ineq = (G, h) or None
@@ -120,31 +125,26 @@ class QuadraticProgramming:
   """
 
   def run(self,
-          init_params: Optional[Any] = None,
-          hyperparams: Optional[Any] = None,
-          data: Optional[Any] = None) -> base.OptStep:
+          init_params: Optional[Tuple] = None,
+          params_obj: Optional[ArrayPair] = None,
+          params_eq: Optional[ArrayPair] = None,
+          params_ineq: Optional[ArrayPair] = None) -> base.OptStep:
     """Runs the quadratic programming solver in CVXPY.
 
     The returned params contains both the primal and dual solutions.
 
     Args:
       init_params: ignored.
-      hyperparams: triplet
-        ``hyperparams = (params_obj, params_eq, params_ineq)``
-        where ``params_obj = (Q, c)``,  ``params_eq = (A, b)``, and
-        ``params_ineq = (G, h)`` or ``None`` if no inequality constraints.
-      data: ignored.
+      params_obj: (Q, c)
+      params_eq: (A, b)
+      params_ineq: = (G, h) or None if no inequality constraints.
     Return type:
       base.OptStep
     Returns:
       (params, state), ``params = (primal_var, dual_var_eq, dual_var_ineq)``
     """
-    del init_params, data  # Not used.
-
-    if hyperparams is None:
-      raise ValueError("`hyperparameters` should contain the QP parameters.""")
-
-    params_obj, params_eq, params_ineq = hyperparams
+    # Not used at the moment but it will be when we implement our own solvers.
+    del init_params
 
     _check_params(params_obj, params_eq, params_ineq)
 
@@ -159,10 +159,11 @@ class QuadraticProgramming:
 
   def l2_optimality_error(self,
                           params: Any,
-                          hyperparams: Any,
-                          data: Optional[Any] = None) -> float:
+                          params_obj: Tuple,
+                          params_eq: Tuple,
+                          params_ineq: Optional[Tuple]) -> base.OptStep:
     """Computes the L2 norm of the KKT residuals."""
-    pytree = self.optimality_fun(params, hyperparams, data)
+    pytree = self.optimality_fun(params, params_obj, params_eq, params_ineq)
     return tree_util.tree_l2_norm(pytree)
 
   def __post_init__(self):

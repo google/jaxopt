@@ -19,13 +19,8 @@ from jax import test_util as jtu
 import jax.numpy as jnp
 
 from jaxopt import base
-from jaxopt import loss
-from jaxopt import test_util
-from jaxopt import test_util2
 
 import numpy as onp
-
-from sklearn import datasets
 
 
 class BaseTest(jtu.JaxTestCase):
@@ -85,44 +80,6 @@ class BaseTest(jtu.JaxTestCase):
     leaf_values, treedef = jax.tree_util.tree_flatten(linop)
     linop2 = jax.tree_util.tree_unflatten(treedef, leaf_values)
     self.assertArraysAllClose(linop2.matvec(x), Ax)
-
-  def test_composite_linear_function_least_squares(self):
-    X, y = datasets.make_regression(n_samples=50, n_features=10, random_state=0)
-    fun = test_util.make_least_squares_objective(X, y, preprocess_X=False)
-
-    def fun2(w, lam):
-      y_pred = jnp.dot(X, w)
-      diff = y_pred - y
-      return 0.5 / (lam * y_pred.shape[0]) * jnp.dot(diff, diff)
-
-    Xy = jnp.dot(X.T, y)
-    self.assertAllClose(fun(Xy, 5.0), fun2(Xy, 5.0))
-    self.assertAllClose(jax.grad(fun)(Xy, 5.0), jax.grad(fun2)(Xy, 5.0))
-
-  def test_composite_linear_function_from_class(self):
-    X, y = datasets.make_regression(n_samples=50, n_features=10, random_state=0)
-
-    class LeastSquaresFunction(base.CompositeLinearFunction2):
-
-      def subfun(self, predictions, hyperparams, data):
-        del hyperparams  # not used
-        y = data[1]
-        residuals = predictions - y
-        return 0.5 * jnp.mean(residuals ** 2)
-
-    fun = LeastSquaresFunction()
-
-    def fun2(params, hyperparams, data):
-      del hyperparams  # not used
-      X, y = data
-      residuals = jnp.dot(X, params) - y
-      return 0.5 * jnp.mean(residuals ** 2)
-
-    weights = jnp.dot(X.T, y)  # dummy weights
-    data = (X, y)
-    self.assertAllClose(fun(weights, 5.0, data), fun2(weights, 5.0, data))
-    self.assertAllClose(jax.grad(fun)(weights, 5.0, data),
-                        jax.grad(fun2)(weights, 5.0, data))
 
 if __name__ == '__main__':
   absltest.main(testLoader=jtu.JaxTestLoader())

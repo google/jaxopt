@@ -52,34 +52,36 @@ class CNN(nn.Module):
     return x
 
 
+net = CNN()
+
+
+@jax.jit
+def accuracy(params, data):
+  x = data["image"].astype(jnp.float32) / 255.
+  logits = net.apply({"params": params}, x)
+  return jnp.mean(jnp.argmax(logits, axis=-1) == data["label"])
+
+
+logistic_loss = jax.vmap(loss.multiclass_logistic_loss)
+
+
+def loss_fun(params, l2_regul, data):
+  """Compute the loss of the network."""
+  x = data["image"].astype(jnp.float32) / 255.
+  logits = net.apply({"params": params}, x)
+  labels = data["label"]
+  sqnorm = tree_util.tree_l2_norm(params, squared=True)
+  loss_value = jnp.mean(logistic_loss(labels, logits))
+  return loss_value + 0.5 * l2_regul * sqnorm
+
+
 def main(argv):
   del argv
-  
-  net = CNN()
-
-  @jax.jit
-  def accuracy(params, batch):
-    x = batch["image"].astype(jnp.float32) / 255.
-    logits = net.apply({"params": params}, x)
-    return jnp.mean(jnp.argmax(logits, axis=-1) == batch["label"])
-
-  logistic_loss = jax.vmap(loss.multiclass_logistic_loss)
-
-  # Objective / loss functions in JAXopt must have the form
-  # loss_fun(params, hyperparams, data).
-  def loss_fun(params, l2_regul, batch):
-    """Compute the loss of the network."""
-    x = batch["image"].astype(jnp.float32) / 255.
-    logits = net.apply({"params": params}, x)
-    labels = batch["label"]
-    sqnorm = tree_util.tree_l2_norm(params, squared=True)
-    loss_value = jnp.mean(logistic_loss(labels, logits))
-    return loss_value + 0.5 * l2_regul * sqnorm
 
   train_ds = load_dataset("train", is_training=True, batch_size=1000)
   test_ds = load_dataset("test", is_training=False, batch_size=10000)
 
-  def pre_update(params, state, hyperparams, data):
+  def pre_update(params, state, *args, **kwargs):
     if state.iter_num % 10 == 0:
       # Periodically evaluate classification accuracy on test set.
       test_accuracy = accuracy(params, next(test_ds))
@@ -102,11 +104,11 @@ def main(argv):
   # params, state = opt.init(init_params)
   # for _ in range(100):
   #   params, state = opt.update(params=params, state=state,
-  #                              hyperparams=l2_regul, data=next(train_ds))
+  #                              l2_regul=l2_regul, data=next(train_ds))
   # except that implicit diff w.r.t. `hyperparams` will be supported.
   solver.run_iterator(init_params=init_params,
-                      hyperparams=l2_regul,
-                      iterator=train_ds)
+                      iterator=train_ds,
+                      l2_regul=l2_regul)
 
 if __name__ == "__main__":
   app.run(main)

@@ -19,24 +19,37 @@ import jax
 from jax import test_util as jtu
 import jax.numpy as jnp
 
-from jaxopt import implicit_diff2 as idf
+from jaxopt import implicit_diff3 as idf
 from jaxopt import test_util2 as test_util
 
 from sklearn import datasets
+
+
+def ridge_objective(params, lam, X, y):
+  residuals = jnp.dot(X, params) - y
+  return 0.5 * jnp.mean(residuals ** 2) + 0.5 * lam * jnp.sum(params ** 2)
+
+
+# def ridge_solver(init_params, lam, X, y):
+def ridge_solver(init_params, lam, X, y):
+  del init_params  # not used
+  XX = jnp.dot(X.T, X)
+  Xy = jnp.dot(X.T, y)
+  I = jnp.eye(X.shape[1])
+  return jnp.linalg.solve(XX + lam * len(y) * I, Xy)
+
 
 class ImplicitDiffTest(jtu.JaxTestCase):
 
   def test_root_vjp(self):
     X, y = datasets.make_regression(n_samples=10, n_features=3, random_state=0)
-    fun = test_util.ridge_objective  # fun(params, hyperparams, data)
-    optimality_fun = jax.grad(fun)
+    optimality_fun = jax.grad(ridge_objective)
     lam = 5.0
-    sol = test_util.ridge_solver(X, y, lam)
+    sol = ridge_solver(None, lam, X, y)
     vjp = lambda g: idf.root_vjp(optimality_fun=optimality_fun,
                                  sol=sol,
-                                 hyperparams=lam,
-                                 cotangent=g,
-                                 data=(X, y))
+                                 args=(lam, X, y),
+                                 cotangent=g)[0]  # vjp w.r.t. lam
     I = jnp.eye(len(sol))
     J = jax.vmap(vjp)(I)
     J_num = test_util.ridge_solver_jac(X, y, lam, eps=1e-4)
@@ -44,63 +57,43 @@ class ImplicitDiffTest(jtu.JaxTestCase):
 
   def test_root_jvp(self):
     X, y = datasets.make_regression(n_samples=10, n_features=3, random_state=0)
-    fun = test_util.ridge_objective  # fun(params, hyperparams, data)
-    optimality_fun = jax.grad(fun)
+    optimality_fun = jax.grad(ridge_objective)
     lam = 5.0
-    sol = test_util.ridge_solver(X, y, lam)
+    sol = ridge_solver(None, lam, X, y)
     J = idf.root_jvp(optimality_fun=optimality_fun,
                      sol=sol,
-                     hyperparams=lam,
-                     tangent=1.0,
-                     data=(X, y))
+                     args=(lam, X, y),
+                     tangents=(1.0, jnp.zeros_like(X), jnp.zeros_like(y)))
     J_num = test_util.ridge_solver_jac(X, y, lam, eps=1e-4)
     self.assertArraysAllClose(J, J_num, atol=1e-2)
 
-  @parameterized.product(has_aux=[True, False])
-  def test_custom_root_closed_over_data(self, has_aux):
-    """ Test @custom_root with solver_fun(hyperparams)."""
+  def test_custom_root(self):
     X, y = datasets.make_regression(n_samples=10, n_features=3, random_state=0)
-    def fun(params, hyperparams):
-      return test_util.ridge_objective(params, hyperparams, (X, y))
-    optimality_fun = jax.grad(fun)
+    optimality_fun = jax.grad(ridge_objective)
     lam = 5.0
-    @idf.custom_root(optimality_fun, has_aux=has_aux)
-    def ridge_solver(hyperparams):
-      ret = test_util.ridge_solver(X, y, hyperparams)
-      if has_aux:
-        return ret, None  # Return some dummy output for test purposes.
-      else:
-        return ret
-    sol = ridge_solver(lam)
-    if has_aux:
-      J, _ = jax.jacobian(ridge_solver)(lam)
-    else:
-      J = jax.jacobian(ridge_solver)(lam)
+    ridge_solver_decorated = idf.custom_root(optimality_fun)(ridge_solver)
+    sol = ridge_solver(None, lam=lam, X=X, y=y)
+    sol_decorated = ridge_solver_decorated(None, lam=lam, X=X, y=y)
+    self.assertArraysAllClose(sol, sol_decorated, atol=1e-4)
     J_num = test_util.ridge_solver_jac(X, y, lam, eps=1e-4)
+    J = jax.jacrev(ridge_solver_decorated, argnums=1)(None, lam, X=X, y=y)
     self.assertArraysAllClose(J, J_num, atol=1e-2)
 
-  @parameterized.product(has_aux=[True, False])
-  def test_custom_root_with_init_and_data(self, has_aux):
-    """ Test @custom_root with solver_fun(init_params, hyperparams, data)."""
+  def test_custom_root_with_has_aux(self):
+    def ridge_solver_with_aux(init_params, lam, X, y):
+      return ridge_solver(init_params, lam, X, y), None
+
     X, y = datasets.make_regression(n_samples=10, n_features=3, random_state=0)
-    fun = test_util.ridge_objective  # fun(params, hyperparams, data)
-    optimality_fun = jax.grad(fun)
+    optimality_fun = jax.grad(ridge_objective)
     lam = 5.0
-    @idf.custom_root(optimality_fun, has_aux=has_aux)
-    def ridge_solver(init_params, hyperparams, data):
-      del init_params  # not used
-      ret = test_util.ridge_solver(data[0], data[1], hyperparams)
-      if has_aux:
-        return ret, None  # Return some dummy output for test purposes.
-      else:
-        return ret
-    if has_aux:
-      J, _ = jax.jacobian(ridge_solver, argnums=1)(None, lam, data=(X, y))
-    else:
-      J = jax.jacobian(ridge_solver, argnums=1)(None, lam, data=(X, y))
+    decorator = idf.custom_root(optimality_fun, has_aux=True)
+    ridge_solver_decorated = decorator(ridge_solver_with_aux)
+    sol = ridge_solver(None, lam=lam, X=X, y=y)
+    sol_decorated = ridge_solver_decorated(None, lam=lam, X=X, y=y)[0]
+    self.assertArraysAllClose(sol, sol_decorated, atol=1e-4)
     J_num = test_util.ridge_solver_jac(X, y, lam, eps=1e-4)
+    J, _ = jax.jacrev(ridge_solver_decorated, argnums=1)(None, lam, X=X, y=y)
     self.assertArraysAllClose(J, J_num, atol=1e-2)
-
 
 if __name__ == '__main__':
   # Uncomment the line below in order to run in float64.

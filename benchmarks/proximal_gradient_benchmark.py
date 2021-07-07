@@ -30,7 +30,8 @@ import numpy as onp
 import jax
 import jax.numpy as jnp
 
-from jaxopt.proximal_gradient import proximal_gradient as proximal_gradient_jaxopt
+from jaxopt import base
+from jaxopt import proximal_gradient2 as pg
 from jaxopt.prox import prox_lasso
 
 
@@ -43,12 +44,6 @@ flags.DEFINE_integer("maxiter", default=200, help=("Max # of iterations."))
 flags.DEFINE_integer("n_samples", default=100000, help=("Number of samples."))
 flags.DEFINE_integer("n_features", default=200, help=("Number of features."))
 flags.DEFINE_bool("verbose", default=False, help=("Enable verbose output."))
-
-
-class OptimizeResults(NamedTuple):
-  error: float
-  nit: int
-  x: onp.ndarray
 
 
 def _make_linesearch(fun, prox, maxls):
@@ -72,8 +67,8 @@ def _make_linesearch(fun, prox, maxls):
   return linesearch
 
 
-def proximal_gradient_onp(fun, init, prox, stepsize, maxiter=200, maxls=15, tol=1e-3,
-             verbose=0):
+def proximal_gradient_onp(fun, init, prox, stepsize, maxiter=200, maxls=15,
+                          tol=1e-3, verbose=0):
   """A pure NumPy re-implementation of proximal gradient for benchmarking."""
   curr_x = init
   curr_stepsize = 1.0
@@ -100,11 +95,14 @@ def proximal_gradient_onp(fun, init, prox, stepsize, maxiter=200, maxls=15, tol=
       # Without line search.
       curr_x = prox(curr_x - stepsize * curr_x_fun_grad, stepsize)
 
-  return OptimizeResults(x=curr_x, nit=iter_num, error=curr_error)
+  state = pg.ProxGradState(iter_num=iter_num, error=curr_error,
+                           stepsize=curr_stepsize)
+
+  return base.OptStep(params=curr_x, state=state)
 
 
-def proximal_gradient_accel_onp(fun, init, prox, stepsize, maxiter=200, maxls=15, tol=1e-3,
-              verbose=0):
+def proximal_gradient_accel_onp(fun, init, prox, stepsize, maxiter=200,
+                                maxls=15, tol=1e-3, verbose=0):
   """A pure NumPy re-implementation of proximal gradient with acceleration."""
   curr_x = init
   curr_y = init
@@ -143,7 +141,10 @@ def proximal_gradient_accel_onp(fun, init, prox, stepsize, maxiter=200, maxls=15
     curr_y = next_y
     curr_t = next_t
 
-  return OptimizeResults(x=curr_x, nit=iter_num, error=curr_error)
+  state = pg.ProxGradState(iter_num=iter_num, error=curr_error,
+                           stepsize=curr_stepsize)
+
+  return base.OptStep(params=curr_x, state=state)
 
 
 def lasso_onp(X, y, lam, stepsize, tol, maxiter, acceleration, verbose):
@@ -165,15 +166,17 @@ def lasso_onp(X, y, lam, stepsize, tol, maxiter, acceleration, verbose):
 
 
 def lasso_jnp(X, y, lam, stepsize, tol, maxiter, acceleration, verbose):
-  def fun(w, _):
+  def fun(w, data):
+    X, y = data
     y_pred = jnp.dot(X, w)
     diff = y_pred - y
     return 0.5 * jnp.dot(diff, diff)
 
   init = jnp.zeros(X.shape[1], dtype=X.dtype)
-  return proximal_gradient_jaxopt(fun=fun, init=init, prox=prox_lasso, params_prox=lam,
-                      tol=tol, stepsize=stepsize, maxiter=maxiter,
-                      acceleration=acceleration, verbose=verbose, ret_info=True)
+  solver = pg.ProximalGradient(fun=fun, prox=prox_lasso,
+                               tol=tol, stepsize=stepsize, maxiter=maxiter,
+                               acceleration=acceleration, verbose=verbose)
+  return solver.run(init, lam, (X, y))
 
 
 def run_proximal_gradient(X, y, lam, stepsize, maxiter, verbose):
@@ -184,17 +187,19 @@ def run_proximal_gradient(X, y, lam, stepsize, maxiter, verbose):
   print("-" * 50)
   start = time.time()
   res_onp = lasso_onp(X=X, y=y, lam=lam, stepsize=stepsize, tol=1e-3,
-                      maxiter=maxiter, acceleration=False, verbose=verbose)
+                      maxiter=maxiter, acceleration=False,
+                      verbose=verbose).state
   print("error onp:", res_onp.error)
-  print("iter_num onp:", res_onp.nit)
+  print("iter_num onp:", res_onp.iter_num)
   print("time onp", time.time() - start)
   print(flush=True)
 
   start = time.time()
   res_jnp = lasso_jnp(X=X, y=y, lam=lam, stepsize=stepsize, tol=1e-3,
-                      maxiter=maxiter, acceleration=False, verbose=verbose)
+                      maxiter=maxiter, acceleration=False,
+                      verbose=verbose).state
   print("error jnp:", res_jnp.error)
-  print("iter_num jnp:", res_jnp.nit)
+  print("iter_num jnp:", res_jnp.iter_num)
   print("time jnp", time.time() - start)
   print(flush=True)
 
@@ -207,17 +212,18 @@ def run_accelerated_proximal_gradient(X, y, lam, stepsize, maxiter, verbose):
   print("-" * 50)
   start = time.time()
   res_onp = lasso_onp(X=X, y=y, lam=lam, stepsize=stepsize, tol=1e-3,
-                      maxiter=maxiter, acceleration=True, verbose=verbose)
+                      maxiter=maxiter, acceleration=True,
+                      verbose=verbose).state
   print("error onp:", res_onp.error)
-  print("iter_num onp:", res_onp.nit)
+  print("iter_num onp:", res_onp.iter_num)
   print("time onp", time.time() - start)
   print(flush=True)
 
   start = time.time()
   res_jnp = lasso_jnp(X=X, y=y, lam=lam, stepsize=stepsize, tol=1e-3,
-                      maxiter=maxiter, acceleration=True, verbose=verbose)
+                      maxiter=maxiter, acceleration=True, verbose=verbose).state
   print("error jnp:", res_jnp.error)
-  print("iter_num jnp:", res_jnp.nit)
+  print("iter_num jnp:", res_jnp.iter_num)
   print("time jnp", time.time() - start)
   print(flush=True)
 

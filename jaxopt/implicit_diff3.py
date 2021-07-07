@@ -17,135 +17,125 @@
 
 from typing import Any
 from typing import Callable
+from typing import Tuple
 
 import jax
-import jax.numpy as jnp
 
 from jaxopt import linear_solve
 from jaxopt.tree_util import tree_scalar_mul
-from jaxopt.tree_util import tree_sub
 
 
 def root_vjp(optimality_fun: Callable,
              sol: Any,
-             hyperparams: Any,
+             args: Tuple,
              cotangent: Any,
-             solve: Callable = linear_solve.solve_normal_cg,
-             *args,
-             **kw) -> Any:
+             solve: Callable = linear_solve.solve_normal_cg) -> Any:
   """Vector-Jacobian product of a root.
 
-  The invariant is ``optimality_fun(sol, hyperparams, *args, **kw) == 0``.
+  The invariant is ``optimality_fun(sol, *args) == 0``.
 
   Args:
     optimality_fun: the optimality function to use.
     sol: solution / root (pytree).
-    hyperparams: hyper-parameters to use for ``optimality_fun`` above (pytree).
+    args: tuple containing the arguments with respect to which we wish to
+      differentiate ``sol`` against.
     cotangent: vector to left-multiply the Jacobian with
       (pytree, same structure as ``sol``).
     solve: a linear solver of the form, ``x = solve(matvec, b)``,
       where ``matvec(x) = Ax`` and ``Ax=b``.
-    *args, **kw: additional arguments to be passed to ``optimality_fun``.
   Returns:
-    Vector-Jacobian product w.r.t. ``hyperparams` of `sol` with cotangent.
-    It has the same pytree  structure as `hyperparams`.
+    vjps: tuple of the same length as ``len(args)`` containing the vjps w.r.t.
+      each argument. Each ``vjps[i]` has the same pytree structure as
+      ``args[i]``.
   """
-  # We close over the extra *args and **kw as we only differentiate
-  # w.r.t. hyperparams.
-  fun = lambda x, hp: optimality_fun(x, hp, *args, **kw)
-  _, vjp_fun = jax.vjp(fun, sol, hyperparams)
+  def fun_sol(sol):
+    # We close over the arguments.
+    return optimality_fun(sol, *args)
+
+  _, vjp_fun_sol = jax.vjp(fun_sol, sol)
 
   # Compute the multiplication A^T u = (u^T A)^T.
-  matvec = lambda u: vjp_fun(u)[0]
+  matvec = lambda u: vjp_fun_sol(u)[0]
 
   # The solution of A^T u = v, where
-  # A = jacobian(fun, argnums=0)
+  # A = jacobian(optimality_fun, argnums=0)
   # v = -cotangent.
   v = tree_scalar_mul(-1, cotangent)
   u = solve(matvec, v)
 
-  return vjp_fun(u)[1]
+  def fun_args(*args):
+    # We close over the solution.
+    return optimality_fun(sol, *args)
+
+  _, vjp_fun_args = jax.vjp(fun_args, *args)
+
+  return vjp_fun_args(u)
 
 
-def _jvp1(f, primals, tangent):
-  """JVP in the first argument of f."""
-  fun = lambda x: f(x, primals[1])
-  return jax.jvp(fun, (primals[0],), (tangent,))[1]
+def _jvp_sol(optimality_fun, sol, args, tangent):
+  """JVP in the first argument of optimality_fun."""
+  # We close over the arguments.
+  fun = lambda x: optimality_fun(x, *args)
+  return jax.jvp(fun, (sol,), (tangent,))[1]
 
 
-def _jvp2(f, primals, tangent):
-  """JVP in the second argument of f."""
-  fun = lambda y: f(primals[0], y)
-  return jax.jvp(fun, (primals[1],), (tangent,))[1]
+def _jvp_args(optimality_fun, sol, args, tangents):
+  """JVP in the second argument of optimality_fun."""
+  # We close over the solution.
+  fun = lambda *y: optimality_fun(sol, *y)
+  return jax.jvp(fun, args, tangents)[1]
 
 
 def root_jvp(optimality_fun: Callable,
              sol: Any,
-             hyperparams: Any,
-             tangent: Any,
-             solve:Callable = linear_solve.solve_normal_cg,
-             *args,
-             **kw) -> Any:
+             args: Tuple,
+             tangents: Tuple,
+             solve:Callable = linear_solve.solve_normal_cg) -> Any:
   """Jacobian-vector product of a root.
 
-  The invariant is ``sol = fun(sol, hyperparams, *args, **kw) == 0``.
+  The invariant is ``sol = optimality_fun(sol, *args) == 0``.
 
   Args:
     optimality_fun: the optimality function to use.
     sol: solution / root (pytree).
-    hyperparams: hyper-parameters to use for ``optimality_fun`` above (pytree).
-    tangent: a pytree to right-multiply the Jacobian with, with the same pytree
-      structure as ``hyperparams``.
+    args: tuple containing the arguments with respect to which to differentiate.
+    tangents: a tuple of the same size as ``len(args)``. Each ``tangents[i]``
+      has the same pytree structure as ``args[i]``.
     solve: a linear solver of the form, ``solve(matvec, b)``.
-    *args, **kw: additional arguments to be passed to ``optimality_fun``.
   Returns:
-    Jacobian-vector product w.r.t. ``hyperparams`` of ``sol`` with ``tangent``.
-    It has the same pytree structure as ``sol``.
+    jvp: a pytree with the same structure as ``sol``.
   """
-  # We close over the extra *args and **kw as we only differentiate
-  # w.r.t. hyperparams.
-  fun = lambda x, hp: optimality_fun(x, hp, *args, **kw)
+  if len(args) != len(tangents):
+    raise ValueError("args and tangents should be tuples of the same length.")
 
   # Product with A = jacobian(fun, argnums=0).
-  matvec = lambda u: _jvp1(fun, (sol, hyperparams), u)
+  matvec = lambda u: _jvp_sol(optimality_fun, sol, args, u)
 
-  v = tree_scalar_mul(-1, tangent)
-  Jv = _jvp2(fun, (sol, hyperparams), v)
+  v = tree_scalar_mul(-1, tangents)
+  Jv = _jvp_args(optimality_fun, sol, args, v)
   return solve(matvec, Jv)
 
 
 def _custom_root(solver_fun, optimality_fun, solve, has_aux):
-  def solver_fun_fwd(*args):
-    res = solver_fun(*args)
+  def solver_fun_fwd(init_params, *args):
+    res = solver_fun(init_params, *args)
     return res, (res, args)
 
   def solver_fun_bwd(tup, cotangent):
     res, args = tup
 
     # solver_fun can return auxiliary data if has_aux = True.
-
     if has_aux:
       cotangent = cotangent[0]
       sol = res[0]
     else:
       sol = res
 
-    # solver_fun can have 1 or 3 arguments.
-
-    if len(args) == 1:  # solver_fun(hyperparams)
-      vjp_hparams = root_vjp(optimality_fun=optimality_fun, solve=solve,
-                             sol=sol, hyperparams=args[0], cotangent=cotangent)
-      return (vjp_hparams,)
-
-    elif len(args) == 3:  # solver_fun(init_params, hyperparams, data)
-      hyperparams = args[1]
-      data = args[2]
-      vjp_hparams = root_vjp(optimality_fun, sol, hyperparams, cotangent, solve,
-                             data)
-      return (None,) + (vjp_hparams,) + (None,)
-
-    else:
-      raise ValueError("Invalid number of arguments in solver function.")
+    # Compute VJPs w.r.t. args.
+    vjps = root_vjp(optimality_fun=optimality_fun, sol=sol, args=args,
+                    cotangent=cotangent, solve=solve)
+    # For init_params, we return None.
+    return (None,) + vjps
 
   wrapped_solver_fun = jax.custom_vjp(solver_fun)
   wrapped_solver_fun.defvjp(solver_fun_fwd, solver_fun_bwd)
@@ -159,9 +149,9 @@ def custom_root(optimality_fun: Callable,
   """Decorator for adding implicit differentiation to a root solver.
 
   Args:
-    optimality_fun: an equation function, ``optimality_fun(x, params)`.
-      The invariant is ``optimality_fun(sol, hyperparams, data) == 0`` at the
-        solution / root ``sol``.
+    optimality_fun: an equation function, ``optimality_fun(x, *args)`.
+      The invariant is ``optimality_fun(sol, *args) == 0`` at the
+      solution / root ``sol``.
     has_aux: whether the decorated solver function returns auxiliary data.
     solve: a linear solver of the form, ``solve(matvec, b)``.
 
@@ -184,9 +174,8 @@ def make_kkt_optimality_fun(obj_fun, eq_fun, ineq_fun=None):
     ineq_fun: inequality constraint function, so that
       ``ineq_fun(primal_var, params_ineq) <= 0`` is imposed (optional).
   Returns:
-    optimality_fun(x, params) where
+    optimality_fun(params, params_obj, params_eq, params_ineq) where
       x = (primal_var, eq_dual_var, ineq_dual_var)
-      params = (params_obj, params_eq, params_ineq)
 
     If ``ineq_fun`` is None, ``ineq_dual_var`` and ``params_ineq`` are
     ignored (i.e., they can be set to ``None``).
@@ -196,11 +185,8 @@ def make_kkt_optimality_fun(obj_fun, eq_fun, ineq_fun=None):
   # We only consider the stationarity, primal_feasability and comp_slackness
   # conditions, as primal and dual feasibility conditions can be ignored
   # almost everywhere.
-  def optimality_fun(x, params, data):
-    del data  # Not used
-
-    primal_var, eq_dual_var, ineq_dual_var = x
-    params_obj, params_eq, params_ineq = params
+  def optimality_fun(params, params_obj, params_eq, params_ineq):
+    primal_var, eq_dual_var, ineq_dual_var = params
 
     # Size: number of primal variables.
     _, eq_vjp_fun = jax.vjp(eq_fun, primal_var, params_eq)

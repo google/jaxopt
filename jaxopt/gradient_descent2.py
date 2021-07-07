@@ -21,6 +21,7 @@ from typing import Optional
 from dataclasses import dataclass
 
 from jaxopt import base
+from jaxopt import loop
 from jaxopt import proximal_gradient2 as proximal_gradient
 
 
@@ -29,9 +30,9 @@ class GradientDescent(proximal_gradient.ProximalGradient):
   """Gradient Descent solver.
 
   Attributes:
-    fun: a smooth function of the form ``fun(parameters, hyperparams, data)``,
+    fun: a smooth function of the form ``fun(parameters, *args, **kwargs)``,
       where ``parameters`` are the model parameters w.r.t. which we minimize
-      the function and ``hyperparams`` are fixed auxiliary parameters.
+      the function and the rest are fixed auxiliary parameters.
     stepsize: a stepsize to use (if <= 0, use backtracking line search).
     maxiter: maximum number of proximal gradient descent iterations.
     maxls: maximum number of iterations to use in the line search.
@@ -50,44 +51,52 @@ class GradientDescent(proximal_gradient.ProximalGradient):
   def update(self,
              params: Any,
              state: NamedTuple,
-             hyperparams: Optional[Any] = None,
-             data: Optional[Any] = None) -> base.OptStep:
+             *args,
+             **kwargs) -> base.OptStep:
     """Performs one iteration of proximal gradient.
 
     Args:
       params: pytree containing the parameters.
       state: named tuple containing the solver state.
-      hyperparams: pytree containing hyper-parameters, i.e.,
-        differentiable arguments to be passed to ``fun``.
-      data: pytree containing data, i.e.,
-        non-differentiable arguments to be passed to ``fun``.
+      *args: additional positional arguments to be passed to ``fun``.
+      **kwargs: additional keyword arguments to be passed to ``fun``.
     Return type:
       base.OptStep
     Returns:
       (params, state)
     """
-    return super().update(params, state, (hyperparams, None), data)
+    return super().update(params, state, None, *args, **kwargs)
 
-  # pylint: disable=useless-super-delegation
   def run(self,
           init_params: Any,
-          hyperparams: Optional[Any] = None,
-          data: Optional[Any] = None) -> base.OptStep:
+          *args,
+          **kwargs) -> base.OptStep:
     """Runs gradient descent until convergence or max number of iterations.
 
     Args:
       init_params: pytree containing the initial parameters.
-      hyperparams: pytree containing hyper-parameters, i.e.,
-        differentiable arguments to be passed to ``fun``.
-      data: pytree containing data, i.e.,
-        non-differentiable arguments to be passed to ``fun``.
+      *args: additional positional arguments to be passed to ``fun``.
+      **kwargs: additional keyword arguments to be passed to ``fun``.
     Return type:
       base.OptStep
     Returns:
       (params, state)
     """
-    return super().run(init_params, hyperparams, data)
+    def cond_fun(pair):
+      _, state = pair
+      if self.verbose:
+        print(state.iter_num, state.error)
+      return state.error > self.tol
 
-  def optimality_fun(self, sol, hyperparams, data):
+    def body_fun(pair):
+      params, state = pair
+      return self.update(params, state, *args, **kwargs)
+
+    return loop.while_loop(cond_fun=cond_fun, body_fun=body_fun,
+                           init_val=self.init(init_params),
+                           maxiter=self.maxiter, jit=self._jit,
+                           unroll=self._unroll)
+
+  def optimality_fun(self, params, *args, **kwargs):
     """Optimality function mapping compatible with ``@custom_root``."""
-    return self._grad_fun(sol, hyperparams, data)
+    return self._grad_fun(params, *args, **kwargs)

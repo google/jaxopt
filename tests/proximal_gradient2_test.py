@@ -20,6 +20,7 @@ import jax
 from jax import test_util as jtu
 import jax.numpy as jnp
 from jaxopt import implicit_diff
+from jaxopt import objectives
 from jaxopt import projection
 from jaxopt import prox
 from jaxopt import proximal_gradient2 as proximal_gradient
@@ -34,9 +35,8 @@ class ProximalGradientTest(jtu.JaxTestCase):
   @parameterized.product(acceleration=[True, False])
   def test_lasso_manual_loop(self, acceleration):
     X, y = datasets.make_regression(n_samples=10, n_features=3, random_state=0)
-    fun = test_util.least_squares_objective
+    fun = objectives.least_squares  # fun(params, data)
     lam = 10.0
-    hyperparams = (None, lam)  # (hyperparams_fun, hyperparams_prox)
     data = (X, y)
 
     pg = proximal_gradient.ProximalGradient(fun=fun, prox=prox.prox_lasso,
@@ -44,24 +44,23 @@ class ProximalGradientTest(jtu.JaxTestCase):
     w_init = jnp.zeros(X.shape[1])
     params, state = pg.init(w_init)
     for _ in range(10):
-      params, state = pg.update(params, state, hyperparams, data)
+      params, state = pg.update(params, state, hyperparams_prox=lam, data=data)
 
     # Check optimality conditions.
-    self.assertLess(state.error, 1e-2)
+    self.assertLess(state.error, 2e-2)
 
   @parameterized.product(acceleration=[True, False])
   def test_lasso(self, acceleration=True):
     X, y = datasets.make_regression(n_samples=10, n_features=3, random_state=0)
-    fun = test_util.least_squares_objective
+    fun = objectives.least_squares
     lam = 10.0
-    hyperparams = (None, lam)  # (hyperparams_fun, hyperparams_prox)
     data = (X, y)
 
     w_init = jnp.zeros(X.shape[1])
     pg = proximal_gradient.ProximalGradient(fun=fun, prox=prox.prox_lasso,
                                             maxiter=200, tol=1e-3,
                                             acceleration=acceleration)
-    w_fit, info = pg.run(w_init, hyperparams, data)
+    w_fit, info = pg.run(w_init, hyperparams_prox=lam, data=data)
 
     # Check optimality conditions.
     self.assertLess(info.error, 1e-3)
@@ -74,10 +73,9 @@ class ProximalGradientTest(jtu.JaxTestCase):
     """Test implicit differentiation of a single lambda parameter."""
     X, y = datasets.make_regression(n_samples=10, n_features=3, random_state=0)
     lam = 10.0
-    hyperparams = (None, lam)  # (hyperparams_fun, hyperparams_prox)
     data = (X, y)
 
-    fun = test_util.least_squares_objective
+    fun = objectives.least_squares
     jac_num = test_util.lasso_skl_jac(X, y, lam)
     w_skl = test_util.lasso_skl(X, y, lam)
 
@@ -86,10 +84,10 @@ class ProximalGradientTest(jtu.JaxTestCase):
                                             acceleration=True,
                                             implicit_diff=True)
 
-    def wrapper(hyperparams):
-      return pg.run(w_skl, hyperparams, data).params
+    def wrapper(hyperparams_prox):
+      return pg.run(w_skl, hyperparams_prox, data).params
 
-    _, jac_prox = jax.jacrev(wrapper)(hyperparams)
+    jac_prox = jax.jacrev(wrapper)(lam)
     self.assertArraysAllClose(jac_num, jac_prox, atol=1e-3)
 
 if __name__ == '__main__':

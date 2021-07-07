@@ -31,8 +31,10 @@ class QuadraticProgTest(jtu.JaxTestCase):
   def _check_derivative_A_and_b(self, solver, params, A, b):
     def fun(A, b):
       # reduce the primal variables to a scalar value for test purpose.
-      hyperparams = (params[0], (A, b), params[2])
-      return jnp.sum(solver.run(hyperparams=hyperparams).params[0])
+      hyperparams = dict(params_obj=params["params_obj"],
+                         params_eq=(A, b),
+                         params_ineq=params["params_ineq"])
+      return jnp.sum(solver.run(**hyperparams).params[0])
 
     # Derivative w.r.t. A.
     rng = onp.random.RandomState(0)
@@ -59,9 +61,9 @@ class QuadraticProgTest(jtu.JaxTestCase):
     G = jnp.array([[-1.0, 0.0], [0.0, -1.0]])
     h = jnp.array([0.0, 0.0])
     qp = quadratic_prog.QuadraticProgramming()
-    hyperparams = ((Q, c), (A, b), (G, h))
-    sol = qp.run(hyperparams=hyperparams).params
-    self.assertAllClose(qp.l2_optimality_error(sol, hyperparams), 0.0)
+    hyperparams = dict(params_obj=(Q, c), params_eq=(A, b), params_ineq=(G, h))
+    sol = qp.run(**hyperparams).params
+    self.assertAllClose(qp.l2_optimality_error(sol, **hyperparams), 0.0)
     self._check_derivative_A_and_b(qp, hyperparams, A, b)
 
   def test_qp_eq_only(self):
@@ -70,9 +72,9 @@ class QuadraticProgTest(jtu.JaxTestCase):
     A = jnp.array([[1.0, 1.0]])
     b = jnp.array([1.0])
     qp = quadratic_prog.QuadraticProgramming()
-    hyperparams = ((Q, c), (A, b), None)
-    sol = qp.run(hyperparams=hyperparams).params
-    self.assertAllClose(qp.l2_optimality_error(sol, hyperparams), 0.0)
+    hyperparams = dict(params_obj=(Q, c), params_eq=(A, b), params_ineq=None)
+    sol = qp.run(**hyperparams).params
+    self.assertAllClose(qp.l2_optimality_error(sol, **hyperparams), 0.0)
     self._check_derivative_A_and_b(qp, hyperparams, A, b)
 
   def test_projection_simplex(self):
@@ -82,11 +84,12 @@ class QuadraticProgTest(jtu.JaxTestCase):
       b = jnp.array([s])
       G = -jnp.eye(len(x))
       h = jnp.zeros_like(x)
-      hyperparams = ((Q, -x), (A, b), (G, h))
+      hyperparams = dict(params_obj=(Q, -x), params_eq=(A, b),
+                         params_ineq=(G, h))
 
       qp = quadratic_prog.QuadraticProgramming()
       # Returns the primal solution only.
-      return qp.run(hyperparams=hyperparams).params[0]
+      return qp.run(**hyperparams).params[0]
 
     rng = onp.random.RandomState(0)
     x = jnp.array(rng.randn(10).astype(onp.float32))

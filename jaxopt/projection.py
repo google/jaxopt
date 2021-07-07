@@ -243,8 +243,8 @@ def projection_affine_set(x: jnp.ndarray, hyperparams: Tuple) -> jnp.ndarray:
   A, b = hyperparams
   qp = quadratic_prog.QuadraticProgramming()
   I = jnp.eye(len(x))
-  hyperparams = (I, -x), (A, b), None
-  return qp.run(hyperparams=hyperparams).params[0]
+  hyperparams = dict(params_obj=(I, -x), params_eq=(A, b), params_ineq=None)
+  return qp.run(**hyperparams).params[0]
 
 
 def projection_polyhedron(x: jnp.ndarray, hyperparams: Tuple) -> jnp.ndarray:
@@ -265,17 +265,14 @@ def projection_polyhedron(x: jnp.ndarray, hyperparams: Tuple) -> jnp.ndarray:
   A, b, G, h = hyperparams
   qp = quadratic_prog.QuadraticProgramming()
   I = jnp.eye(len(x))
-  hyperparams = (I, -x), (A, b), (G, h)
-  return qp.run(hyperparams=hyperparams).params[0]
+  hyperparams = dict(params_obj=(I, -x), params_eq=(A, b), params_ineq=(G, h))
+  return qp.run(**hyperparams).params[0]
 
 
-def _optimality_fun_proj_box_sec(tau, args, data):
-  del data  # Not used
-
+def _optimality_fun_proj_box_sec(tau, x, hyperparams):
   # An optimal solution has the form
   # p_i = clip(w_i * tau + x_i, alpha_i, beta_i) for all i
   # where tau is the root of fun(tau, hyperparams) = dot(w, p) - c = 0.
-  x, hyperparams = args
   alpha, beta, w, c = hyperparams
   p = jnp.clip(w * tau + x, alpha, beta)
   return jnp.dot(w, p) - c
@@ -290,7 +287,7 @@ def _root_proj_box_sec(x, hyperparams):
                                   upper=upper,
                                   increasing=True,
                                   check_bracket=False)
-  return bisect.run(hyperparams=(x, hyperparams)).params
+  return bisect.run(None, x, hyperparams).params
 
 
 def projection_box_section(x: jnp.ndarray,

@@ -283,9 +283,9 @@ class ProjectionTest(jtu.JaxTestCase):
     b = jnp.array([c])
     G = jnp.concatenate((-jnp.eye(len(x)), jnp.eye(len(x))))
     h = jnp.concatenate((alpha, beta))
-    hyperparams = ((Q, -x), (A, b), (G, h))
+    hyperparams = dict(params_obj=(Q, -x), params_eq=(A, b), params_ineq=(G, h))
     qp = quadratic_prog.QuadraticProgramming()
-    p2 = qp.run(hyperparams=hyperparams).params[0]
+    p2 = qp.run(**hyperparams).params[0]
     self.assertArraysAllClose(p, p2, atol=1e-5)
 
   def test_projection_box_section_infeasible(self):

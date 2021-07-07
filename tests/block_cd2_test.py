@@ -20,6 +20,7 @@ from jax import test_util as jtu
 import jax.numpy as jnp
 
 from jaxopt import block_cd2 as block_cd
+from jaxopt import objectives
 from jaxopt import projection
 from jaxopt import prox
 from jaxopt import test_util2 as test_util
@@ -36,21 +37,19 @@ class BlockCoordinateDescentTest(jtu.JaxTestCase):
     X, y = datasets.make_regression(n_samples=10, n_features=3, random_state=0)
 
     # Setup parameters.
+    fun = objectives.least_squares  # fun(params, data)
     lam = 10.0
-    hyperparams = (None, lam)  # (hyperparams_fun, hyperparams_prox)
     data = (X, y)
 
     # Initialize.
     w_init = jnp.zeros(X.shape[1])
-    bcd = block_cd.BlockCoordinateDescent(fun=test_util.least_squares_objective,
+    bcd = block_cd.BlockCoordinateDescent(fun=fun,
                                           block_prox=prox.prox_lasso)
-    params, state = bcd.init(init_params=w_init,
-                             hyperparams=hyperparams,
-                             data=data)
+    params, state = bcd.init(init_params=w_init, data=data)
     # Optimization loop.
     for _ in range(30):
       params, state = bcd.update(params=params, state=state,
-                                 hyperparams=hyperparams, data=data)
+                                 hyperparams_prox=lam, data=data)
 
     # Check optimality conditions.
     self.assertLess(state.error, 0.5)
@@ -59,16 +58,16 @@ class BlockCoordinateDescentTest(jtu.JaxTestCase):
     X, y = datasets.make_regression(n_samples=10, n_features=3, random_state=0)
 
     # Set up parameters.
+    fun = objectives.least_squares  # fun(params, data)
     lam = 10.0
-    hyperparams = (None, lam)  # (hyperparams_fun, hyperparams_prox)
     data = (X, y)
     w_init = jnp.zeros(X.shape[1])
 
     # Run solver.
-    bcd = block_cd.BlockCoordinateDescent(fun=test_util.least_squares_objective,
+    bcd = block_cd.BlockCoordinateDescent(fun=fun,
                                           block_prox=prox.prox_lasso,
                                           maxiter=150)
-    sol = bcd.run(init_params=w_init, hyperparams=hyperparams, data=data)
+    sol = bcd.run(init_params=w_init, hyperparams_prox=lam, data=data)
 
     # Check optimality conditions.
     self.assertLess(sol.state.error, 0.01)
@@ -81,21 +80,24 @@ class BlockCoordinateDescentTest(jtu.JaxTestCase):
     X, y = datasets.make_regression(n_samples=10, n_features=3, random_state=0)
 
     # Set up parameters.
-    hyperparams = (None, (2.0, 0.8))  # (hyperparams_fun, hyperparams_prox)
+    fun = objectives.least_squares  # fun(params, data)
+    hyperparams_prox = (2.0, 0.8)
     data = (X, y)
     w_init = jnp.zeros(X.shape[1])
 
     # Run solver.
-    bcd = block_cd.BlockCoordinateDescent(fun=test_util.least_squares_objective,
+    bcd = block_cd.BlockCoordinateDescent(fun=fun,
                                           block_prox=prox.prox_elastic_net,
                                           maxiter=100)
-    sol = bcd.run(init_params=w_init, hyperparams=hyperparams, data=data)
+    sol = bcd.run(init_params=w_init,
+                  hyperparams_prox=hyperparams_prox,
+                  data=data)
 
     # Check optimality conditions.
     self.assertLess(sol.state.error, 0.01)
 
     # Check against sklearn.
-    w_skl = test_util.enet_skl(X, y, hyperparams[1])
+    w_skl = test_util.enet_skl(X, y, hyperparams_prox)
     self.assertArraysAllClose(sol.params, w_skl, atol=1e-2)
 
   def test_multitask_reg(self):
@@ -107,26 +109,27 @@ class BlockCoordinateDescentTest(jtu.JaxTestCase):
     Y = jnp.dot(X, W) + rng.randn(n_samples, n_tasks)
 
     # Set up parameters.
+    fun = objectives.least_squares  # fun(params, data)
     block_prox = prox.prox_group_lasso
-    hyperparams = (None, 1e-1)  # (hyperparams_fun, hyperparams_prox)
+    lam = 1e-1
     W_init = jnp.zeros((n_features, n_tasks))
     data = (X, Y)
 
     # Run solver.
-    bcd = block_cd.BlockCoordinateDescent(fun=test_util.least_squares_objective,
+    bcd = block_cd.BlockCoordinateDescent(fun=fun,
                                           block_prox=block_prox,
                                           maxiter=1000, tol=1e-3)
-    sol = bcd.run(init_params=W_init, hyperparams=hyperparams, data=data)
+    sol = bcd.run(init_params=W_init, hyperparams_prox=lam, data=data)
 
     # Check optimality conditions.
     self.assertLess(sol.state.error, 0.01)
 
     # Compare against sklearn.
-    W_skl = test_util.multitask_lasso_skl(X, Y, hyperparams[1] * n_tasks)
+    W_skl = test_util.multitask_lasso_skl(X, Y, lam * n_tasks)
     self.assertArraysAllClose(sol.params, W_skl, atol=1e-1)
 
   @parameterized.product(multiclass=[True, False], penalty=["l1", "l2"])
-  def test_l1_logreg(self, multiclass, penalty):
+  def test_logreg(self, multiclass, penalty):
     # Generate data.
     if multiclass:
       n_samples, n_features, n_classes = 20, 5, 3
@@ -148,17 +151,17 @@ class BlockCoordinateDescentTest(jtu.JaxTestCase):
       block_prox = prox.prox_ridge
 
     if multiclass:
-      fun = test_util.multiclass_logreg_objective
+      fun = objectives.multiclass_logreg
     else:
-      fun = test_util.binary_logreg_objective
+      fun = objectives.binary_logreg
 
-    hyperparams = (None, 1e-2)  # (hyperparams_fun, hyperparams_prox)
+    lam = 1e-2
 
     # Run solver.
     bcd = block_cd.BlockCoordinateDescent(fun=fun,
                                           block_prox=block_prox,
                                           maxiter=3500, tol=1e-5)
-    sol = bcd.run(W_init, hyperparams, data)
+    sol = bcd.run(W_init, hyperparams_prox=lam, data=data)
 
     # Check optimality conditions.
     self.assertLess(sol.state.error, 0.01)
@@ -166,21 +169,13 @@ class BlockCoordinateDescentTest(jtu.JaxTestCase):
     if not (multiclass and penalty == "l1"):
 
       # Compare against sklearn (it does not support multiclass + l1).
-      W_skl = test_util.logreg_skl(X, y, hyperparams[1], penalty=penalty,
+      W_skl = test_util.logreg_skl(X, y, lam, penalty=penalty,
                                    multiclass=multiclass)
       self.assertArraysAllClose(sol.params, W_skl, atol=1e-2)
 
       # Check differentiation.
-      jac_num = test_util.logreg_skl_jac(X, y, hyperparams[1], eps=1e-4,
+      jac_num = test_util.logreg_skl_jac(X, y, lam, eps=1e-4,
                                          penalty=penalty, multiclass=multiclass)
-
-      # By implicit diff.
-      def wrapper(hyperparams_prox):
-        return bcd.run(init_params=W_skl,
-                       hyperparams=(None, hyperparams_prox),
-                       data=data).params
-      jac = jax.jacrev(wrapper)(hyperparams[1])
-      self.assertAllClose(jac_num, jac, atol=1e-1)
 
       # By autodiff.
       bcd = block_cd.BlockCoordinateDescent(fun=fun,
@@ -189,10 +184,20 @@ class BlockCoordinateDescentTest(jtu.JaxTestCase):
                                             implicit_diff=False)
       def wrapper(hyperparams_prox):
         return bcd.run(init_params=W_init,
-                       hyperparams=(None, hyperparams_prox),
+                       hyperparams_prox=hyperparams_prox,
                        data=data).params
-      jac = jax.jacfwd(wrapper)(hyperparams[1])
+      jac = jax.jacfwd(wrapper)(lam)
       self.assertAllClose(jac_num, jac, atol=5e-1)
+
+      # By implicit diff.
+      bcd = block_cd.BlockCoordinateDescent(fun=fun,
+                                            block_prox=block_prox,
+                                            maxiter=3500, tol=1e-5,
+                                            implicit_diff=True)
+      def wrapper(hyperparams_prox):
+        return bcd.run(W_skl, hyperparams_prox, data).params
+      jac = jax.jacrev(wrapper)(lam)
+      self.assertAllClose(jac_num, jac, atol=1e-1)
 
   def test_multiclass_linear_svm(self):
     # Generate data.
@@ -205,23 +210,23 @@ class BlockCoordinateDescentTest(jtu.JaxTestCase):
 
     # Set up parameters.
     block_prox = prox.make_prox_from_projection(projection.projection_simplex)
-    fun = test_util.multiclass_linear_svm_dual_objective
+    fun = objectives.multiclass_linear_svm_dual
     data = (X, Y)
-    hyperparams = (1000.0, None)  # (hyperparams_fun, hyperparams_prox)
+    lam = 1000.0
     beta_init = jnp.ones((n_samples, n_classes)) / n_classes
 
     # Run solver.
     bcd = block_cd.BlockCoordinateDescent(fun=fun,
                                           block_prox=block_prox,
                                           maxiter=3500, tol=1e-5)
-    sol = bcd.run(beta_init, hyperparams, data)
+    sol = bcd.run(beta_init, hyperparams_prox=None, lam=lam, data=data)
 
     # Check optimality conditions.
     self.assertLess(sol.state.error, 0.01)
 
     # Compare against sklearn.
-    W_skl = test_util.multiclass_linear_svm_skl(X, y, hyperparams[0])
-    W_fit = jnp.dot(X.T, (Y - sol.params)) / hyperparams[0]
+    W_skl = test_util.multiclass_linear_svm_skl(X, y, lam)
+    W_fit = jnp.dot(X.T, (Y - sol.params)) / lam
     self.assertArraysAllClose(W_fit, W_skl, atol=1e-3)
 
 if __name__ == '__main__':
