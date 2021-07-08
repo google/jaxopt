@@ -21,7 +21,7 @@ from typing import Tuple
 import jax
 import jax.numpy as jnp
 
-from jaxopt import tree_util
+from jaxopt._src import tree_util
 
 
 def prox_none(x: Any, hyperparams: Optional[Any] = None, scaling: float = 1.0):

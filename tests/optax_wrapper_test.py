@@ -20,8 +20,8 @@ from jax import test_util as jtu
 import jax.numpy as jnp
 
 from jaxopt import objectives
-from jaxopt import optax_wrapper
-from jaxopt import test_util2 as test_util
+from jaxopt import OptaxSolver
+from jaxopt._src import test_util
 
 import numpy as onp
 
@@ -45,7 +45,7 @@ class OptaxWrapperTest(jtu.JaxTestCase):
     b_init = jnp.zeros(n_classes)
     pytree_init = (W_init, b_init)
 
-    opt = optax_wrapper.OptaxSolver(opt=optax.adam(1e-3), fun=fun)
+    opt = OptaxSolver(opt=optax.adam(1e-3), fun=fun)
 
     params, state = opt.init(pytree_init)
     for _ in range(200):
@@ -74,7 +74,7 @@ class OptaxWrapperTest(jtu.JaxTestCase):
     b_init = jnp.zeros(n_classes)
     pytree_init = (W_init, b_init)
 
-    opt = optax_wrapper.OptaxSolver(opt=optax.adam(1e-3), fun=fun,
+    opt = OptaxSolver(opt=optax.adam(1e-3), fun=fun,
                                     maxiter=300, has_aux=has_aux)
     # Test positional, keyword and mixed arguments.
     for params, _ in (opt.run(pytree_init, lam, data),
@@ -109,7 +109,7 @@ class OptaxWrapperTest(jtu.JaxTestCase):
     pytree_init = (W_init, b_init)
 
     # We set a larger maxiter than n_iter in order to trigger StopIteration.
-    opt = optax_wrapper.OptaxSolver(opt=optax.adam(1e-3), fun=fun, maxiter=1000)
+    opt = OptaxSolver(opt=optax.adam(1e-3), fun=fun, maxiter=1000)
     iterable = dataset_loader(X, y, n_iter=200)
     params, _ = opt.run_iterator(pytree_init, iterable, lam=lam)
 
@@ -127,7 +127,7 @@ class OptaxWrapperTest(jtu.JaxTestCase):
     W_skl = test_util.logreg_skl(X, y, lam)
 
     # Make sure the decorator works.
-    opt = optax_wrapper.OptaxSolver(opt=optax.adam(1e-3), fun=fun, maxiter=5)
+    opt = OptaxSolver(opt=optax.adam(1e-3), fun=fun, maxiter=5)
     def wrapper(hyperparams):
       return opt.run(W_skl, lam=lam, data=data).params
     jac_custom = jax.jacrev(wrapper)(lam)
@@ -144,7 +144,7 @@ class OptaxWrapperTest(jtu.JaxTestCase):
     W_skl = test_util.logreg_skl(X, y, lam)
 
     # Make sure the decorator works.
-    opt = optax_wrapper.OptaxSolver(opt=optax.adam(1e-3), fun=fun, maxiter=5,
+    opt = OptaxSolver(opt=optax.adam(1e-3), fun=fun, maxiter=5,
                                     implicit_diff=True)
     def wrapper(hyperparams):
       # Unfortunately positional arguments are required when implicit_diff=True.

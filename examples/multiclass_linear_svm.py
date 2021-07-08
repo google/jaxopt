@@ -16,12 +16,10 @@
 
 from absl import app
 import jax.numpy as jnp
-from jaxopt import block_cd2 as block_cd
+from jaxopt import BlockCoordinateDescent
 from jaxopt import objectives
 from jaxopt import projection
 from jaxopt import prox
-from jaxopt import proximal_gradient2 as proximal_gradient
-import numpy as onp
 from sklearn import datasets
 from sklearn import preprocessing
 from sklearn import svm
@@ -52,9 +50,8 @@ def main(argv):
   beta_init = jnp.ones((n_samples, n_classes)) / n_classes
 
   # Run solver.
-  bcd = block_cd.BlockCoordinateDescent(fun=fun,
-                                        block_prox=block_prox,
-                                        maxiter=3500, tol=1e-5)
+  bcd = BlockCoordinateDescent(fun=fun, block_prox=block_prox,
+                               maxiter=3500, tol=1e-5)
   sol = bcd.run(beta_init, hyperparams_prox=None, lam=lam, data=data)
 
   # Compare against sklearn.

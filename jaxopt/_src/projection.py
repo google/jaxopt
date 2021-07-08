@@ -20,9 +20,9 @@ from typing import Tuple
 import jax
 import jax.numpy as jnp
 
-from jaxopt import quadratic_prog
-from jaxopt import root_finding
-from jaxopt import tree_util
+from jaxopt._src.bisection import Bisection
+from jaxopt._src.quadratic_prog import QuadraticProgramming
+from jaxopt._src import tree_util
 
 
 def projection_non_negative(x: Any, hyperparams=None) -> Any:
@@ -241,7 +241,7 @@ def projection_affine_set(x: jnp.ndarray, hyperparams: Tuple) -> jnp.ndarray:
   """
 
   A, b = hyperparams
-  qp = quadratic_prog.QuadraticProgramming()
+  qp = QuadraticProgramming()
   I = jnp.eye(len(x))
   hyperparams = dict(params_obj=(I, -x), params_eq=(A, b), params_ineq=None)
   return qp.run(**hyperparams).params[0]
@@ -263,7 +263,7 @@ def projection_polyhedron(x: jnp.ndarray, hyperparams: Tuple) -> jnp.ndarray:
   """
 
   A, b, G, h = hyperparams
-  qp = quadratic_prog.QuadraticProgramming()
+  qp = QuadraticProgramming()
   I = jnp.eye(len(x))
   hyperparams = dict(params_obj=(I, -x), params_eq=(A, b), params_ineq=(G, h))
   return qp.run(**hyperparams).params[0]
@@ -282,11 +282,11 @@ def _root_proj_box_sec(x, hyperparams):
   alpha, beta, w, _ = hyperparams
   lower = jax.lax.stop_gradient(jnp.min((alpha - x) / w))
   upper = jax.lax.stop_gradient(jnp.max((beta - x) / w))
-  bisect = root_finding.Bisection(optimality_fun=_optimality_fun_proj_box_sec,
-                                  lower=lower,
-                                  upper=upper,
-                                  increasing=True,
-                                  check_bracket=False)
+  bisect = Bisection(optimality_fun=_optimality_fun_proj_box_sec,
+                     lower=lower,
+                     upper=upper,
+                     increasing=True,
+                     check_bracket=False)
   return bisect.run(None, x, hyperparams).params
 
 

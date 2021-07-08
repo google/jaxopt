@@ -19,7 +19,7 @@ from flax import linen as nn
 import jax
 import jax.numpy as jnp
 from jaxopt import loss
-from jaxopt import optax_wrapper
+from jaxopt import OptaxSolver
 from jaxopt import tree_util
 import optax
 import tensorflow_datasets as tfds
@@ -90,10 +90,8 @@ def main(argv):
     return params, state
 
   # Initialize solver and parameters.
-  solver = optax_wrapper.OptaxSolver(opt=optax.adam(1e-3),
-                                     fun=loss_fun,
-                                     maxiter=100,
-                                     pre_update_fun=pre_update)
+  solver = OptaxSolver(opt=optax.adam(1e-3), fun=loss_fun, maxiter=100,
+                       pre_update_fun=pre_update)
   rng = jax.random.PRNGKey(0)
   init_params = CNN().init(rng, jnp.ones([1, 28, 28, 1]))["params"]
   l2_regul = 1e-4

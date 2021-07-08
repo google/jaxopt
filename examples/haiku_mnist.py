@@ -21,7 +21,7 @@ import haiku as hk
 import jax
 import jax.numpy as jnp
 from jaxopt import loss
-from jaxopt import optax_wrapper
+from jaxopt import OptaxSolver
 from jaxopt import tree_util
 import optax
 import tensorflow_datasets as tfds
@@ -92,8 +92,8 @@ def main(argv):
   # opt = optax.chain(optax.scale_by_adam(b1=0.9, b2=0.999, eps=1e-8),
   #                   optax.scale(-FLAGS.learning_rate))
   opt = optax.adam(FLAGS.learning_rate)
-  solver = optax_wrapper.OptaxSolver(opt=opt, fun=loss_fun, maxiter=100,
-                                     pre_update_fun=pre_update)
+  solver = OptaxSolver(opt=opt, fun=loss_fun, maxiter=100,
+                       pre_update_fun=pre_update)
   init_params = net.init(jax.random.PRNGKey(42), next(train_ds))
   l2_regul = 1e-4
 

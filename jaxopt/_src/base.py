@@ -88,31 +88,3 @@ class LinearOperator(object):
   def tree_unflatten(cls, aux_data, children):
     del aux_data
     return cls(*children)
-
-
-class CompositeLinearFunction(object):
-  """
-  A function of the form::
-
-    fun(x, params_fun) = subfun(linop(x), params_fun) + vdot(x, b)
-  """
-
-  def __init__(self, subfun, linop, b=None, lipschitz_fun=None):
-    self.subfun = subfun
-    self.linop = linop
-    self.b = jnp.array(b) if b is not None else b
-    self.lipschitz_fun = lipschitz_fun
-
-  def __call__(self, x, params_fun):
-    if self.b is None:
-      return self.subfun(self.linop.matvec(x), params_fun)
-    else:
-      return self.subfun(self.linop.matvec(x), params_fun) + jnp.vdot(x, self.b)
-
-  def column_lipschitz_constants(self, params_fun):
-    ret = self.linop.column_l2_norms(squared=True)
-    if self.lipschitz_fun is not None:
-      ret *= self.lipschitz_fun(params_fun)
-    return ret
-
-

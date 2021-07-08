@@ -17,9 +17,9 @@
 from absl import app
 import jax
 import jax.numpy as jnp
-from jaxopt import implicit_diff3 as implicit_diff
+from jaxopt import implicit_diff
 from jaxopt import linear_solve
-from jaxopt import optax_wrapper
+from jaxopt import OptaxSolver
 import optax
 from sklearn import datasets
 from sklearn import model_selection
@@ -73,9 +73,7 @@ def main(argv):
   data = model_selection.train_test_split(X, y, test_size=0.33, random_state=0)
 
   # Initialize solver.
-  solver = optax_wrapper.OptaxSolver(opt=optax.adam(1e-2),
-                                     fun=outer_objective,
-                                     has_aux=True)
+  solver = OptaxSolver(opt=optax.adam(1e-2), fun=outer_objective, has_aux=True)
   theta_init = 1.0
   theta, state = solver.init(theta_init)
   init_w = jnp.zeros(X.shape[1])

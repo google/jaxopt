@@ -17,8 +17,8 @@
 import jax
 import jax.numpy as jnp
 
-from jaxopt import base
-from jaxopt import loss
+from jaxopt._src import base
+from jaxopt._src import loss
 
 
 class CompositeLinearFunction:

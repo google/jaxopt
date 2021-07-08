@@ -26,7 +26,7 @@ from absl import app
 import jax.numpy as jnp
 from jaxopt import projection
 from jaxopt import prox
-from jaxopt import proximal_gradient2 as proximal_gradient
+from jaxopt import ProximalGradient
 import numpy as onp
 from sklearn import datasets
 from sklearn import preprocessing
@@ -81,8 +81,8 @@ def main(argv):
 
   # Run solver.
   beta_init = jnp.ones(X.shape[0])
-  solver = proximal_gradient.ProximalGradient(fun=objective_fun, prox=prox_fun,
-                                              tol=1e-3, maxiter=500)
+  solver = ProximalGradient(fun=objective_fun, prox=prox_fun,
+                            tol=1e-3, maxiter=500)
   beta_fit = solver.run(beta_init, hyperparams_prox=None, lam=lam,
                         K=K, y=y).params
 

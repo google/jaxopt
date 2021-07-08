@@ -25,13 +25,13 @@ from dataclasses import dataclass
 import jax
 import jax.numpy as jnp
 
-from jaxopt import base
-from jaxopt import implicit_diff3 as idf
-from jaxopt import linear_solve
-from jaxopt import loop
-from jaxopt.tree_util import tree_add_scalar_mul
-from jaxopt.tree_util import tree_l2_norm
-from jaxopt.tree_util import tree_sub
+from jaxopt._src import base
+from jaxopt._src import implicit_diff as idf
+from jaxopt._src import linear_solve
+from jaxopt._src import loop
+from jaxopt._src.tree_util import tree_add_scalar_mul
+from jaxopt._src.tree_util import tree_l2_norm
+from jaxopt._src.tree_util import tree_sub
 
 
 class MirrorDescentState(NamedTuple):

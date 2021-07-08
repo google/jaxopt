@@ -18,10 +18,8 @@ import jax
 from jax import test_util as jtu
 import jax.numpy as jnp
 
-from jaxopt import implicit_diff
 from jaxopt import projection
-from jaxopt import quadratic_prog
-from jaxopt import tree_util
+from jaxopt import QuadraticProgramming
 
 import numpy as onp
 
@@ -60,7 +58,7 @@ class QuadraticProgTest(jtu.JaxTestCase):
     b = jnp.array([1.0])
     G = jnp.array([[-1.0, 0.0], [0.0, -1.0]])
     h = jnp.array([0.0, 0.0])
-    qp = quadratic_prog.QuadraticProgramming()
+    qp = QuadraticProgramming()
     hyperparams = dict(params_obj=(Q, c), params_eq=(A, b), params_ineq=(G, h))
     sol = qp.run(**hyperparams).params
     self.assertAllClose(qp.l2_optimality_error(sol, **hyperparams), 0.0)
@@ -71,7 +69,7 @@ class QuadraticProgTest(jtu.JaxTestCase):
     c = jnp.array([1.0, 1.0])
     A = jnp.array([[1.0, 1.0]])
     b = jnp.array([1.0])
-    qp = quadratic_prog.QuadraticProgramming()
+    qp = QuadraticProgramming()
     hyperparams = dict(params_obj=(Q, c), params_eq=(A, b), params_ineq=None)
     sol = qp.run(**hyperparams).params
     self.assertAllClose(qp.l2_optimality_error(sol, **hyperparams), 0.0)
@@ -87,7 +85,7 @@ class QuadraticProgTest(jtu.JaxTestCase):
       hyperparams = dict(params_obj=(Q, -x), params_eq=(A, b),
                          params_ineq=(G, h))
 
-      qp = quadratic_prog.QuadraticProgramming()
+      qp = QuadraticProgramming()
       # Returns the primal solution only.
       return qp.run(**hyperparams).params[0]
 

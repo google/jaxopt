@@ -15,18 +15,23 @@
 from typing import Any, Callable, Optional
 
 from absl.testing import absltest
+from absl.testing import parameterized
+
 import jax
 from jax import test_util as jtu
 import jax.numpy as jnp
-from jaxopt import mirror_descent
-from jaxopt import test_util
+
+from jaxopt import MirrorDescent
+from jaxopt import objectives
+from jaxopt._src import test_util
 from jaxopt import tree_util as tu
+
 from sklearn import datasets
 from sklearn import preprocessing
 
 
-def kl_projection(x: Any, params_proj: Optional[Any] = None) -> Any:
-  del params_proj
+def kl_projection(x: Any, hyperparams_proj: Optional[Any] = None) -> Any:
+  del hyperparams_proj
   return tu.tree_map(lambda t: jax.nn.softmax(t, -1), x)
 
 
@@ -34,6 +39,20 @@ def kl_projection(x: Any, params_proj: Optional[Any] = None) -> Any:
 kl_generating_fun = lambda x: -jnp.sum(jax.scipy.special.entr(x) + x)
 # Row-wise mirror map.
 kl_mapping_fun = jax.vmap(jax.grad(kl_generating_fun))
+
+
+def projection_grad_kl_stable(x: Any,
+                              x_fun_grad: Any,
+                              stepsize: float,
+                              hyperparams_proj: Optional[Any] = None) -> Any:
+  del hyperparams_proj
+
+  def _fn(x_i, g_i):
+    g_i = jnp.where(x_i != 0, -stepsize * g_i, -jnp.inf)
+    g_i = g_i - jnp.max(g_i, axis=-1, keepdims=True)
+    y_i = x_i * jnp.exp(g_i)
+    return y_i / jnp.sum(y_i, axis=-1, keepdims=True)
+  return tu.tree_multimap(_fn, x, x_fun_grad)
 
 
 def make_stepsize_schedule(max_stepsize, n_steps, power=1.0) -> Callable:
@@ -47,47 +66,55 @@ def make_stepsize_schedule(max_stepsize, n_steps, power=1.0) -> Callable:
 
 class MirrorDescentTest(jtu.JaxTestCase):
 
-  def test_multiclass_svm_dual(self):
+  @parameterized.named_parameters(
+      ('kl', None),
+      ('kl_stable', projection_grad_kl_stable),
+  )
+  def test_multiclass_svm_dual(self, projection_grad):
     X, y = datasets.make_classification(
         n_samples=20,
         n_features=5,
         n_informative=3,
         n_classes=3,
         random_state=0)
-    # Transform labels to a one-hot representation.
-    # Y has shape (n_samples, n_classes).
     Y = preprocessing.LabelBinarizer().fit_transform(y)
+    Y = jnp.asarray(Y)
+    n_samples, n_classes = Y.shape
+    fun = objectives.multiclass_linear_svm_dual
     lam = 10.0
+    data = (X, Y)
     stepsize_schedule = make_stepsize_schedule(
         max_stepsize=5.0, n_steps=50, power=1.0)
-    tol = 1e-2
     maxiter = 500
+    tol = 1e-2
     atol = 1e-2
-    fun = test_util.make_multiclass_linear_svm_objective(X, y)
 
-    n_samples, n_classes = Y.shape
     beta_init = jnp.ones((n_samples, n_classes)) / n_classes
-    solver_fun = mirror_descent.make_solver_fun(
+    if projection_grad is None:
+      projection_grad = MirrorDescent.make_projection_grad(
+          kl_projection, kl_mapping_fun)
+    md = MirrorDescent(
         fun=fun,
-        projection=kl_projection,
-        mapping_fun=kl_mapping_fun,
-        init=beta_init,
+        projection_grad=projection_grad,
         stepsize=stepsize_schedule,
+        maxiter=maxiter,
         tol=tol,
-        maxiter=maxiter)
-    beta_fit = solver_fun(params_fun=lam)
+        implicit_diff=True)
+    beta_fit, info = md.run(beta_init, None, lam, data)
 
     # Check optimality conditions.
-    beta_fit2 = kl_projection(
-        kl_mapping_fun(beta_fit) - jax.grad(fun)(beta_fit, lam))
-    self.assertLessEqual(jnp.sqrt(jnp.sum((beta_fit - beta_fit2)**2)), tol)
+    self.assertLessEqual(info.error, tol)
 
     # Compare against sklearn.
     W_skl = test_util.multiclass_linear_svm_skl(X, y, lam)
     W_fit = jnp.dot(X.T, (Y - beta_fit)) / lam
     self.assertArraysAllClose(W_fit, W_skl, atol=atol)
 
-  def test_multiclass_svm_dual_implicit_diff(self):
+  @parameterized.named_parameters(
+      ('kl', None),
+      ('kl_stable', projection_grad_kl_stable),
+  )
+  def test_multiclass_svm_dual_implicit_diff(self, projection_grad):
     X, y = datasets.make_classification(
         n_samples=20,
         n_features=5,
@@ -95,31 +122,31 @@ class MirrorDescentTest(jtu.JaxTestCase):
         n_classes=3,
         random_state=0)
     X = preprocessing.Normalizer().fit_transform(X)
-    # Transform labels to a one-hot representation.
-    # Y has shape (n_samples, n_classes).
     Y = preprocessing.LabelBinarizer().fit_transform(y)
+    Y = jnp.asarray(Y)
+    n_samples, n_classes = Y.shape
+    fun = objectives.multiclass_linear_svm_dual
     lam = 10.0
+    data = (X, Y)
     stepsize_schedule = make_stepsize_schedule(
         max_stepsize=5.0, n_steps=50, power=1.0)
-    tol = 1e-3
     maxiter = 500
-    fun = test_util.make_multiclass_linear_svm_objective(X, y)
+    tol = 1e-3
 
-    def mirror_descent_fun_dual(lam):
-      n_samples, n_classes = Y.shape
-      beta_init = jnp.ones((n_samples, n_classes)) / n_classes
-      solver_fun = mirror_descent.make_solver_fun(
-          fun=fun,
-          projection=kl_projection,
-          mapping_fun=kl_mapping_fun,
-          init=beta_init,
-          stepsize=stepsize_schedule,
-          tol=tol,
-          maxiter=maxiter)
-      return solver_fun(params_fun=lam)
+    beta_init = jnp.ones((n_samples, n_classes)) / n_classes
+    if projection_grad is None:
+      projection_grad = MirrorDescent.make_projection_grad(
+          kl_projection, kl_mapping_fun)
+    md = MirrorDescent(
+        fun=fun,
+        projection_grad=projection_grad,
+        stepsize=stepsize_schedule,
+        maxiter=maxiter,
+        tol=tol,
+        implicit_diff=True)
 
     def mirror_descent_fun_primal(lam):
-      beta_fit = mirror_descent_fun_dual(lam)
+      beta_fit, _ = md.run(beta_init, None, lam, data)
       return jnp.dot(X.T, (Y - beta_fit)) / lam
 
     jac_primal = jax.jacrev(mirror_descent_fun_primal)(lam)

@@ -19,7 +19,7 @@ from jax import test_util as jtu
 import jax.numpy as jnp
 
 from jaxopt import projection
-from jaxopt import quadratic_prog
+from jaxopt import QuadraticProgramming
 
 import numpy as onp
 
@@ -284,7 +284,7 @@ class ProjectionTest(jtu.JaxTestCase):
     G = jnp.concatenate((-jnp.eye(len(x)), jnp.eye(len(x))))
     h = jnp.concatenate((alpha, beta))
     hyperparams = dict(params_obj=(Q, -x), params_eq=(A, b), params_ineq=(G, h))
-    qp = quadratic_prog.QuadraticProgramming()
+    qp = QuadraticProgramming()
     p2 = qp.run(**hyperparams).params[0]
     self.assertArraysAllClose(p, p2, atol=1e-5)
 

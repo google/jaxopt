@@ -20,11 +20,11 @@ from absl import flags
 import jax
 import jax.numpy as jnp
 
-from jaxopt import block_cd2 as block_cd
+from jaxopt import BlockCoordinateDescent
 from jaxopt import objectives
-from jaxopt import optax_wrapper
+from jaxopt import OptaxSolver
 from jaxopt import prox
-from jaxopt import proximal_gradient2 as proximal_gradient
+from jaxopt import ProximalGradient
 import optax
 
 from sklearn import datasets
@@ -43,13 +43,13 @@ def outer_objective(theta, init_inner, data):
   lam = jnp.exp(theta)
 
   if FLAGS.solver == "pg":
-    solver = proximal_gradient.ProximalGradient(
+    solver = ProximalGradient(
         fun=objectives.least_squares,
         prox=prox.prox_lasso,
         implicit_diff=not FLAGS.unrolling,
         maxiter=500)
   elif FLAGS.solver == "bcd":
-    solver = block_cd.BlockCoordinateDescent(
+    solver = BlockCoordinateDescent(
         fun=objectives.least_squares,
         block_prox=prox.prox_lasso,
         implicit_diff=not FLAGS.unrolling,
@@ -82,9 +82,7 @@ def main(argv):
   data = model_selection.train_test_split(X, y, test_size=0.33, random_state=0)
 
   # Initialize solver.
-  solver = optax_wrapper.OptaxSolver(opt=optax.adam(1e-2),
-                                     fun=outer_objective,
-                                     has_aux=True)
+  solver = OptaxSolver(opt=optax.adam(1e-2), fun=outer_objective, has_aux=True)
   theta_init = 1.0
   theta, state = solver.init(theta_init)
   init_w = jnp.zeros(X.shape[1])

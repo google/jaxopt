@@ -16,17 +16,16 @@
 
 from typing import Any
 from typing import NamedTuple
-from typing import Optional
 
 from dataclasses import dataclass
 
-from jaxopt import base
-from jaxopt import loop
-from jaxopt import proximal_gradient2 as proximal_gradient
+from jaxopt._src import base
+from jaxopt._src import loop
+from jaxopt._src.proximal_gradient import ProximalGradient
 
 
 @dataclass
-class GradientDescent(proximal_gradient.ProximalGradient):
+class GradientDescent(ProximalGradient):
   """Gradient Descent solver.
 
   Attributes:

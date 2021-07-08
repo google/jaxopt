@@ -17,13 +17,11 @@
 from absl import app
 from absl import flags
 
-import jax
 import jax.numpy as jnp
 
-from jaxopt import block_cd2 as block_cd
+from jaxopt import BlockCoordinateDescent
+from jaxopt import objectives
 from jaxopt import prox
-
-from jaxopt.objectives import least_squares_objective
 
 import numpy as onp
 
@@ -53,9 +51,9 @@ def nnreg(U, V_init, X, maxiter=150):
   else:
     raise ValueError("Invalid penalty.")
 
-  bcd = block_cd.BlockCoordinateDescent(fun=least_squares_objective,
-                                        block_prox=block_prox,
-                                        maxiter=maxiter)
+  bcd = BlockCoordinateDescent(fun=objectives.least_squares,
+                               block_prox=block_prox,
+                               maxiter=maxiter)
   sol = bcd.run(init_params=V_init.T, hyperparams_prox=FLAGS.gamma, data=(U, X))
   return sol.params.T  # approximate solution V
 

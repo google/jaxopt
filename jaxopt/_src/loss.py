@@ -18,8 +18,7 @@ import jax
 from jax.nn import softplus
 import jax.numpy as jnp
 from jax.scipy.special import logsumexp
-
-from jaxopt.projection import projection_simplex
+from jaxopt._src.projection import projection_simplex
 
 
 def binary_logistic_loss(label: int, logit: float) -> float:

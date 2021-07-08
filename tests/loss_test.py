@@ -20,21 +20,18 @@ from jax.nn import softmax
 from jax.scipy.special import expit as sigmoid
 import jax.numpy as jnp
 
-from jaxopt.loss import binary_logistic_loss
-from jaxopt.loss import huber_loss
-from jaxopt.loss import multiclass_logistic_loss
-from jaxopt.loss import multiclass_sparsemax_loss
-from jaxopt.projection import projection_simplex
+from jaxopt import loss
+from jaxopt import projection
 
 
 class LossTest(jtu.JaxTestCase):
 
   def _test_binary_loss_function(self, loss_fun, inv_link_fun):
     # Check that loss is zero when the weight goes to the correct label.
-    loss = loss_fun(0, -1e5)
-    self.assertEqual(loss, 0)
-    loss = loss_fun(1, 1e5)
-    self.assertEqual(loss, 0)
+    loss_val = loss_fun(0, -1e5)
+    self.assertEqual(loss_val, 0)
+    loss_val = loss_fun(1, 1e5)
+    self.assertEqual(loss_val, 0)
 
     # Check that gradient has the expected form.
     logit = 1.2
@@ -53,12 +50,12 @@ class LossTest(jtu.JaxTestCase):
     self.assertArraysAllClose(losses, losses2)
 
   def test_binary_logistic_loss(self):
-    self._test_binary_loss_function(binary_logistic_loss, sigmoid)
+    self._test_binary_loss_function(loss.binary_logistic_loss, sigmoid)
 
   def _test_multiclass_loss_function(self, loss_fun, inv_link_fun):
     # Check that loss is zero when all weights goes to the correct label.
-    loss = loss_fun(0, jnp.array([1e5, 0, 0]))
-    self.assertEqual(loss, 0)
+    loss_val = loss_fun(0, jnp.array([1e5, 0, 0]))
+    self.assertEqual(loss_val, 0)
 
     # Check that gradient has the expected form.
     logits = jnp.array([1.2, 0.3, 2.3])
@@ -77,17 +74,17 @@ class LossTest(jtu.JaxTestCase):
     self.assertArraysAllClose(losses, losses2)
 
   def test_multiclass_logistic_loss(self):
-    self._test_multiclass_loss_function(multiclass_logistic_loss, softmax)
+    self._test_multiclass_loss_function(loss.multiclass_logistic_loss, softmax)
 
   def test_multiclass_sparsemax_loss(self):
-    self._test_multiclass_loss_function(multiclass_sparsemax_loss,
-                                        projection_simplex)
+    self._test_multiclass_loss_function(loss.multiclass_sparsemax_loss,
+                                        projection.projection_simplex)
 
   def test_huber(self):
-    self.assertAllClose(0.0, huber_loss(0, 0, .1))
-    self.assertAllClose(0.0, huber_loss(1, 1, .1))
-    self.assertAllClose(.1 * (1.0- .5 * .1), huber_loss(4, 3, .1))
-    self.assertAllClose(0.125, huber_loss(0, .5))
+    self.assertAllClose(0.0, loss.huber_loss(0, 0, .1))
+    self.assertAllClose(0.0, loss.huber_loss(1, 1, .1))
+    self.assertAllClose(.1 * (1.0- .5 * .1), loss.huber_loss(4, 3, .1))
+    self.assertAllClose(0.125, loss.huber_loss(0, .5))
 
 
 if __name__ == '__main__':

@@ -12,21 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Root finding algorithms in JAX."""
+"""Bisection algorithm in JAX."""
 
 from typing import Any
 from typing import Callable
 from typing import NamedTuple
-from typing import Optional
 
 from dataclasses import dataclass
 
 import jax.numpy as jnp
 
-from jaxopt import base
-from jaxopt import implicit_diff3 as idf
-from jaxopt import linear_solve
-from jaxopt import loop
+from jaxopt._src import base
+from jaxopt._src import implicit_diff as idf
+from jaxopt._src import linear_solve
+from jaxopt._src import loop
 
 
 class BisectionState(NamedTuple):

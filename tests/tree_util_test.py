@@ -14,7 +14,6 @@
 
 from absl.testing import absltest
 
-import jax
 from jax import test_util as jtu
 import jax.numpy as jnp
 from jaxopt import tree_util

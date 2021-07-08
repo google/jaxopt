@@ -22,7 +22,7 @@ from absl import flags
 import haiku as hk
 import jax
 import jax.numpy as jnp
-from jaxopt import optax_wrapper
+from jaxopt import OptaxSolver
 import numpy as onp
 import optax
 import tensorflow_datasets as tfds
@@ -156,8 +156,7 @@ def main(argv):
   del argv
 
   # Initialize solver.
-  solver = optax_wrapper.OptaxSolver(opt=optax.adam(FLAGS.learning_rate),
-                                     fun=loss_fun)
+  solver = OptaxSolver(opt=optax.adam(FLAGS.learning_rate), fun=loss_fun)
 
   # Set up data iterators.
   train_ds = load_dataset(tfds.Split.TRAIN, FLAGS.batch_size)

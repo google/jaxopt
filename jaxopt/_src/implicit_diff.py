@@ -21,8 +21,8 @@ from typing import Tuple
 
 import jax
 
-from jaxopt import linear_solve
-from jaxopt.tree_util import tree_scalar_mul
+from jaxopt._src import linear_solve
+from jaxopt._src.tree_util import tree_scalar_mul
 
 
 def root_vjp(optimality_fun: Callable,

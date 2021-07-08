@@ -22,10 +22,10 @@ from dataclasses import dataclass
 
 import jax.numpy as jnp
 
-from jaxopt import base
-from jaxopt import implicit_diff3 as idf
-from jaxopt import linear_solve
-from jaxopt import tree_util
+from jaxopt._src import base
+from jaxopt._src import implicit_diff as idf
+from jaxopt._src import linear_solve
+from jaxopt._src import tree_util
 
 
 ArrayPair = Tuple[jnp.ndarray, jnp.ndarray]

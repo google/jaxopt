@@ -18,7 +18,7 @@ from absl.testing import parameterized
 import jax
 from jax import test_util as jtu
 import jax.numpy as jnp
-from jaxopt.loop import while_loop
+from jaxopt import loop
 
 
 class LoopTest(jtu.JaxTestCase):
@@ -30,8 +30,8 @@ class LoopTest(jtu.JaxTestCase):
         return val * x
       def cond_fun(val):
         return True
-      return while_loop(cond_fun=cond_fun, body_fun=body_fun, init_val=1.0,
-                        maxiter=y, unroll=unroll, jit=jit)
+      return loop.while_loop(cond_fun=cond_fun, body_fun=body_fun, init_val=1.0,
+                             maxiter=y, unroll=unroll, jit=jit)
 
     if not unroll and not jit:
       self.assertRaises(ValueError, my_pow, 3, 4)
@@ -51,8 +51,8 @@ class LoopTest(jtu.JaxTestCase):
         return val * x
       def cond_fun(val):
         return val < max_val
-      return while_loop(cond_fun=cond_fun, body_fun=body_fun, init_val=1.0,
-                        maxiter=y, unroll=unroll, jit=jit)
+      return loop.while_loop(cond_fun=cond_fun, body_fun=body_fun, init_val=1.0,
+                             maxiter=y, unroll=unroll, jit=jit)
 
     if not unroll and not jit:
       self.assertRaises(ValueError, my_pow, 3, 4, max_val=81)

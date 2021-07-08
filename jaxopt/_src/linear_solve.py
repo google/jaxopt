@@ -20,7 +20,7 @@ from typing import Optional
 
 import jax
 import jax.numpy as jnp
-from jaxopt.tree_util import tree_add_scalar_mul
+from jaxopt._src.tree_util import tree_add_scalar_mul
 
 
 def _materialize_array(matvec, shape, dtype=None):
