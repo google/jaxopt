@@ -33,7 +33,7 @@ class GradientDescentTest(jtu.JaxTestCase):
     X, y = datasets.make_classification(n_samples=10, n_features=5, n_classes=3,
                                         n_informative=3, random_state=0)
     data = (X, y)
-    lam = 100.0
+    l2reg = 100.0
     fun = objectives.l2_multiclass_logreg_with_intercept
     n_classes = len(jnp.unique(y))
 
@@ -41,50 +41,50 @@ class GradientDescentTest(jtu.JaxTestCase):
     b_init = jnp.zeros(n_classes)
     pytree_init = (W_init, b_init)
     gd = GradientDescent(fun=fun, tol=1e-3, maxiter=500)
-    pytree_fit, info = gd.run(pytree_init, lam=lam, data=data)
+    pytree_fit, info = gd.run(pytree_init, l2reg=l2reg, data=data)
 
     # Check optimality conditions.
     self.assertLessEqual(info.error, 1e-3)
 
     # Compare against sklearn.
-    W_skl, b_skl = test_util.logreg_skl(X, y, lam, fit_intercept=True)
+    W_skl, b_skl = test_util.logreg_skl(X, y, l2reg, fit_intercept=True)
     self.assertArraysAllClose(pytree_fit[0], W_skl, atol=5e-2)
     self.assertArraysAllClose(pytree_fit[1], b_skl, atol=5e-2)
 
   def test_logreg_implicit_diff(self):
     X, y = datasets.load_digits(return_X_y=True)
     data = (X, y)
-    lam = float(X.shape[0])
+    l2reg = float(X.shape[0])
     fun = objectives.l2_multiclass_logreg
 
-    jac_num = test_util.logreg_skl_jac(X, y, lam)
-    W_skl = test_util.logreg_skl(X, y, lam)
+    jac_num = test_util.logreg_skl_jac(X, y, l2reg)
+    W_skl = test_util.logreg_skl(X, y, l2reg)
 
     # Make sure the decorator works.
     gd = GradientDescent(fun=fun, tol=1e-3, maxiter=10, implicit_diff=True)
     def wrapper(hyperparams):
       return gd.run(W_skl, hyperparams, data).params
-    jac_custom = jax.jacrev(wrapper)(lam)
+    jac_custom = jax.jacrev(wrapper)(l2reg)
     self.assertArraysAllClose(jac_num, jac_custom, atol=1e-2)
 
   @parameterized.product(acceleration=[True, False])
   def test_logreg_unrolled_autodiff(self, acceleration):
     X, y = datasets.load_digits(return_X_y=True)
     data = (X, y)
-    lam = float(X.shape[0])
+    l2reg = float(X.shape[0])
     fun = objectives.l2_multiclass_logreg
     n_classes = len(jnp.unique(y))
 
-    jac_lam = test_util.logreg_skl_jac(X, y, lam)
+    jac_l2reg = test_util.logreg_skl_jac(X, y, l2reg)
 
-    # Compute the Jacobian w.r.t. lam via forward-mode autodiff.
+    # Compute the Jacobian w.r.t. l2reg via forward-mode autodiff.
     W_init = jnp.zeros((X.shape[1], n_classes))
     gd = GradientDescent(fun=fun, tol=1e-3, maxiter=200, implicit_diff=False,
                          acceleration=acceleration)
     def wrapper(hyperparams):
       return gd.run(W_init, hyperparams, data).params
-    jac_lam2 = jax.jacfwd(wrapper)(lam)
-    self.assertArraysAllClose(jac_lam, jac_lam2, atol=1e-2)
+    jac_l2reg2 = jax.jacfwd(wrapper)(l2reg)
+    self.assertArraysAllClose(jac_l2reg, jac_l2reg2, atol=1e-2)
 
   def test_jit_and_vmap(self):
     X, y = datasets.make_classification(n_samples=30, n_features=5,

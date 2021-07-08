@@ -36,7 +36,7 @@ class OptaxWrapperTest(jtu.JaxTestCase):
     X, y = datasets.make_classification(n_samples=10, n_features=5, n_classes=3,
                                         n_informative=3, random_state=0)
     data = (X, y)
-    lam = 100.0
+    l2reg = 100.0
     # fun(params, data)
     fun = objectives.l2_multiclass_logreg_with_intercept
     n_classes = len(jnp.unique(y))
@@ -49,10 +49,10 @@ class OptaxWrapperTest(jtu.JaxTestCase):
 
     params, state = opt.init(pytree_init)
     for _ in range(200):
-      params, state = opt.update(params, state, lam=lam, data=data)
+      params, state = opt.update(params, state, l2reg=l2reg, data=data)
 
     # Check optimality conditions.
-    error = opt.l2_optimality_error(params, lam=lam, data=data)
+    error = opt.l2_optimality_error(params, l2reg=l2reg, data=data)
     self.assertLessEqual(error, 0.01)
 
   @parameterized.product(has_aux=[True, False])
@@ -60,11 +60,11 @@ class OptaxWrapperTest(jtu.JaxTestCase):
     X, y = datasets.make_classification(n_samples=10, n_features=5, n_classes=3,
                                         n_informative=3, random_state=0)
     data = (X, y)
-    lam = 100.0
+    l2reg = 100.0
     _fun = objectives.l2_multiclass_logreg_with_intercept
     if has_aux:
-      def fun(params, lam, data):
-        return _fun(params, lam, data), None
+      def fun(params, l2reg, data):
+        return _fun(params, l2reg, data), None
     else:
       fun = _fun
 
@@ -77,16 +77,16 @@ class OptaxWrapperTest(jtu.JaxTestCase):
     opt = OptaxSolver(opt=optax.adam(1e-3), fun=fun,
                                     maxiter=300, has_aux=has_aux)
     # Test positional, keyword and mixed arguments.
-    for params, _ in (opt.run(pytree_init, lam, data),
-                      opt.run(pytree_init, lam=lam, data=data),
-                      opt.run(pytree_init, lam, data=data)):
+    for params, _ in (opt.run(pytree_init, l2reg, data),
+                      opt.run(pytree_init, l2reg=l2reg, data=data),
+                      opt.run(pytree_init, l2reg, data=data)):
 
       # Check optimality conditions.
-      error = opt.l2_optimality_error(params, lam=lam, data=data)
+      error = opt.l2_optimality_error(params, l2reg=l2reg, data=data)
       self.assertLessEqual(error, 0.01)
 
       # Compare against sklearn.
-      W_skl, b_skl = test_util.logreg_skl(X, y, lam, fit_intercept=True)
+      W_skl, b_skl = test_util.logreg_skl(X, y, l2reg, fit_intercept=True)
       self.assertArraysAllClose(params[0], W_skl, atol=5e-2)
       self.assertArraysAllClose(params[1], b_skl, atol=5e-2)
 
@@ -100,7 +100,7 @@ class OptaxWrapperTest(jtu.JaxTestCase):
         perm = rng.permutation(len(X))
         yield X[perm], y[perm]
 
-    lam = 100.0
+    l2reg = 100.0
     fun = objectives.l2_multiclass_logreg_with_intercept
     n_classes = len(jnp.unique(y))
 
@@ -111,45 +111,45 @@ class OptaxWrapperTest(jtu.JaxTestCase):
     # We set a larger maxiter than n_iter in order to trigger StopIteration.
     opt = OptaxSolver(opt=optax.adam(1e-3), fun=fun, maxiter=1000)
     iterable = dataset_loader(X, y, n_iter=200)
-    params, _ = opt.run_iterator(pytree_init, iterable, lam=lam)
+    params, _ = opt.run_iterator(pytree_init, iterable, l2reg=l2reg)
 
     # Check optimality conditions.
-    error = opt.l2_optimality_error(params, lam=lam, data=(X, y))
+    error = opt.l2_optimality_error(params, l2reg=l2reg, data=(X, y))
     self.assertLessEqual(error, 0.01)
 
   def test_logreg_autodiff(self):
     X, y = datasets.load_digits(return_X_y=True)
     data = (X, y)
-    lam = float(X.shape[0])
+    l2reg = float(X.shape[0])
     fun = objectives.l2_multiclass_logreg
 
-    jac_num = test_util.logreg_skl_jac(X, y, lam)
-    W_skl = test_util.logreg_skl(X, y, lam)
+    jac_num = test_util.logreg_skl_jac(X, y, l2reg)
+    W_skl = test_util.logreg_skl(X, y, l2reg)
 
     # Make sure the decorator works.
     opt = OptaxSolver(opt=optax.adam(1e-3), fun=fun, maxiter=5)
     def wrapper(hyperparams):
-      return opt.run(W_skl, lam=lam, data=data).params
-    jac_custom = jax.jacrev(wrapper)(lam)
+      return opt.run(W_skl, l2reg=l2reg, data=data).params
+    jac_custom = jax.jacrev(wrapper)(l2reg)
     self.assertArraysAllClose(jac_num, jac_custom, atol=1e-2)
 
 
   def test_logreg_implicit_diff(self):
     X, y = datasets.load_digits(return_X_y=True)
     data = (X, y)
-    lam = float(X.shape[0])
+    l2reg = float(X.shape[0])
     fun = objectives.l2_multiclass_logreg
 
-    jac_num = test_util.logreg_skl_jac(X, y, lam)
-    W_skl = test_util.logreg_skl(X, y, lam)
+    jac_num = test_util.logreg_skl_jac(X, y, l2reg)
+    W_skl = test_util.logreg_skl(X, y, l2reg)
 
     # Make sure the decorator works.
     opt = OptaxSolver(opt=optax.adam(1e-3), fun=fun, maxiter=5,
                                     implicit_diff=True)
     def wrapper(hyperparams):
       # Unfortunately positional arguments are required when implicit_diff=True.
-      return opt.run(W_skl, lam, data).params
-    jac_custom = jax.jacrev(wrapper)(lam)
+      return opt.run(W_skl, l2reg, data).params
+    jac_custom = jax.jacrev(wrapper)(l2reg)
     self.assertArraysAllClose(jac_num, jac_custom, atol=1e-2)
 
 if __name__ == '__main__':

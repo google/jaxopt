@@ -105,17 +105,17 @@ def multiclass_logreg_with_intercept(params, data):
   return jnp.mean(_logloss_vmap(y, y_pred))
 
 
-def l2_multiclass_logreg(W, lam, data):
+def l2_multiclass_logreg(W, l2reg, data):
   X, y = data
   y_pred = jnp.dot(X, W)
-  return jnp.mean(_logloss_vmap(y, y_pred)) + 0.5 * lam * jnp.sum(W ** 2)
+  return jnp.mean(_logloss_vmap(y, y_pred)) + 0.5 * l2reg * jnp.sum(W ** 2)
 
 
-def l2_multiclass_logreg_with_intercept(params, lam, data):
+def l2_multiclass_logreg_with_intercept(params, l2reg, data):
   X, y = data
   W, b = params
   y_pred = jnp.dot(X, W) + b
-  return jnp.mean(_logloss_vmap(y, y_pred)) + 0.5 * lam * jnp.sum(W ** 2)
+  return jnp.mean(_logloss_vmap(y, y_pred)) + 0.5 * l2reg * jnp.sum(W ** 2)
 
 
 _binary_logloss_vmap = jax.vmap(loss.binary_logistic_loss)
@@ -144,27 +144,27 @@ binary_logreg = BinaryLogregFunction()
 class MulticlassLinearSvmDual(CompositeLinearFunction):
   """Dual objective function of multiclass linear SVMs."""
 
-  def subfun(self, Xbeta, lam, data):
+  def subfun(self, Xbeta, l2reg, data):
     X, Y = data
     XY = jnp.dot(X.T, Y)
 
     # The dual objective is:
-    # fun(beta) = vdot(beta, 1 - Y) - 0.5 / lam * ||V(beta)||^2
+    # fun(beta) = vdot(beta, 1 - Y) - 0.5 / l2reg * ||V(beta)||^2
     # where V(beta) = dot(X.T, Y) - dot(X.T, beta).
     V = XY - Xbeta
     # With opposite sign, as we want to maximize.
-    return 0.5 / lam * jnp.vdot(V, V)
+    return 0.5 / l2reg * jnp.vdot(V, V)
 
-  def make_linop(self, lam, data):
+  def make_linop(self, l2reg, data):
     """Creates linear operator."""
     return base.LinearOperator(data[0].T)
 
-  def columnwise_lipschitz_const(self, lam, data):
+  def columnwise_lipschitz_const(self, l2reg, data):
     """Column-wise Lipschitz constants."""
-    linop = self.make_linop(lam, data)
+    linop = self.make_linop(l2reg, data)
     return linop.column_l2_norms(squared=True)
 
-  def b(self, lam, data):
+  def b(self, l2reg, data):
     return data[1] - 1
 
 
