@@ -23,6 +23,7 @@ import jax
 
 from jaxopt._src import linear_solve
 from jaxopt._src.tree_util import tree_scalar_mul
+from jaxopt._src.tree_util import tree_sub
 
 
 def root_vjp(optimality_fun: Callable,
@@ -149,7 +150,7 @@ def custom_root(optimality_fun: Callable,
   """Decorator for adding implicit differentiation to a root solver.
 
   Args:
-    optimality_fun: an equation function, ``optimality_fun(x, *args)`.
+    optimality_fun: an equation function, ``optimality_fun(params, *args)`.
       The invariant is ``optimality_fun(sol, *args) == 0`` at the
       solution / root ``sol``.
     has_aux: whether the decorated solver function returns auxiliary data.
@@ -162,6 +163,30 @@ def custom_root(optimality_fun: Callable,
   def wrapper(solver_fun):
     return _custom_root(solver_fun, optimality_fun, solve, has_aux)
   return wrapper
+
+
+def custom_fixed_point(fixed_point_fun: Callable,
+                       has_aux: bool = False,
+                       solve: Callable = linear_solve.solve_normal_cg):
+  """Decorator for adding implicit differentiation to a fixed point solver.
+
+  Args:
+    fixed_point_fun: a function, ``fixed_point_fun(params, *args)`.
+      The invariant is ``fixed_point_fun(sol, *args) == sol`` at the
+      solution ``sol``.
+    has_aux: whether the decorated solver function returns auxiliary data.
+    solve: a linear solver of the form, ``solve(matvec, b)``.
+
+  Returns:
+    A solver function decorator, i.e.,
+      ``custom_fixed_point(fixed_point_fun)(solver_fun)``.
+  """
+  def optimality_fun(params, *args):
+    return tree_sub(fixed_point_fun(params, *args), params)
+
+  return custom_root(optimality_fun=optimality_fun,
+                     has_aux=has_aux,
+                     solve=solve)
 
 
 def make_kkt_optimality_fun(obj_fun, eq_fun, ineq_fun=None):

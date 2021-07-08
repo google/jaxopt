@@ -95,6 +95,19 @@ class ImplicitDiffTest(jtu.JaxTestCase):
     J, _ = jax.jacrev(ridge_solver_decorated, argnums=1)(None, lam, X=X, y=y)
     self.assertArraysAllClose(J, J_num, atol=1e-2)
 
+  def test_custom_fixed_point(self):
+    X, y = datasets.make_regression(n_samples=10, n_features=3, random_state=0)
+    grad_fun = jax.grad(ridge_objective)
+    fp_fun = lambda x, *args: x - grad_fun(x, *args)
+    lam = 5.0
+    ridge_solver_decorated = idf.custom_fixed_point(fp_fun)(ridge_solver)
+    sol = ridge_solver(None, lam=lam, X=X, y=y)
+    sol_decorated = ridge_solver_decorated(None, lam=lam, X=X, y=y)
+    self.assertArraysAllClose(sol, sol_decorated, atol=1e-4)
+    J_num = test_util.ridge_solver_jac(X, y, lam, eps=1e-4)
+    J = jax.jacrev(ridge_solver_decorated, argnums=1)(None, lam, X=X, y=y)
+    self.assertArraysAllClose(J, J_num, atol=1e-2)
+
 if __name__ == '__main__':
   # Uncomment the line below in order to run in float64.
   # jax.config.update("jax_enable_x64", True)
