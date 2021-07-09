@@ -99,9 +99,9 @@ def main(argv):
   # Run training loop.
 
   # Equivalent to:
-  # params, state = opt.init(init_params)
+  # params, state = solver.init(init_params)
   # for _ in range(100):
-  #   params, state = opt.update(params=params, state=state,
+  #   params, state = solver.update(params=params, state=state,
   #                              l2_regul=l2_regul, data=next(train_ds))
   # except that implicit diff w.r.t. `hyperparams` will be supported.
   solver.run_iterator(init_params=init_params,
