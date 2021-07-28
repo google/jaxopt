@@ -114,7 +114,7 @@ class BlockCoordinateDescent:
     linop = self.fun.make_linop(*args, **kwargs)
     stepsizes = 1.0 / self.fun.columnwise_lipschitz_const(*args, **kwargs)
 
-
+    # todo: ability to permute block order.
 
     def body_fun(i, tup):
       x, subfun_g, predictions, sqerror_sum = tup

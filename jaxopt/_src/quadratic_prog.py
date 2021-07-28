@@ -62,7 +62,7 @@ def _solve_eq_constrained_qp(params_obj, params_eq):
 
   def matvec(u):
     primal_u, dual_u = u
-
+    # todo: access Q and A only through matvecs
     return (jnp.dot(Q, primal_u) + jnp.dot(A.T, dual_u), jnp.dot(A, primal_u))
 
   return linear_solve.solve_cg(matvec, (-c, b))
@@ -73,7 +73,9 @@ def _solve_constrained_qp_cvxpy(params_obj, params_eq, params_ineq):
 
   # CVXPY runs on CPU. Hopefully, we can implement our own pure JAX solvers
   # and remove this dependency in the future.
-
+  # TODO(frostig,mblondel): experiment with `jax.experimental.host_callback`
+  # to "support" other devices (GPU/TPU) in the interim, by calling into the
+  # host CPU and running cvxpy there.
   import cvxpy as cp
 
   Q, c = params_obj

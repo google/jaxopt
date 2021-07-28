@@ -46,7 +46,7 @@ def projection_grad_kl_stable(x: Any,
                               stepsize: float,
                               hyperparams_proj: Optional[Any] = None) -> Any:
   del hyperparams_proj
-
+  # TODO(fllinares): generalize to arbitrary axes. How to pass axes?
   def _fn(x_i, g_i):
     g_i = jnp.where(x_i != 0, -stepsize * g_i, -jnp.inf)
     g_i = g_i - jnp.max(g_i, axis=-1, keepdims=True)

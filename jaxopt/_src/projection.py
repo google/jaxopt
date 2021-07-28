@@ -239,7 +239,7 @@ def projection_affine_set(x: jnp.ndarray, hyperparams: Tuple) -> jnp.ndarray:
   Returns:
     y: output array (same shape as ``x``)
   """
-
+  # todo: support matvec for A
   A, b = hyperparams
   qp = QuadraticProgramming()
   I = jnp.eye(len(x))
@@ -261,7 +261,7 @@ def projection_polyhedron(x: jnp.ndarray, hyperparams: Tuple) -> jnp.ndarray:
   Returns:
     y: output array (same shape as ``x``)
   """
-
+  # todo: support matvecs for A and G
   A, b, G, h = hyperparams
   qp = QuadraticProgramming()
   I = jnp.eye(len(x))

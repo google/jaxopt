@@ -185,7 +185,7 @@ class OptaxSolver:
     """
     params, state = self.init(init_params)
 
-
+    # TODO(mblondel): try and benchmark lax.fori_loop with host_call for `next`.
     for _ in range(self.maxiter):
       try:
         data = next(iterator)
@@ -231,4 +231,4 @@ class OptaxSolver:
                                   solve=solve)
       # pylint: disable=g-missing-from-attributes
       self.run = decorator(self.run)
-
+      # TODO(mblondel): run_iterator needs to be decorated as well.

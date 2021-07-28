@@ -69,7 +69,9 @@ class BaseTest(jtu.JaxTestCase):
     self.assertArraysAllClose(linop.rmatvec(Y), ATY)
     for i in range(A.shape[0]):
       self.assertAllClose(linop.matvec_element(X, i), AX[i])
-
+      # todo: implement this
+      # self.assertArraysAllClose(linop.update_rmatvec(ATY, delta_Y, i),
+      #                    jnp.dot(A.T, Y + delta_Y[:, None] * E(i, Y.shape)))
 
     for j in range(A.shape[1]):
       self.assertAllClose(linop.rmatvec_element(Y, j), ATY[j])

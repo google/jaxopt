@@ -146,7 +146,7 @@ class MulticlassLinearSvmDual(CompositeLinearFunction):
 
   def subfun(self, Xbeta, l2reg, data):
     X, Y = data
-    XY = jnp.dot(X.T, Y)
+    XY = jnp.dot(X.T, Y)  # todo: avoid storing / computing this matrix.
 
     # The dual objective is:
     # fun(beta) = vdot(beta, 1 - Y) - 0.5 / l2reg * ||V(beta)||^2
