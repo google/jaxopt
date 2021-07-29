@@ -15,7 +15,6 @@
 
 from absl.testing import absltest
 
-import distrax
 import jax
 from jax import test_util as jtu
 import jax.numpy as jnp
@@ -285,6 +284,10 @@ class PerturbationsMaxTest(jtu.JaxTestCase):
 
   def test_distrax(self):
     """Checks that the function is compatible with distrax distributions."""
+    try:
+      import distrax
+    except ImportError:
+      return
 
     theta_batch = jnp.array([[-0.5, 0.2, 0.1],
                              [-0.2, 0.1, 0.4]])
