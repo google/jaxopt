@@ -3,5 +3,4 @@ jax>=0.1.67
 jaxlib>=0.1.47
 numpy>=1.18.4
 matplotlib>=2.0.1
-optax>=0.0.9
 scipy>=1.0.0
