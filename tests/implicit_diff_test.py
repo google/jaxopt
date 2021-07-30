@@ -53,7 +53,7 @@ class ImplicitDiffTest(jtu.JaxTestCase):
     I = jnp.eye(len(sol))
     J = jax.vmap(vjp)(I)
     J_num = test_util.ridge_solver_jac(X, y, lam, eps=1e-4)
-    self.assertArraysAllClose(J, J_num, atol=1e-2)
+    self.assertArraysAllClose(J, J_num, atol=5e-2)
 
   def test_root_jvp(self):
     X, y = datasets.make_regression(n_samples=10, n_features=3, random_state=0)
@@ -65,7 +65,7 @@ class ImplicitDiffTest(jtu.JaxTestCase):
                      args=(lam, X, y),
                      tangents=(1.0, jnp.zeros_like(X), jnp.zeros_like(y)))
     J_num = test_util.ridge_solver_jac(X, y, lam, eps=1e-4)
-    self.assertArraysAllClose(J, J_num, atol=1e-2)
+    self.assertArraysAllClose(J, J_num, atol=5e-2)
 
   def test_custom_root(self):
     X, y = datasets.make_regression(n_samples=10, n_features=3, random_state=0)
@@ -77,7 +77,7 @@ class ImplicitDiffTest(jtu.JaxTestCase):
     self.assertArraysAllClose(sol, sol_decorated, atol=1e-4)
     J_num = test_util.ridge_solver_jac(X, y, lam, eps=1e-4)
     J = jax.jacrev(ridge_solver_decorated, argnums=1)(None, lam, X=X, y=y)
-    self.assertArraysAllClose(J, J_num, atol=1e-2)
+    self.assertArraysAllClose(J, J_num, atol=5e-2)
 
   def test_custom_root_with_has_aux(self):
     def ridge_solver_with_aux(init_params, lam, X, y):
@@ -93,7 +93,7 @@ class ImplicitDiffTest(jtu.JaxTestCase):
     self.assertArraysAllClose(sol, sol_decorated, atol=1e-4)
     J_num = test_util.ridge_solver_jac(X, y, lam, eps=1e-4)
     J, _ = jax.jacrev(ridge_solver_decorated, argnums=1)(None, lam, X=X, y=y)
-    self.assertArraysAllClose(J, J_num, atol=1e-2)
+    self.assertArraysAllClose(J, J_num, atol=5e-2)
 
   def test_custom_fixed_point(self):
     X, y = datasets.make_regression(n_samples=10, n_features=3, random_state=0)
@@ -106,7 +106,7 @@ class ImplicitDiffTest(jtu.JaxTestCase):
     self.assertArraysAllClose(sol, sol_decorated, atol=1e-4)
     J_num = test_util.ridge_solver_jac(X, y, lam, eps=1e-4)
     J = jax.jacrev(ridge_solver_decorated, argnums=1)(None, lam, X=X, y=y)
-    self.assertArraysAllClose(J, J_num, atol=1e-2)
+    self.assertArraysAllClose(J, J_num, atol=5e-2)
 
 if __name__ == '__main__':
   # Uncomment the line below in order to run in float64.

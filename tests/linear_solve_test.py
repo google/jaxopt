@@ -71,7 +71,7 @@ class LinearSolveTest(jtu.JaxTestCase):
     matvec = lambda x: jnp.dot(A, x)
     x = linear_solve.solve_cholesky(matvec, b)
     x2 = jax.numpy.linalg.solve(A, b)
-    self.assertArraysAllClose(x, x2, atol=1e-3)
+    self.assertArraysAllClose(x, x2, atol=1e-2)
 
   def test_solve_sparse(self):
     rng = onp.random.RandomState(0)

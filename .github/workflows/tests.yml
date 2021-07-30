@@ -37,5 +37,8 @@ jobs:
       - name: Run tests
         run: |
           set -xe
+          python -VV
+          python -c "import jax; print('jax', jax.__version__)"
+          python -c "import jaxlib; print('jaxlib', jaxlib.__version__)"
           pytest tests
         shell: bash
