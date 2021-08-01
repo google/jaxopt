@@ -44,7 +44,7 @@ class GradientDescentTest(jtu.JaxTestCase):
     pytree_fit, info = gd.run(pytree_init, l2reg=l2reg, data=data)
 
     # Check optimality conditions.
-    self.assertLessEqual(info.error, 1e-3)
+    self.assertLessEqual(info.error, 5e-2)
 
     # Compare against sklearn.
     W_skl, b_skl = test_util.logreg_skl(X, y, l2reg, fit_intercept=True)
@@ -109,5 +109,5 @@ class GradientDescentTest(jtu.JaxTestCase):
 
 if __name__ == '__main__':
   # Uncomment the line below in order to run in float64.
-  jax.config.update("jax_enable_x64", True)
+  #jax.config.update("jax_enable_x64", True)
   absltest.main(testLoader=jtu.JaxTestLoader())
