@@ -21,7 +21,7 @@ import jax
 import jax.numpy as jnp
 
 from jaxopt import BlockCoordinateDescent
-from jaxopt import objectives
+from jaxopt import objective
 from jaxopt import OptaxSolver
 from jaxopt import prox
 from jaxopt import ProximalGradient
@@ -44,13 +44,13 @@ def outer_objective(theta, init_inner, data):
 
   if FLAGS.solver == "pg":
     solver = ProximalGradient(
-        fun=objectives.least_squares,
+        fun=objective.least_squares,
         prox=prox.prox_lasso,
         implicit_diff=not FLAGS.unrolling,
         maxiter=500)
   elif FLAGS.solver == "bcd":
     solver = BlockCoordinateDescent(
-        fun=objectives.least_squares,
+        fun=objective.least_squares,
         block_prox=prox.prox_lasso,
         implicit_diff=not FLAGS.unrolling,
         maxiter=500)

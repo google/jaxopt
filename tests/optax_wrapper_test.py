@@ -19,7 +19,7 @@ import jax
 from jax import test_util as jtu
 import jax.numpy as jnp
 
-from jaxopt import objectives
+from jaxopt import objective
 from jaxopt import OptaxSolver
 from jaxopt._src import test_util
 
@@ -38,7 +38,7 @@ class OptaxWrapperTest(jtu.JaxTestCase):
     data = (X, y)
     l2reg = 100.0
     # fun(params, data)
-    fun = objectives.l2_multiclass_logreg_with_intercept
+    fun = objective.l2_multiclass_logreg_with_intercept
     n_classes = len(jnp.unique(y))
 
     W_init = jnp.zeros((X.shape[1], n_classes))
@@ -61,7 +61,7 @@ class OptaxWrapperTest(jtu.JaxTestCase):
                                         n_informative=3, random_state=0)
     data = (X, y)
     l2reg = 100.0
-    _fun = objectives.l2_multiclass_logreg_with_intercept
+    _fun = objective.l2_multiclass_logreg_with_intercept
     if has_aux:
       def fun(params, l2reg, data):
         return _fun(params, l2reg, data), None
@@ -101,7 +101,7 @@ class OptaxWrapperTest(jtu.JaxTestCase):
         yield X[perm], y[perm]
 
     l2reg = 100.0
-    fun = objectives.l2_multiclass_logreg_with_intercept
+    fun = objective.l2_multiclass_logreg_with_intercept
     n_classes = len(jnp.unique(y))
 
     W_init = jnp.zeros((X.shape[1], n_classes))
@@ -121,7 +121,7 @@ class OptaxWrapperTest(jtu.JaxTestCase):
     X, y = datasets.load_digits(return_X_y=True)
     data = (X, y)
     l2reg = float(X.shape[0])
-    fun = objectives.l2_multiclass_logreg
+    fun = objective.l2_multiclass_logreg
 
     jac_num = test_util.logreg_skl_jac(X, y, l2reg)
     W_skl = test_util.logreg_skl(X, y, l2reg)
@@ -138,7 +138,7 @@ class OptaxWrapperTest(jtu.JaxTestCase):
     X, y = datasets.load_digits(return_X_y=True)
     data = (X, y)
     l2reg = float(X.shape[0])
-    fun = objectives.l2_multiclass_logreg
+    fun = objective.l2_multiclass_logreg
 
     jac_num = test_util.logreg_skl_jac(X, y, l2reg)
     W_skl = test_util.logreg_skl(X, y, l2reg)

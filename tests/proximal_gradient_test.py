@@ -20,7 +20,7 @@ import jax
 from jax import test_util as jtu
 import jax.numpy as jnp
 from jaxopt import implicit_diff
-from jaxopt import objectives
+from jaxopt import objective
 from jaxopt import projection
 from jaxopt import prox
 from jaxopt import ProximalGradient
@@ -35,7 +35,7 @@ class ProximalGradientTest(jtu.JaxTestCase):
   @parameterized.product(acceleration=[True, False])
   def test_lasso_manual_loop(self, acceleration):
     X, y = datasets.make_regression(n_samples=10, n_features=3, random_state=0)
-    fun = objectives.least_squares  # fun(params, data)
+    fun = objective.least_squares  # fun(params, data)
     lam = 10.0
     data = (X, y)
 
@@ -51,7 +51,7 @@ class ProximalGradientTest(jtu.JaxTestCase):
   @parameterized.product(acceleration=[True, False])
   def test_lasso(self, acceleration=True):
     X, y = datasets.make_regression(n_samples=10, n_features=3, random_state=0)
-    fun = objectives.least_squares
+    fun = objective.least_squares
     lam = 10.0
     data = (X, y)
 
@@ -73,7 +73,7 @@ class ProximalGradientTest(jtu.JaxTestCase):
     lam = 10.0
     data = (X, y)
 
-    fun = objectives.least_squares
+    fun = objective.least_squares
     jac_num = test_util.lasso_skl_jac(X, y, lam)
     w_skl = test_util.lasso_skl(X, y, lam)
 

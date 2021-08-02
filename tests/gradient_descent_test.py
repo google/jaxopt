@@ -20,7 +20,7 @@ from jax import test_util as jtu
 import jax.numpy as jnp
 
 from jaxopt import GradientDescent
-from jaxopt import objectives
+from jaxopt import objective
 from jaxopt._src import test_util
 
 from sklearn import datasets
@@ -34,7 +34,7 @@ class GradientDescentTest(jtu.JaxTestCase):
                                         n_informative=3, random_state=0)
     data = (X, y)
     l2reg = 100.0
-    fun = objectives.l2_multiclass_logreg_with_intercept
+    fun = objective.l2_multiclass_logreg_with_intercept
     n_classes = len(jnp.unique(y))
 
     W_init = jnp.zeros((X.shape[1], n_classes))
@@ -55,7 +55,7 @@ class GradientDescentTest(jtu.JaxTestCase):
     X, y = datasets.load_digits(return_X_y=True)
     data = (X, y)
     l2reg = float(X.shape[0])
-    fun = objectives.l2_multiclass_logreg
+    fun = objective.l2_multiclass_logreg
 
     jac_num = test_util.logreg_skl_jac(X, y, l2reg)
     W_skl = test_util.logreg_skl(X, y, l2reg)
@@ -72,7 +72,7 @@ class GradientDescentTest(jtu.JaxTestCase):
     X, y = datasets.load_digits(return_X_y=True)
     data = (X, y)
     l2reg = float(X.shape[0])
-    fun = objectives.l2_multiclass_logreg
+    fun = objective.l2_multiclass_logreg
     n_classes = len(jnp.unique(y))
 
     jac_l2reg = test_util.logreg_skl_jac(X, y, l2reg)
@@ -91,7 +91,7 @@ class GradientDescentTest(jtu.JaxTestCase):
                                         n_informative=3, n_classes=2,
                                         random_state=0)
     data = (X, y)
-    fun = objectives.l2_multiclass_logreg
+    fun = objective.l2_multiclass_logreg
     hyperparams_list = jnp.array([1.0, 10.0])
     W_init = jnp.zeros((X.shape[1], 2))
     gd = GradientDescent(fun=fun, tol=1e-3, maxiter=100)

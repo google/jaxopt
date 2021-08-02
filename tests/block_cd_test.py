@@ -20,7 +20,7 @@ from jax import test_util as jtu
 import jax.numpy as jnp
 
 from jaxopt import BlockCoordinateDescent
-from jaxopt import objectives
+from jaxopt import objective
 from jaxopt import projection
 from jaxopt import prox
 from jaxopt._src import test_util
@@ -37,7 +37,7 @@ class BlockCoordinateDescentTest(jtu.JaxTestCase):
     X, y = datasets.make_regression(n_samples=10, n_features=3, random_state=0)
 
     # Setup parameters.
-    fun = objectives.least_squares  # fun(params, data)
+    fun = objective.least_squares  # fun(params, data)
     l2reg = 10.0
     data = (X, y)
 
@@ -57,7 +57,7 @@ class BlockCoordinateDescentTest(jtu.JaxTestCase):
     X, y = datasets.make_regression(n_samples=10, n_features=3, random_state=0)
 
     # Set up parameters.
-    fun = objectives.least_squares  # fun(params, data)
+    fun = objective.least_squares  # fun(params, data)
     l2reg = 10.0
     data = (X, y)
     w_init = jnp.zeros(X.shape[1])
@@ -79,7 +79,7 @@ class BlockCoordinateDescentTest(jtu.JaxTestCase):
     X, y = datasets.make_regression(n_samples=10, n_features=3, random_state=0)
 
     # Set up parameters.
-    fun = objectives.least_squares  # fun(params, data)
+    fun = objective.least_squares  # fun(params, data)
     hyperparams_prox = (2.0, 0.8)
     data = (X, y)
     w_init = jnp.zeros(X.shape[1])
@@ -108,7 +108,7 @@ class BlockCoordinateDescentTest(jtu.JaxTestCase):
     Y = jnp.dot(X, W) + rng.randn(n_samples, n_tasks)
 
     # Set up parameters.
-    fun = objectives.least_squares  # fun(params, data)
+    fun = objective.least_squares  # fun(params, data)
     block_prox = prox.prox_group_lasso
     l2reg = 1e-1
     W_init = jnp.zeros((n_features, n_tasks))
@@ -149,9 +149,9 @@ class BlockCoordinateDescentTest(jtu.JaxTestCase):
       block_prox = prox.prox_ridge
 
     if multiclass:
-      fun = objectives.multiclass_logreg
+      fun = objective.multiclass_logreg
     else:
-      fun = objectives.binary_logreg
+      fun = objective.binary_logreg
 
     l2reg = 1e-2
 
@@ -205,7 +205,7 @@ class BlockCoordinateDescentTest(jtu.JaxTestCase):
 
     # Set up parameters.
     block_prox = prox.make_prox_from_projection(projection.projection_simplex)
-    fun = objectives.multiclass_linear_svm_dual
+    fun = objective.multiclass_linear_svm_dual
     data = (X, Y)
     l2reg = 1000.0
     beta_init = jnp.ones((n_samples, n_classes)) / n_classes

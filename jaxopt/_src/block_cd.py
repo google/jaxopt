@@ -50,7 +50,7 @@ class BlockCoordinateDescent:
 
   Attributes:
     fun: a smooth function of the form ``fun(params, *args, **kwargs)``.
-      It should be a ``objectives.CompositeLinearFunction`` object.
+      It should be a ``objective.CompositeLinearFunction`` object.
     block_prox: block-wise proximity operator associated with ``non_smooth``,
       a function of the form ``block_prox(x[j], hyperparams_prox, scaling=1.0)``.
       See ``jaxopt.prox`` for examples.
