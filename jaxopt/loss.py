@@ -12,10 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from jaxopt._src.bisection import Bisection
-from jaxopt._src.block_cd import BlockCoordinateDescent
-from jaxopt._src.gradient_descent import GradientDescent
-from jaxopt._src.mirror_descent import MirrorDescent
-from jaxopt._src.optax_wrapper import OptaxSolver
-from jaxopt._src.proximal_gradient import ProximalGradient
-from jaxopt._src.quadratic_prog import QuadraticProgramming
+from jaxopt._src.loss import binary_logistic_loss
+from jaxopt._src.loss import huber_loss
+from jaxopt._src.loss import multiclass_logistic_loss
+from jaxopt._src.loss import multiclass_sparsemax_loss

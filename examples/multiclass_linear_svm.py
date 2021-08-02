@@ -17,7 +17,7 @@
 from absl import app
 import jax.numpy as jnp
 from jaxopt import BlockCoordinateDescent
-from jaxopt import objectives
+from jaxopt import objective
 from jaxopt import projection
 from jaxopt import prox
 from sklearn import datasets
@@ -44,7 +44,7 @@ def main(argv):
 
   # Set up parameters.
   block_prox = prox.make_prox_from_projection(projection.projection_simplex)
-  fun = objectives.multiclass_linear_svm_dual
+  fun = objective.multiclass_linear_svm_dual
   data = (X, Y)
   lam = 1000.0
   beta_init = jnp.ones((n_samples, n_classes)) / n_classes

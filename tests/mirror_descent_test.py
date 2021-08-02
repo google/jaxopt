@@ -22,7 +22,7 @@ from jax import test_util as jtu
 import jax.numpy as jnp
 
 from jaxopt import MirrorDescent
-from jaxopt import objectives
+from jaxopt import objective
 from jaxopt._src import test_util
 from jaxopt import tree_util as tu
 
@@ -80,7 +80,7 @@ class MirrorDescentTest(jtu.JaxTestCase):
     Y = preprocessing.LabelBinarizer().fit_transform(y)
     Y = jnp.asarray(Y)
     n_samples, n_classes = Y.shape
-    fun = objectives.multiclass_linear_svm_dual
+    fun = objective.multiclass_linear_svm_dual
     lam = 10.0
     data = (X, Y)
     stepsize_schedule = make_stepsize_schedule(
@@ -125,7 +125,7 @@ class MirrorDescentTest(jtu.JaxTestCase):
     Y = preprocessing.LabelBinarizer().fit_transform(y)
     Y = jnp.asarray(Y)
     n_samples, n_classes = Y.shape
-    fun = objectives.multiclass_linear_svm_dual
+    fun = objective.multiclass_linear_svm_dual
     lam = 10.0
     data = (X, Y)
     stepsize_schedule = make_stepsize_schedule(

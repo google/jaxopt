@@ -18,6 +18,7 @@ import jax
 from jax import test_util as jtu
 import jax.numpy as jnp
 
+from jaxopt._src import linear_solve as _linear_solve
 from jaxopt import linear_solve
 
 import numpy as onp
@@ -30,14 +31,14 @@ class LinearSolveTest(jtu.JaxTestCase):
     # Matrix case.
     A = rng.randn(5, 5)
     matvec = lambda x: jnp.dot(A, x)
-    A2 = linear_solve._materialize_array(matvec, (5,))
+    A2 = _linear_solve._materialize_array(matvec, (5,))
     self.assertArraysAllClose(A, A2)
 
     # Tensor case.
     A = rng.randn(5, 3, 5, 3)
     A_mat = A.reshape(15, 15)
     matvec = lambda x: jnp.dot(A_mat, x.ravel()).reshape(5, 3)
-    A2 = linear_solve._materialize_array(matvec, (5, 3))
+    A2 = _linear_solve._materialize_array(matvec, (5, 3))
     self.assertArraysAllClose(A, A2, atol=1e-3)
 
   def test_solve_dense(self):

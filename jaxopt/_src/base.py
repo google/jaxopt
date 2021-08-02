@@ -21,12 +21,6 @@ import jax
 import jax.numpy as jnp
 
 
-class OptimizeResults(NamedTuple):
-  error: float
-  nit: int
-  x: Any
-
-
 class OptStep(NamedTuple):
   params: Any
   state: Any
