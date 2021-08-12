@@ -19,3 +19,6 @@ from jaxopt._src.mirror_descent import MirrorDescent
 from jaxopt._src.optax_wrapper import OptaxSolver
 from jaxopt._src.proximal_gradient import ProximalGradient
 from jaxopt._src.quadratic_prog import QuadraticProgramming
+from jaxopt._src.scipy_wrappers import ScipyBoundedMinimize
+from jaxopt._src.scipy_wrappers import ScipyMinimize
+from jaxopt._src.scipy_wrappers import ScipyRootFinding

@@ -21,6 +21,9 @@ import jax.numpy as jnp
 from jaxopt._src import base
 from jaxopt._src import loss
 
+import numpy as onp
+import scipy as osp
+
 from sklearn import linear_model
 from sklearn import svm
 
@@ -138,3 +141,17 @@ def multiclass_linear_svm_skl(X, y, lam, tol=1e-5):
 def multiclass_linear_svm_skl_jac(X, y, lam, tol=1e-5, eps=1e-5):
   return (multiclass_linear_svm_skl(X, y, lam + eps, tol=tol) -
           multiclass_linear_svm_skl(X, y, lam - eps, tol=tol)) / (2 * eps)
+
+
+def lsq_linear_osp(X, y, bounds, tol=1e-10, max_iter=None):
+  return osp.optimize.lsq_linear(X, y, bounds, tol=tol, max_iter=max_iter).x
+
+
+def lsq_linear_cube_osp(X, y, l, tol=1e-10, max_iter=None):
+  bounds = (onp.zeros(X.shape[1]), l * onp.ones(X.shape[1]))
+  return lsq_linear_osp(X, y, bounds, tol, max_iter)
+
+
+def lsq_linear_cube_osp_jac(X, y, l, eps=1e-5, tol=1e-10, max_iter=None):
+  return (lsq_linear_cube_osp(X, y, l + eps, tol, max_iter) -
+          lsq_linear_cube_osp(X, y, l - eps, tol, max_iter)) / (2 * eps)

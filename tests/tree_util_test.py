@@ -24,6 +24,7 @@ import numpy as onp
 class TreeUtilTest(jtu.JaxTestCase):
 
   def setUp(self):
+    super().setUp()
     rng = onp.random.RandomState(0)
 
     self.tree_A = (rng.randn(20, 10), rng.randn(20))
