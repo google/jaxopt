@@ -1,0 +1,15 @@
+*.pyc
+*.so
+*.egg-info
+*.whl
+dist/
+.ipynb_checkpoints
+.DS_Store
+.mypy_cache/
+.pytype/
+docs/build
+docs/notebooks/.ipynb_checkpoints/
+docs/_autosummary
+.idea
+.vscode
+venv/
