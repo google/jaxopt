@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Optax wrapper for JAXopt."""
+"""SGD solver with Polyak step size."""
 
 from typing import Any
 from typing import Callable
@@ -20,35 +20,49 @@ from typing import NamedTuple
 from typing import Optional
 from typing import Union
 
-from dataclasses import dataclass
+import dataclasses
 
 import jax
 import jax.numpy as jnp
 
-from jaxopt._src import base
-from jaxopt._src import tree_util
+from jaxopt import base
+from jaxopt.tree_util import tree_add
+from jaxopt.tree_util import tree_add_scalar_mul
+from jaxopt.tree_util import tree_l2_norm
+from jaxopt.tree_util import tree_scalar_mul
+from jaxopt.tree_util import tree_sub
+from jaxopt.tree_util import tree_zeros_like
 
 
-class OptaxState(NamedTuple):
+class PolyakSGDState(NamedTuple):
   """Named tuple containing state information."""
   iter_num: int
-  value: float
   error: float
-  internal_state: NamedTuple
+  value: float
   aux: Any
+  velocity: Optional[Any]
 
 
-@dataclass
-class OptaxSolver(base.IterativeSolverMixin, base.StochasticSolverMixin):
-  """Optax solver.
+@dataclasses.dataclass
+class PolyakSGD(base.IterativeSolverMixin, base.StochasticSolverMixin):
+  """SGD with Polyak step size.
+
+  This solver computes step sizes in an adaptive manner. If the computed step
+  size at a given iteration is smaller than ``max_step_size``, it is accepted.
+  Otherwise, ``max_step_size`` is used. This ensures that the solver does not
+  take over-confident steps. This is why ``max_step_size`` is the most important
+  hyper-parameter.
+
+  This implementation assumes that the interpolation property holds.
 
   Attributes:
     fun: a function of the form ``fun(params, *args, **kwargs)``, where
       ``params`` are parameters of the model,
       ``*args`` and ``**kwargs`` are additional arguments.
-    opt: the optimizer to use, an optax.GradientTransformation, which is just a
-      NamedTuple with ``init`` and ``update`` functions.
-    pre_update: a function to execute before Optax's update.
+    max_step_size: a maximum step size to use.
+    delta: a value to add in the denominator of the update (default: 0).
+    momentum: momentum parameter, 0 corresponding to no momentum.
+    pre_update: a function to execute before the solver's update.
       The function signature must be
       ``params, state = pre_update(params, state, *args, **kwargs)``.
     maxiter: maximum number of solver iterations.
@@ -63,9 +77,24 @@ class OptaxSolver(base.IterativeSolverMixin, base.StochasticSolverMixin):
       When True it will be assumed by default that ``fun(...)[0]``
       is the objective value. The auxiliary outputs are stored in
       ``state.aux``.
+
+  References:
+    Berrada, Leonard and Zisserman, Andrew and Kumar, M Pawan.
+    "Training neural networks for and by interpolation".
+    International Conference on Machine Learning, 2020.
+    https://arxiv.org/abs/1906.05661
+
+    Loizou, Nicolas and Vaswani, Sharan and Laradji, Issam Hadj and
+    Lacoste-Julien, Simon.
+    "Stochastic polyak step-size for sgd: An adaptive learning rate for fast
+    convergence".
+    International Conference on Artificial Intelligence and Statistics, 2021.
+    https://arxiv.org/abs/2002.10542
   """
   fun: Callable
-  opt: NamedTuple
+  max_step_size: float = 1.0
+  delta: float = 0.0
+  momentum: float = 0.0
   pre_update: Optional[Callable] = None
   maxiter: int = 500
   tol: float = 1e-3
@@ -89,24 +118,22 @@ class OptaxSolver(base.IterativeSolverMixin, base.StochasticSolverMixin):
       (params, state)
     """
     del args, kwargs  # Not used.
-    opt_state = self.opt.init(init_params)
-    state = OptaxState(iter_num=0,
-                       value=jnp.inf,
-                       error=jnp.inf,
-                       aux=None,
-                       internal_state=opt_state)
-    return base.OptStep(params=init_params, state=state)
 
-  def _apply_updates(self, params, updates):
-    update_fun = lambda p, u: jnp.asarray(p + u).astype(jnp.asarray(p).dtype)
-    return jax.tree_multimap(update_fun, params, updates)
+    if self.momentum == 0:
+      velocity = None
+    else:
+      velocity = tree_zeros_like(init_params)
+
+    state = PolyakSGDState(iter_num=0, error=jnp.inf, value=jnp.inf,
+                           aux=None, velocity=velocity)
+    return base.OptStep(params=init_params, state=state)
 
   def update(self,
              params: Any,
-             state: NamedTuple,
+             state: PolyakSGDState,
              *args,
              **kwargs) -> base.OptStep:
-    """Performs one iteration of the optax solver.
+    """Performs one iteration of the solver.
 
     Args:
       params: pytree containing the parameters.
@@ -120,17 +147,26 @@ class OptaxSolver(base.IterativeSolverMixin, base.StochasticSolverMixin):
     """
     (value, aux), grad = self._value_and_grad_fun(params, *args, **kwargs)
 
-    delta, opt_state = self.opt.update(grad, state.internal_state, params)
-    params = self._apply_updates(params, delta)
-    error = self.l2_optimality_error(params, *args, **kwargs)
+    grad_sqnorm = tree_l2_norm(grad, squared=True)
+    step_size = jax.lax.min(value / (grad_sqnorm + self.delta),
+                            self.max_step_size)
 
-    new_state = OptaxState(iter_num=state.iter_num + 1,
-                           error=error,
-                           value=value,
-                           aux=aux,
-                           internal_state=opt_state)
-    return base.OptStep(params=params, state=new_state)
+    if self.momentum == 0:
+      new_params = tree_add_scalar_mul(params, -step_size, grad)
+      new_velocity = None
+    else:
+      # new_v = momentum * v - step_size * grad
+      # new_params = params + new_v
+      new_velocity = tree_sub(tree_scalar_mul(self.momentum, state.velocity),
+                              tree_scalar_mul(step_size, grad))
+      new_params = tree_add(params, new_velocity)
 
+    new_state = PolyakSGDState(iter_num=state.iter_num + 1,
+                               error=jnp.sqrt(grad_sqnorm),
+                               velocity=new_velocity,
+                               value=value,
+                               aux=aux)
+    return base.OptStep(params=new_params, state=new_state)
 
   def optimality_fun(self, params, *args, **kwargs):
     """Optimality function mapping compatible with ``@custom_root``."""

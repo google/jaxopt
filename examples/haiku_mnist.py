@@ -17,17 +17,29 @@
 
 from absl import app
 from absl import flags
+
 import haiku as hk
+
 import jax
 import jax.numpy as jnp
+
 from jaxopt import loss
 from jaxopt import OptaxSolver
+from jaxopt import PolyakSGD
 from jaxopt import tree_util
+
 import optax
+
 import tensorflow_datasets as tfds
 
 
-flags.DEFINE_float("learning_rate", 0.001, "Learning rate for the optimizer.")
+flags.DEFINE_float("l2reg", 1e-4, "L2 regularization.")
+flags.DEFINE_float("learning_rate", 0.001, "Learning rate (used in adam).")
+flags.DEFINE_bool("manual_loop", False, "Whether to use a manual training loop.")
+flags.DEFINE_integer("maxiter", 100, "Maximum number of iterations.")
+flags.DEFINE_float("max_step_size", 0.1, "Maximum step size (used in polyak-sgd).")
+flags.DEFINE_float("momentum", 0.9, "Momentum strength (used in adam, polyak-sgd).")
+flags.DEFINE_enum("solver", "adam", ["adam", "sgd", "polyak-sgd"], "Solver to use.")
 FLAGS = flags.FLAGS
 
 
@@ -60,16 +72,17 @@ def accuracy(params, data):
   predictions = net.apply(params, data)
   return jnp.mean(jnp.argmax(predictions, axis=-1) == data["label"])
 
+
 logistic_loss = jax.vmap(loss.multiclass_logistic_loss)
 
 
-def loss_fun(params, l2_regul, data):
+def loss_fun(params, l2reg, data):
   """Compute the loss of the network."""
   logits = net.apply(params, data)
   labels = data["label"]
   sqnorm = tree_util.tree_l2_norm(params, squared=True)
   loss_value = jnp.mean(logistic_loss(labels, logits))
-  return loss_value + 0.5 * l2_regul * sqnorm
+  return loss_value + 0.5 * l2reg * sqnorm
 
 
 def main(argv):
@@ -88,26 +101,47 @@ def main(argv):
 
   # Initialize solver and parameters.
 
-  # Equilent to:
-  # opt = optax.chain(optax.scale_by_adam(b1=0.9, b2=0.999, eps=1e-8),
-  #                   optax.scale(-FLAGS.learning_rate))
-  opt = optax.adam(FLAGS.learning_rate)
-  solver = OptaxSolver(opt=opt, fun=loss_fun, maxiter=100,
-                       pre_update_fun=pre_update)
+  if FLAGS.solver == "adam":
+    # Equilent to:
+    # opt = optax.chain(optax.scale_by_adam(b1=0.9, b2=0.999, eps=1e-8),
+    #                   optax.scale(-FLAGS.learning_rate))
+    opt = optax.adam(FLAGS.learning_rate)
+    solver = OptaxSolver(opt=opt, fun=loss_fun, maxiter=FLAGS.maxiter,
+                         pre_update=pre_update)
+
+  elif FLAGS.solver == "sgd":
+    opt = optax.sgd(FLAGS.learning_rate, FLAGS.momentum)
+    solver = OptaxSolver(opt=opt, fun=loss_fun, maxiter=FLAGS.maxiter,
+                         pre_update=pre_update)
+
+
+  elif FLAGS.solver == "polyak-sgd":
+    solver = PolyakSGD(fun=loss_fun, maxiter=FLAGS.maxiter,
+                       momentum=FLAGS.momentum,
+                       max_step_size=FLAGS.max_step_size, pre_update=pre_update)
+
+  else:
+    raise ValueError("Unknown solver: %s" % FLAGS.solver)
+
   init_params = net.init(jax.random.PRNGKey(42), next(train_ds))
-  l2_regul = 1e-4
 
   # Run training loop.
 
-  # Equivalent to:
-  # params, state = opt.init(init_params)
-  # for _ in range(100):
-  #   params, state = opt.update(params=params, state=state,
-  #                              l2_regul=l2_regul, data=next(train_ds))
-  # except that implicit diff w.r.t. `l2_regul` will be supported.
-  solver.run_iterator(init_params=init_params,
-                      iterator=train_ds,
-                      l2_regul=l2_regul)
+  # In JAXopt, stochastic solvers can be run either using a manual for loop or
+  # using `run_iterator`. We include both here for demonstration purpose.
+  if FLAGS.manual_loop:
+    params, state = solver.init(init_params)
+
+    for _ in range(FLAGS.maxiter):
+      params, state = pre_update(params=params, state=state)
+      params, state = solver.update(params=params, state=state,
+                                    l2reg=FLAGS.l2reg,
+                                    data=next(train_ds))
+
+  else:
+    solver.run_iterator(init_params=init_params,
+                        iterator=train_ds,
+                        l2reg=FLAGS.l2reg)
 
 
 if __name__ == "__main__":

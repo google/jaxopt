@@ -111,6 +111,10 @@ class TreeUtilTest(jtu.JaxTestCase):
     got = tree_util.tree_l2_norm(self.tree_A)
     self.assertAllClose(expected, got)
 
+  def test_tree_zeros_like(self):
+    tree = tree_util.tree_zeros_like(self.tree_A)
+    self.assertAllClose(tree_util.tree_l2_norm(tree), 0.0)
+
 
 if __name__ == '__main__':
   absltest.main(testLoader=jtu.JaxTestLoader())

@@ -63,3 +63,8 @@ def tree_l2_norm(tree_x, squared=False):
     return sqnorm
   else:
     return jnp.sqrt(sqnorm)
+
+
+def tree_zeros_like(tree_x):
+  """Creates an all-zero tree with the same structure as tree_x."""
+  return tree_map(jnp.zeros_like, tree_x)
