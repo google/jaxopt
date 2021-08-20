@@ -26,9 +26,6 @@ import jax
 import jax.numpy as jnp
 
 from jaxopt._src import base
-from jaxopt._src import implicit_diff as idf
-from jaxopt._src import linear_solve
-from jaxopt._src import loop
 from jaxopt._src.tree_util import tree_add_scalar_mul
 from jaxopt._src.tree_util import tree_l2_norm
 from jaxopt._src.tree_util import tree_sub
@@ -41,7 +38,7 @@ class MirrorDescentState(NamedTuple):
 
 
 @dataclass
-class MirrorDescent:
+class MirrorDescent(base.IterativeSolverMixin):
   """Mirror descent solver.
 
   This solver minimizes::
@@ -110,7 +107,10 @@ class MirrorDescent:
     return projection_grad
 
   def init(self,
-           init_params: Any) -> base.OptStep:
+           init_params: Any,
+           hyperparams_proj: Any,
+           *args,
+           **kwargs) -> base.OptStep:
     """Initialize the ``(params, state)`` pair.
 
     Args:
@@ -120,6 +120,7 @@ class MirrorDescent:
     Returns:
       (params, state)
     """
+    del hyperparams_proj, args, kwargs  # Not used.
     state = MirrorDescentState(iter_num=0, error=jnp.inf)
     return base.OptStep(params=init_params, state=state)
 
@@ -157,40 +158,7 @@ class MirrorDescent:
     Returns:
       (params, state)
     """
-    f = self._update
-    return f(params, state, hyperparams_proj, args, kwargs)
-
-  def run(self,
-          init_params: Any,
-          hyperparams_proj: Any,
-          *args,
-          **kwargs) -> base.OptStep:
-    """Runs mirror descent until convergence or max number of iterations.
-
-    Args:
-      init_params: pytree containing the initial parameters.
-      hyperparams_proj: pytree containing hyperparameters of projection.
-      *args: additional positional arguments to be passed to ``fun``.
-      **kwargs: additional keyword arguments to be passed to ``fun``.
-    Return type:
-      base.OptStep
-    Returns:
-      (params, state)
-    """
-    def cond_fun(pair):
-      _, state = pair
-      if self.verbose:
-        print(state.iter_num, state.error)
-      return state.error > self.tol
-
-    def body_fun(pair):
-      params, state = pair
-      return self.update(params, state, hyperparams_proj, *args, **kwargs)
-
-    return loop.while_loop(cond_fun=cond_fun, body_fun=body_fun,
-                           init_val=self.init(init_params),
-                           maxiter=self.maxiter, jit=self._jit,
-                           unroll=self._unroll)
+    return self._update(params, state, hyperparams_proj, args, kwargs)
 
   def _fixed_point_fun(self, sol, hyperparams_proj, args, kwargs):
     sol_fun_grad = self._grad_fun(sol, *args, **kwargs)
@@ -210,20 +178,4 @@ class MirrorDescent:
     # Pre-compile useful functions.
     self._grad_fun = jax.jit(jax.grad(self.fun))
 
-    # We always jit unless verbose mode is enabled.
-    self._jit = not self.verbose
-    # We unroll when implicit diff is disabled or when jit is disabled.
-    self._unroll = not self.implicit_diff or not self._jit
-
-    # Set up implicit diff.
-    if self.implicit_diff:
-      if isinstance(self.implicit_diff, Callable):
-        solve = self.implicit_diff
-      else:
-        solve = linear_solve.solve_normal_cg
-
-      decorator = idf.custom_root(self.optimality_fun,
-                                  has_aux=True,
-                                  solve=solve)
-      # pylint: disable=g-missing-from-attributes
-      self.run = decorator(self.run)
+    self._set_implicit_diff_run()

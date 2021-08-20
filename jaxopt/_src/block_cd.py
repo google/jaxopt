@@ -40,7 +40,7 @@ class BlockCDState(NamedTuple):
 
 
 @dataclass
-class BlockCoordinateDescent:
+class BlockCoordinateDescent(base.IterativeSolverMixin):
   """Block coordinate solver.
 
   This solver minimizes::
@@ -72,17 +72,22 @@ class BlockCoordinateDescent:
 
   def init(self,
            init_params: Any,
+           hyperparams_prox: Any,
            *args,
            **kwargs) -> base.OptStep:
     """Initialize the ``(params, state)`` pair.
 
     Args:
       init_params: pytree containing the initial parameters.
+      hyperparams_prox: pytree containing hyperparameters of block_prox.
+      *args: additional positional arguments to be passed to ``fun``.
+      **kwargs: additional keyword arguments to be passed to ``fun``.
     Return type:
       base.OptStep
     Returns:
       (params, state)
     """
+    del hyperparams_prox  # Not used.
     linop = self.fun.make_linop(*args, **kwargs)
     predictions = linop.matvec(init_params)
     subfun_g = self._grad_subfun(predictions, *args, **kwargs)
@@ -143,38 +148,6 @@ class BlockCoordinateDescent:
                          error=jnp.sqrt(sqerror_sum))
     return base.OptStep(params=params, state=state)
 
-  def run(self,
-          init_params: Any,
-          hyperparams_prox,
-          *args,
-          **kwargs) -> base.OptStep:
-    """Runs block CD until convergence or max number of iterations.
-
-    Args:
-      init_params: pytree containing the initial parameters.
-      hyperparams_prox: pytree containing hyperparameters of block_prox.
-      *args: additional positional arguments to be passed to ``fun``.
-      **kwargs: additional keyword arguments to be passed to ``fun``.
-    Return type:
-      base.OptStep
-    Returns:
-      (params, state)
-    """
-    def cond_fun(opt_step):
-      _, state = opt_step
-      if self.verbose:
-        print(state.iter_num, state.error)
-      return state.error > self.tol
-
-    def body_fun(opt_step):
-      params, state = opt_step
-      return self.update(params, state, hyperparams_prox, *args, **kwargs)
-
-    return loop.while_loop(cond_fun=cond_fun, body_fun=body_fun,
-                           init_val=self.init(init_params, *args, **kwargs),
-                           maxiter=self.maxiter, jit=self._jit,
-                           unroll=self._unroll)
-
   def _fixed_point_fun(self, params, hyperparams_prox, *args, **kwargs):
     grad_step = params - self._grad_fun(params, *args, **kwargs)
     return self._prox(grad_step, hyperparams_prox)
@@ -213,43 +186,10 @@ class BlockCoordinateDescent:
     fp = self._fixed_point_fun(params, hyperparams_prox, *args, **kwargs)
     return  fp - params
 
-  def l2_optimality_error(self,
-                          params: Any,
-                          *args,
-                          **kwargs) -> float:
-    """L2 norm of the proximal-gradient fixed point residual.
-
-    Args:
-      params: pytree containing the parameters.
-      hyperparams_prox: pytree containing hyperparameters of block_prox.
-      *args: additional positional arguments to be passed to ``fun``.
-      **kwargs: additional keyword arguments to be passed to ``fun``.
-    Returns:
-      l2_norm
-    """
-    optimality = self.optimality_fun(params, hyperparams_prox, *args, **kwargs)
-    return tree_util.tree_l2_norm(optimality)
-
   def __post_init__(self):
     # Pre-compile useful functions.
     self._grad_fun = jax.grad(self.fun)
     self._grad_subfun = jax.grad(self.fun.subfun)
     self._prox = jax.vmap(self.block_prox, in_axes=(0, None))
 
-    # We always jit unless verbose mode is enabled.
-    self._jit = not self.verbose
-    # We unroll when implicit diff is disabled or when jit is disabled.
-    self._unroll = not self.implicit_diff or not self._jit
-
-    # Set up implicit differentiation.
-    if self.implicit_diff:
-      if isinstance(self.implicit_diff, Callable):
-        solve = self.implicit_diff
-      else:
-        solve = linear_solve.solve_normal_cg
-
-      decorator = idf.custom_root(self.optimality_fun,
-                                  has_aux=True,
-                                  solve=solve)
-      # pylint: disable=g-missing-from-attributes
-      self.run = decorator(self.run)
+    self._set_implicit_diff_run()

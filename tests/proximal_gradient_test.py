@@ -39,9 +39,10 @@ class ProximalGradientTest(jtu.JaxTestCase):
     lam = 10.0
     data = (X, y)
 
-    pg = ProximalGradient(fun=fun, prox=prox.prox_lasso, acceleration=acceleration)
+    pg = ProximalGradient(fun=fun, prox=prox.prox_lasso,
+                          acceleration=acceleration)
     w_init = jnp.zeros(X.shape[1])
-    params, state = pg.init(w_init)
+    params, state = pg.init(w_init, hyperparams_prox=lam, data=data)
     for _ in range(10):
       params, state = pg.update(params, state, hyperparams_prox=lam, data=data)
 

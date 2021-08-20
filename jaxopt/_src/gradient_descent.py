@@ -47,6 +47,23 @@ class GradientDescent(ProximalGradient):
       When True it will be assumed by default that fun(...)[0] is the objective.
   """
 
+  def init(self,
+           init_params: Any,
+           *args,
+           **kwargs) -> base.OptStep:
+    """Initialize the ``(params, state)`` pair.
+
+    Args:
+      init_params: pytree containing the initial parameters.
+      *args: additional positional arguments to be passed to ``fun``.
+      **kwargs: additional keyword arguments to be passed to ``fun``.
+    Return type:
+      base.OptStep
+    Returns:
+      (params, state)
+    """
+    return super().init(init_params, None, *args, **kwargs)
+
   def update(self,
              params: Any,
              state: NamedTuple,
@@ -65,36 +82,6 @@ class GradientDescent(ProximalGradient):
       (params, state)
     """
     return super().update(params, state, None, *args, **kwargs)
-
-  def run(self,
-          init_params: Any,
-          *args,
-          **kwargs) -> base.OptStep:
-    """Runs gradient descent until convergence or max number of iterations.
-
-    Args:
-      init_params: pytree containing the initial parameters.
-      *args: additional positional arguments to be passed to ``fun``.
-      **kwargs: additional keyword arguments to be passed to ``fun``.
-    Return type:
-      base.OptStep
-    Returns:
-      (params, state)
-    """
-    def cond_fun(pair):
-      _, state = pair
-      if self.verbose:
-        print(state.iter_num, state.error)
-      return state.error > self.tol
-
-    def body_fun(pair):
-      params, state = pair
-      return self.update(params, state, *args, **kwargs)
-
-    return loop.while_loop(cond_fun=cond_fun, body_fun=body_fun,
-                           init_val=self.init(init_params),
-                           maxiter=self.maxiter, jit=self._jit,
-                           unroll=self._unroll)
 
   def optimality_fun(self, params, *args, **kwargs):
     """Optimality function mapping compatible with ``@custom_root``."""

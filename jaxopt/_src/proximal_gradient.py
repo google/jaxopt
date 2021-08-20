@@ -25,8 +25,6 @@ import jax
 import jax.numpy as jnp
 
 from jaxopt._src import base
-from jaxopt._src import implicit_diff as idf
-from jaxopt._src import linear_solve
 from jaxopt._src import loop
 from jaxopt._src.prox import prox_none
 from jaxopt._src.tree_util import tree_add_scalar_mul
@@ -52,7 +50,7 @@ class AccelProxGradState(NamedTuple):
 
 
 @dataclass
-class ProximalGradient:
+class ProximalGradient(base.IterativeSolverMixin):
   """Proximal gradient solver.
 
   This solver minimizes::
@@ -100,16 +98,24 @@ class ProximalGradient:
   has_aux: bool = False
 
   def init(self,
-           init_params: Any) -> base.OptStep:
+           init_params: Any,
+           hyperparams_prox: Any,
+           *args,
+           **kwargs) -> base.OptStep:
     """Initialize the ``(params, state)`` pair.
 
     Args:
       init_params: pytree containing the initial parameters.
+      hyperparams_prox: pytree containing hyperparameters of prox.
+      *args: additional positional arguments to be passed to ``fun``.
+      **kwargs: additional keyword arguments to be passed to ``fun``.
     Return type:
       base.OptStep
     Returns:
       (params, state)
     """
+    del hyperparams_prox, args, kwargs  # Not used.
+
     if self.acceleration:
       state = AccelProxGradState(iter_num=0,
                                  y=init_params,
@@ -164,9 +170,12 @@ class ProximalGradient:
     init_x = self._prox_grad(x, x_fun_grad, stepsize, hyperparams_prox)
     init_val = (init_x, stepsize)
 
+    # We unroll when implicit diff is disabled or when verbose mode is enabled.
+    unroll = not self.implicit_diff or self.verbose
+
     return loop.while_loop(cond_fun=cond_fun, body_fun=body_fun,
                            init_val=init_val, maxiter=self.maxls,
-                           unroll=self._unroll, jit=True)
+                           unroll=unroll, jit=True)
 
   def _iter(self,
             x,
@@ -239,38 +248,6 @@ class ProximalGradient:
     f = self._update_accel if self.acceleration else self._update
     return f(params, state, hyperparams_prox, args, kwargs)
 
-  def run(self,
-          init_params: Any,
-          hyperparams_prox: Any,
-          *args,
-          **kwargs) -> base.OptStep:
-    """Runs proximal gradient until convergence or max number of iterations.
-
-    Args:
-      init_params: pytree containing the initial parameters.
-      hyperparams_prox: pytree containing hyperparameters of prox.
-      *args: additional positional arguments to be passed to ``fun``.
-      **kwargs: additional keyword arguments to be passed to ``fun``.
-    Return type:
-      base.OptStep
-    Returns:
-      (params, state)
-    """
-    def cond_fun(pair):
-      _, state = pair
-      if self.verbose:
-        print(state.iter_num, state.error)
-      return state.error > self.tol
-
-    def body_fun(pair):
-      params, state = pair
-      return self.update(params, state, hyperparams_prox, *args, **kwargs)
-
-    return loop.while_loop(cond_fun=cond_fun, body_fun=body_fun,
-                           init_val=self.init(init_params),
-                           maxiter=self.maxiter, jit=self._jit,
-                           unroll=self._unroll)
-
   def _fixed_point_fun(self, sol, hyperparams_prox, args, kwargs):
     step = tree_sub(sol, self._grad_fun(sol, *args, **kwargs))
     return self.prox(step, hyperparams_prox, 1.0)
@@ -290,20 +267,4 @@ class ProximalGradient:
     self._value_and_grad_fun = jax.jit(jax.value_and_grad(self.fun))
     self._grad_fun = jax.jit(jax.grad(self.fun))
 
-    # We always jit unless verbose mode is enabled.
-    self._jit = not self.verbose
-    # We unroll when implicit diff is disabled or when jit is disabled.
-    self._unroll = not self.implicit_diff or not self._jit
-
-    # Set up implicit diff.
-    if self.implicit_diff:
-      if isinstance(self.implicit_diff, Callable):
-        solve = self.implicit_diff
-      else:
-        solve = linear_solve.solve_normal_cg
-
-      decorator = idf.custom_root(self.optimality_fun,
-                                  has_aux=True,
-                                  solve=solve)
-      # pylint: disable=g-missing-from-attributes
-      self.run = decorator(self.run)
+    self._set_implicit_diff_run()

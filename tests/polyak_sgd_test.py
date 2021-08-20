@@ -20,19 +20,17 @@ from jax import test_util as jtu
 import jax.numpy as jnp
 
 from jaxopt import objective
-from jaxopt import OptaxSolver
+from jaxopt import PolyakSGD
 from jaxopt._src import test_util
 
 import numpy as onp
-
-import optax
-
 from sklearn import datasets
 
 
-class OptaxWrapperTest(jtu.JaxTestCase):
+class PolyakSgdTest(jtu.JaxTestCase):
 
-  def test_logreg_with_intercept_manual_loop(self):
+  @parameterized.product(momentum=[0.0, 0.9])
+  def test_logreg_with_intercept_manual_loop(self, momentum):
     X, y = datasets.make_classification(n_samples=10, n_features=5, n_classes=3,
                                         n_informative=3, random_state=0)
     data = (X, y)
@@ -45,7 +43,7 @@ class OptaxWrapperTest(jtu.JaxTestCase):
     b_init = jnp.zeros(n_classes)
     pytree_init = (W_init, b_init)
 
-    opt = OptaxSolver(opt=optax.adam(1e-3), fun=fun)
+    opt = PolyakSGD(fun=fun, max_step_size=0.01, momentum=momentum)
 
     params, state = opt.init(pytree_init)
     for _ in range(200):
@@ -53,7 +51,7 @@ class OptaxWrapperTest(jtu.JaxTestCase):
 
     # Check optimality conditions.
     error = opt.l2_optimality_error(params, l2reg=l2reg, data=data)
-    self.assertLessEqual(error, 0.01)
+    self.assertLessEqual(error, 0.05)
 
   @parameterized.product(has_aux=[True, False])
   def test_logreg_with_intercept_run(self, has_aux):
@@ -74,8 +72,7 @@ class OptaxWrapperTest(jtu.JaxTestCase):
     b_init = jnp.zeros(n_classes)
     pytree_init = (W_init, b_init)
 
-    opt = OptaxSolver(opt=optax.adam(1e-3), fun=fun,
-                                    maxiter=300, has_aux=has_aux)
+    opt = PolyakSGD(fun=fun, max_step_size=0.01, maxiter=300, has_aux=has_aux)
     # Test positional, keyword and mixed arguments.
     for params, _ in (opt.run(pytree_init, l2reg, data),
                       opt.run(pytree_init, l2reg=l2reg, data=data),
@@ -83,12 +80,7 @@ class OptaxWrapperTest(jtu.JaxTestCase):
 
       # Check optimality conditions.
       error = opt.l2_optimality_error(params, l2reg=l2reg, data=data)
-      self.assertLessEqual(error, 0.01)
-
-      # Compare against sklearn.
-      W_skl, b_skl = test_util.logreg_skl(X, y, l2reg, fit_intercept=True)
-      self.assertArraysAllClose(params[0], W_skl, atol=5e-2)
-      self.assertArraysAllClose(params[1], b_skl, atol=5e-2)
+      self.assertLessEqual(error, 0.05)
 
   def test_logreg_with_intercept_run_iterable(self):
     X, y = datasets.make_classification(n_samples=10, n_features=5, n_classes=3,
@@ -108,13 +100,13 @@ class OptaxWrapperTest(jtu.JaxTestCase):
     b_init = jnp.zeros(n_classes)
     pytree_init = (W_init, b_init)
 
-    opt = OptaxSolver(opt=optax.adam(1e-3), fun=fun)
+    opt = PolyakSGD(fun=fun, max_step_size=0.01, maxiter=1000)
     iterable = dataset_loader(X, y, n_iter=200)
     params, _ = opt.run_iterator(pytree_init, iterable, l2reg=l2reg)
 
     # Check optimality conditions.
     error = opt.l2_optimality_error(params, l2reg=l2reg, data=(X, y))
-    self.assertLessEqual(error, 0.01)
+    self.assertLessEqual(error, 0.05)
 
   def test_logreg_autodiff(self):
     X, y = datasets.load_digits(return_X_y=True)
@@ -126,7 +118,7 @@ class OptaxWrapperTest(jtu.JaxTestCase):
     W_skl = test_util.logreg_skl(X, y, l2reg)
 
     # Make sure the decorator works.
-    opt = OptaxSolver(opt=optax.adam(1e-3), fun=fun, maxiter=5)
+    opt = PolyakSGD(fun=fun, max_step_size=1e-3, maxiter=5)
     def wrapper(hyperparams):
       return opt.run(W_skl, l2reg=l2reg, data=data).params
     jac_custom = jax.jacrev(wrapper)(l2reg)
@@ -142,8 +134,7 @@ class OptaxWrapperTest(jtu.JaxTestCase):
     W_skl = test_util.logreg_skl(X, y, l2reg)
 
     # Make sure the decorator works.
-    opt = OptaxSolver(opt=optax.adam(1e-3), fun=fun, maxiter=5,
-                                    implicit_diff=True)
+    opt = PolyakSGD(fun=fun, max_step_size=1e-3, maxiter=5, implicit_diff=True)
     def wrapper(hyperparams):
       # Unfortunately positional arguments are required when implicit_diff=True.
       return opt.run(W_skl, l2reg, data).params

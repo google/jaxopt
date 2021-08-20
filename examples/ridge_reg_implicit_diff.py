@@ -26,15 +26,15 @@ from sklearn import model_selection
 from sklearn import preprocessing
 
 
-def ridge_objective(params, lam, data):
+def ridge_objective(params, l2reg, data):
   """Ridge objective function."""
   X_tr, y_tr = data
   residuals = jnp.dot(X_tr, params) - y_tr
-  return 0.5 * jnp.mean(residuals ** 2) + 0.5 * lam * jnp.sum(params ** 2)
+  return 0.5 * jnp.mean(residuals ** 2) + 0.5 * l2reg * jnp.sum(params ** 2)
 
 
 @implicit_diff.custom_root(jax.grad(ridge_objective))
-def ridge_solver(init_params, lam, data):
+def ridge_solver(init_params, l2reg, data):
   """Solve ridge regression by conjugate gradient."""
   X_tr, y_tr = data
 
@@ -43,19 +43,20 @@ def ridge_solver(init_params, lam, data):
 
   return linear_solve.solve_cg(matvec=matvec,
                                b=jnp.dot(X_tr.T, y_tr),
-                               ridge=len(y_tr) * lam,
+                               ridge=len(y_tr) * l2reg,
                                x0=init_params,
                                maxiter=20)
 
 
 # Perhaps confusingly, theta is a parameter of the outer objective,
-# but lam = jnp.exp(theta) is an hyper-parameter of the inner objective.
+# but l2reg = jnp.exp(theta) is an hyper-parameter of the inner objective.
 def outer_objective(theta, init_inner, data):
   """Validation loss."""
   X_tr, X_val, y_tr, y_val = data
-  # We use the bijective mapping lam = jnp.exp(theta) to ensure positivity.
-  lam = jnp.exp(theta)
-  w_fit = ridge_solver(init_inner, lam, (X_tr, y_tr))
+  # We use the bijective mapping l2reg = jnp.exp(theta)
+  # both to optimize in log-space and to ensure positivity.
+  l2reg = jnp.exp(theta)
+  w_fit = ridge_solver(init_inner, l2reg, (X_tr, y_tr))
   y_pred = jnp.dot(X_val, w_fit)
   loss_value = jnp.mean((y_pred - y_val) ** 2)
   # We return w_fit as auxiliary data.
