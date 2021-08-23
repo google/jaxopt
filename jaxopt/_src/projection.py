@@ -83,110 +83,110 @@ def _projection_unit_simplex_jvp(primals, tangents):
   return primal_out, tangent_out
 
 
-def projection_simplex(x: jnp.ndarray, s: float = 1.0) -> jnp.ndarray:
+def projection_simplex(x: jnp.ndarray, value: float = 1.0) -> jnp.ndarray:
   r"""Projection onto the simplex.
 
-  The output is ``argmin_{p : 0 <= p <= s, jnp.sum(p) = s} ||x - p||``
+  The output is ``argmin_{p : 0 <= p <= s, jnp.sum(p) = value} ||x - p||``
 
   Args:
     x: vector to project, an array of shape (n,).
-    s: value p should sum to (default: 1.0).
+    value: value p should sum to (default: 1.0).
   Returns:
     p: projected vector, an array of shape (n,).
   """
-  if s is None:
-    s = 1.0
-  return s * _projection_unit_simplex(x / s)
+  if value is None:
+    value = 1.0
+  return value * _projection_unit_simplex(x / value)
 
 
-def projection_l1_sphere(x: jnp.ndarray, radius: float = 1.0) -> jnp.ndarray:
+def projection_l1_sphere(x: jnp.ndarray, value: float = 1.0) -> jnp.ndarray:
   r"""Projection onto the l1 sphere.
 
   The output is:
-    ``argmin_{y, ||y||_1 = radius} ||y - x||``.
+    ``argmin_{y, ||y||_1 = value} ||y - x||``.
 
   Args:
     x: array to project.
-    radius: radius of the sphere.
+    value: radius of the sphere.
 
   Returns:
     y: output array (same shape as x)
   """
-  return jnp.sign(x) * projection_simplex(jnp.abs(x), radius)
+  return jnp.sign(x) * projection_simplex(jnp.abs(x), value)
 
 
-def projection_l1_ball(x: jnp.ndarray, radius: float = 1.0) -> jnp.ndarray:
+def projection_l1_ball(x: jnp.ndarray, max_value: float = 1.0) -> jnp.ndarray:
   r"""Projection onto the l1 ball.
 
   The output is:
-    ``argmin_{y, ||y||_1 <= radius} ||y - x||``.
+    ``argmin_{y, ||y||_1 <= max_value} ||y - x||``.
 
   Args:
     x: array to project.
-    radius: radius of the sphere.
+    max_value: radius of the ball.
 
   Returns:
     y: output array (same structure as x) normalized to have suitable norm.
   """
   l1_norm = jax.numpy.linalg.norm(x, ord=1)
-  return jax.lax.cond(l1_norm <= radius,
+  return jax.lax.cond(l1_norm <= max_value,
                       lambda _: x,
-                      lambda _: projection_l1_sphere(x, radius),
+                      lambda _: projection_l1_sphere(x, max_value),
                       operand=None)
 
 
-def projection_l2_sphere(x: Any, radius: float = 1.0) -> Any:
+def projection_l2_sphere(x: Any, value: float = 1.0) -> Any:
   r"""Projection onto the l2 sphere.
 
   The output is:
-    ``argmin_{y, ||y|| = radius} ||y - x|| = radius * x / ||x||``.
+    ``argmin_{y, ||y|| = value} ||y - x|| = value * x / ||x||``.
 
   Args:
     x: pytree to project.
-    radius: radius of the sphere.
+    value: radius of the sphere.
 
   Returns:
     y: output pytree (same structure as x) normalized to have suitable norm.
   """
-  factor = radius / tree_util.tree_l2_norm(x)
+  factor = value / tree_util.tree_l2_norm(x)
   return tree_util.tree_scalar_mul(factor, x)
 
 
-def projection_l2_ball(x: Any, radius: float = 1.0) -> Any:
+def projection_l2_ball(x: Any, max_value: float = 1.0) -> Any:
   r"""Projection onto the l2 ball.
 
   The output is:
-    ``argmin_{y, ||y|| <= radius} ||y - x||``.
+    ``argmin_{y, ||y|| <= max_value} ||y - x||``.
 
   Args:
     x: pytree to project.
-    radius: radius of the sphere.
+    max_value: radius of the ball.
 
   Returns:
     y: output pytree (same structure as x)
   """
   l2_norm = tree_util.tree_l2_norm(x)
-  factor = radius / l2_norm
-  return jax.lax.cond(l2_norm <= radius,
+  factor = max_value / l2_norm
+  return jax.lax.cond(l2_norm <= max_value,
                       lambda _: x,
                       lambda _: tree_util.tree_scalar_mul(factor, x),
                       operand=None)
 
 
-def projection_linf_ball(x: Any, radius: float = 1.0) -> Any:
+def projection_linf_ball(x: Any, max_value: float = 1.0) -> Any:
   r"""Projection onto the l-infinity ball.
 
   The output is:
-    ``argmin_{y, ||y||_inf <= radius} ||y - x||``.
+    ``argmin_{y, ||y||_inf <= max_value} ||y - x||``.
 
   Args:
     x: pytree to project.
-    radius: radius of the sphere.
+    max_value: radius of the ball.
 
   Returns:
     y: output pytree (same structure as x)
   """
-  return projection_box(x, (-radius, radius))
+  return projection_box(x, (-max_value, max_value))
 
 
 def projection_hyperplane(x: jnp.ndarray, hyperparams: Tuple) -> jnp.ndarray:
