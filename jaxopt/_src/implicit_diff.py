@@ -25,6 +25,7 @@ import jax
 from jaxopt._src import linear_solve
 from jaxopt._src.tree_util import tree_scalar_mul
 from jaxopt._src.tree_util import tree_sub
+from jaxopt._src.tree_util import tree_zeros_like
 
 
 def root_vjp(optimality_fun: Callable,
@@ -167,16 +168,13 @@ def sparse_root_vjp(optimality_fun: Callable,
   restricted_v = tree_scalar_mul(-1, cotangent[support])
   restricted_u = solve(restricted_matvec, restricted_v)
 
-  u = np.zeros_like(sol)
-  u[support] = restricted_u
-
   def fun_args(*args):
     # We close over the solution.
-    return optimality_fun(sol, *args)
+    return optimality_fun(sol, *args)[support]
 
   _, vjp_fun_args = jax.vjp(fun_args, *args)
 
-  return vjp_fun_args(u)
+  return vjp_fun_args(restricted_u)
 
 
 def _jvp_sol(optimality_fun, sol, args, tangent):
