@@ -65,20 +65,6 @@ class ImplicitDiffTest(jtu.JaxTestCase):
     J_num = test_util.ridge_solver_jac(X, y, lam, eps=1e-4)
     self.assertArraysAllClose(J, J_num, atol=5e-2)
 
-  # def test_sparse_root_vjp(self):
-  #   X, y = datasets.make_regression(n_samples=10, n_features=3, random_state=0)
-  #   optimality_fun = jax.grad(ridge_objective)
-  #   lam = 5.0
-  #   sol = ridge_solver(None, lam, X, y)
-  #   vjp = lambda g: idf.sparse_root_vjp(optimality_fun=optimality_fun,
-  #                                       sol=sol,
-  #                                       args=(lam, X, y),
-  #                                       cotangent=g)[0]  # vjp w.r.t. lam
-  #   I = jnp.eye(len(sol))
-  #   J = jax.vmap(vjp)(I)
-  #   J_num = test_util.ridge_solver_jac(X, y, lam, eps=1e-4)
-  #   self.assertArraysAllClose(J, J_num, atol=5e-2)
-
   def test_lasso_root_vjp(self):
     X, y = datasets.make_regression(n_samples=10, n_features=3, random_state=0)
     L = jax.numpy.linalg.norm(X, ord=2) ** 2
@@ -126,7 +112,6 @@ class ImplicitDiffTest(jtu.JaxTestCase):
     I = jnp.eye(len(sol))
     J = jax.vmap(vjp)(I)
     J_num = test_util.lasso_skl_jac(X, y, lam, eps=1e-4)
-    # import ipdb; ipdb.set_trace()
     self.assertArraysAllClose(J, J_num, atol=5e-2)
 
   def test_root_jvp(self):
