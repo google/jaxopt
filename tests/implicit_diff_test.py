@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from numpy.core.numeric import ones
 from absl.testing import absltest
 from absl.testing import parameterized
 
@@ -23,6 +24,7 @@ import jax.numpy as jnp
 from jaxopt import prox
 from jaxopt import implicit_diff as idf
 from jaxopt._src import test_util
+from jaxopt import objective
 
 from sklearn import datasets
 
@@ -103,12 +105,20 @@ class ImplicitDiffTest(jtu.JaxTestCase):
     L = jax.numpy.linalg.norm(X, ord=2) ** 2
 
     def optimality_fun(params, lam, X, y):
-      return prox.prox_lasso(
-        params - X.T @ (X @ params - y) / L, lam * len(y) / L) - params
+      support = params != 0
+      res = X[:, support].T @ (X[:, support] @ params[support] - y) / L
+      res = params[support] - res
+      res = prox.prox_lasso(res, lam * len(y) / L)
+      res -= params[support]
+      return res
 
     lam_max = jnp.max(jnp.abs(X.T @ y)) / len(y)
     lam = lam_max / 2
     sol = test_util.lasso_skl(X, y, lam)
+
+    # jax.jacobian(optimality_fun)(jnp.ones(X.shape[1]), lam, X, y)
+    # test the mask in optimality_fun
+
     vjp = lambda g: idf.sparse_root_vjp(optimality_fun=optimality_fun,
                                         sol=sol,
                                         args=(lam, X, y),

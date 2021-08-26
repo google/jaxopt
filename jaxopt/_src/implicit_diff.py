@@ -102,7 +102,6 @@ def root_vjp(optimality_fun: Callable,
     # We close over the arguments.
     return optimality_fun(sol, *args)
 
-  # import ipdb; ipdb.set_trace()
   _, vjp_fun_sol = jax.vjp(fun_sol, sol)
 
   # Compute the multiplication A^T u = (u^T A)^T.
@@ -154,8 +153,8 @@ def sparse_root_vjp(optimality_fun: Callable,
     # We close over the arguments.
     # Maybe this could be optimized
     sol_ = tree_zeros_like(sol)
-    jax.ops.index_update(sol_, support, restricted_sol)
-    return optimality_fun(sol_, *args)[support]
+    sol_ = jax.ops.index_update(sol_, support, restricted_sol)
+    return optimality_fun(sol_, *args)
 
   _, vjp_fun_sol = jax.vjp(fun_sol, restricted_sol)
 
@@ -169,10 +168,9 @@ def sparse_root_vjp(optimality_fun: Callable,
   restricted_v = tree_scalar_mul(-1, cotangent[support])
   restricted_u = solve(restricted_matvec, restricted_v)
 
-  import ipdb; ipdb.set_trace()
   def fun_args(*args):
     # We close over the solution.
-    return optimality_fun(sol, *args)[support]
+    return optimality_fun(sol, *args)
 
   _, vjp_fun_args = jax.vjp(fun_args, *args)
 
