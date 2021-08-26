@@ -153,7 +153,7 @@ def sparse_root_vjp(optimality_fun: Callable,
   def fun_sol(restricted_sol):
     # We close over the arguments.
     # Maybe this could be optimized
-    return optimality_fun(restricted_sol, *args)[support]
+    return optimality_fun(sol, *args)[support]
 
   # import ipdb; ipdb.set_trace()
   _, vjp_fun_sol = jax.vjp(fun_sol, restricted_sol)
