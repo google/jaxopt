@@ -15,10 +15,12 @@
 from absl.testing import absltest
 from absl.testing import parameterized
 
+import numpy as np
 import jax
 from jax import test_util as jtu
 import jax.numpy as jnp
 
+from jaxopt import prox
 from jaxopt import implicit_diff as idf
 from jaxopt._src import test_util
 
@@ -77,7 +79,12 @@ class ImplicitDiffTest(jtu.JaxTestCase):
 
   def test_lasso_root_vjp(self):
     X, y = datasets.make_regression(n_samples=10, n_features=3, random_state=0)
-    optimality_fun = jax.grad(lasso_objective)
+    L = jax.numpy.linalg.norm(X, ord=2) ** 2
+
+    def optimality_fun(params, lam, X, y):
+      return prox.prox_lasso(
+        params - X.T @ (X @ params - y) / L, lam * len(y) / L) - params
+
     lam_max = jnp.max(jnp.abs(X.T @ y)) / len(y)
     lam = lam_max / 2
     sol = test_util.lasso_skl(X, y, lam)
