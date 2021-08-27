@@ -91,12 +91,16 @@ class ImplicitDiffTest(jtu.JaxTestCase):
     L = jax.numpy.linalg.norm(X, ord=2) ** 2
 
     def optimality_fun(params, lam, X, y):
-      support = params != 0
-      res = X[:, support].T @ (X[:, support] @ params[support] - y) / L
-      res = params[support] - res
-      res = prox.prox_lasso(res, lam * len(y) / L)
-      res -= params[support]
-      return res
+      return prox.prox_lasso(
+        params - X.T @ (X @ params - y) / L, lam * len(y) / L) - params
+
+    # def optimality_fun(params, lam, X, y):
+    #   support = params != 0
+    #   res = X[:, support].T @ (X[:, support] @ params[support] - y) / L
+    #   res = params[support] - res
+    #   res = prox.prox_lasso(res, lam * len(y) / L)
+    #   res -= params[support]
+    #   return res
 
     lam_max = jnp.max(jnp.abs(X.T @ y)) / len(y)
     lam = lam_max / 2

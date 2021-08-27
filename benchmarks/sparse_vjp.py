@@ -20,13 +20,13 @@ def optimality_fun(params, lam, X, y):
     params - X.T @ (X @ params - y) / L, lam * len(y) / L) - params
 
 
-def optimality_fun_sparse(params, lam, X, y):
-    support = params != 0
-    res = X[:, support].T @ (X[:, support] @ params[support] - y) / L
-    res = params[support] - res
-    res = prox.prox_lasso(res, lam * len(y) / L)
-    res -= params[support]
-    return res
+# def optimality_fun_sparse(params, lam, X, y):
+#     support = params != 0
+#     res = X[:, support].T @ (X[:, support] @ params[support] - y) / L
+#     res = params[support] - res
+#     res = prox.prox_lasso(res, lam * len(y) / L)
+#     res -= params[support]
+#     return res
 
 
 lam_max = jnp.max(jnp.abs(X.T @ y)) / len(y)
@@ -41,7 +41,7 @@ vjp = lambda g: idf.root_vjp(optimality_fun=optimality_fun,
                              cotangent=g)[0]  # vjp w.r.t. lam
 
 vjp_sparse = lambda g: idf.sparse_root_vjp(
-  optimality_fun=optimality_fun_sparse,
+  optimality_fun=optimality_fun,
   sol=sol,
   args=(lam, X, y),
   cotangent=g)[0]  # vjp w.r.t. lam

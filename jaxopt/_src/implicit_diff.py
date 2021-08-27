@@ -149,12 +149,12 @@ def sparse_root_vjp(optimality_fun: Callable,
   support = sol != 0  # nonzeros coefficients of the solution
   restricted_sol = sol[support]  # solution restricted to the support
 
+  lam, X, y = args
+  new_args = lam, X[:, support], y
+
   def fun_sol(restricted_sol):
     # We close over the arguments.
-    # Maybe this could be optimized
-    sol_ = tree_zeros_like(sol)
-    sol_ = jax.ops.index_update(sol_, support, restricted_sol)
-    return optimality_fun(sol_, *args)
+    return optimality_fun(restricted_sol, *new_args)
 
   _, vjp_fun_sol = jax.vjp(fun_sol, restricted_sol)
 
@@ -170,9 +170,9 @@ def sparse_root_vjp(optimality_fun: Callable,
 
   def fun_args(*args):
     # We close over the solution.
-    return optimality_fun(sol, *args)
+    return optimality_fun(restricted_sol, *args)
 
-  _, vjp_fun_args = jax.vjp(fun_args, *args)
+  _, vjp_fun_args = jax.vjp(fun_args, *new_args)
 
   return vjp_fun_args(restricted_u)
 
