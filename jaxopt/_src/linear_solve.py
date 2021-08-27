@@ -88,6 +88,7 @@ def solve_cholesky(matvec: Callable, b: jnp.ndarray) -> jnp.ndarray:
 def solve_cg(matvec: Callable,
              b: Any,
              ridge: Optional[float] = None,
+             init: Optional[Any] = None,
              **kwargs) -> Any:
   """Solves ``A x = b`` using conjugate gradient.
 
@@ -97,6 +98,7 @@ def solve_cg(matvec: Callable,
     matvec: product between ``A`` and a vector.
     b: pytree.
     ridge: optional ridge regularization.
+    init: optional initialization to be used by conjugate gradient.
     **kwargs: additional keyword arguments for solver.
 
   Returns:
@@ -104,13 +106,19 @@ def solve_cg(matvec: Callable,
   """
   if ridge is not None:
     matvec = _make_ridge_matvec(matvec, ridge=ridge)
-  return jax.scipy.sparse.linalg.cg(matvec, b, **kwargs)[0]
+  return jax.scipy.sparse.linalg.cg(matvec, b, x0=init, **kwargs)[0]
 
 
 def _rmatvec(matvec, x):
-  """Computes rmatvec(x) = A^T x, given matvec(x) = A x."""
+  """Computes A^T x, from matvec(x) = A x, where A is square."""
   transpose = jax.linear_transpose(matvec, x)
   return transpose(x)[0]
+
+
+def _normal_matvec(matvec, x):
+  """Computes A^T A x from matvec(x) = A x, where A is square."""
+  matvec_x, vjp = jax.vjp(matvec, x)
+  return vjp(matvec_x)[0]
 
 
 def solve_normal_cg(matvec: Callable,
@@ -133,7 +141,8 @@ def solve_normal_cg(matvec: Callable,
   """
   def _matvec(x):
     """Computes A^T A x."""
-    return _rmatvec(matvec, matvec(x))
+    return _normal_matvec(matvec, x)
+
   if ridge is not None:
     _matvec = _make_ridge_matvec(_matvec, ridge=ridge)
 

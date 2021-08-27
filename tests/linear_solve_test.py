@@ -41,6 +41,22 @@ class LinearSolveTest(jtu.JaxTestCase):
     A2 = _linear_solve._materialize_array(matvec, (5, 3))
     self.assertArraysAllClose(A, A2, atol=1e-3)
 
+  def test_rmatvec(self):
+    rng = onp.random.RandomState(0)
+    A = rng.randn(5, 5)
+    matvec = lambda x: jnp.dot(A, x)
+    x = rng.randn(5)
+    self.assertArraysAllClose(_linear_solve._rmatvec(matvec, x),
+                              jnp.dot(A.T, x))
+
+  def test_normal_matvec(self):
+    rng = onp.random.RandomState(0)
+    A = rng.randn(5, 5)
+    matvec = lambda x: jnp.dot(A, x)
+    x = rng.randn(5)
+    self.assertArraysAllClose(_linear_solve._normal_matvec(matvec, x),
+                              jnp.dot(A.T, jnp.dot(A, x)))
+
   def test_solve_dense(self):
     rng = onp.random.RandomState(0)
 

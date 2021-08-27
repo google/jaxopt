@@ -20,11 +20,22 @@ import jax.numpy as jnp
 
 from jaxopt import projection
 from jaxopt import QuadraticProgramming
+from jaxopt._src import quadratic_prog as _quadratic_prog
 
 import numpy as onp
 
 
 class QuadraticProgTest(jtu.JaxTestCase):
+
+  def test_matvec_and_rmatvec(self):
+    rng = onp.random.RandomState(0)
+    A = rng.randn(5, 4)
+    matvec = lambda x: jnp.dot(A, x)
+    x = rng.randn(4)
+    y = rng.randn(5)
+    mv_A, rmv_A = _quadratic_prog._matvec_and_rmatvec(matvec, x, y)
+    self.assertArraysAllClose(mv_A, jnp.dot(A, x))
+    self.assertArraysAllClose(rmv_A, jnp.dot(A.T, y))
 
   def _check_derivative_A_and_b(self, solver, params, A, b):
     def fun(A, b):
@@ -74,6 +85,24 @@ class QuadraticProgTest(jtu.JaxTestCase):
     sol = qp.run(**hyperparams).params
     self.assertAllClose(qp.l2_optimality_error(sol, **hyperparams), 0.0)
     self._check_derivative_A_and_b(qp, hyperparams, A, b)
+
+  def test_projection_hyperplane(self):
+    x = jnp.array([1.0, 2.0])
+    a = jnp.array([-0.5, 1.5])
+    b = 0.3
+    # Find ||y-x||^2 such that jnp.dot(y, a) = b.
+    expected = projection.projection_hyperplane(x, (a, b))
+
+    matvec_Q = lambda params_Q, u: u
+    matvec_A = lambda params_A, u: jnp.dot(a, u).reshape(1)
+    qp = QuadraticProgramming(matvec_Q=matvec_Q, matvec_A=matvec_A)
+    # In this example, params_Q = params_A = None.
+    hyperparams = dict(params_obj=(None, -x),
+                       params_eq=(None, jnp.array([b])))
+    sol = qp.run(**hyperparams).params
+    primal_sol = sol[0]
+    self.assertArraysAllClose(primal_sol, expected)
+    self.assertAllClose(qp.l2_optimality_error(sol, **hyperparams), 0.0)
 
   def test_projection_simplex(self):
     def _projection_simplex_qp(x, s=1.0):

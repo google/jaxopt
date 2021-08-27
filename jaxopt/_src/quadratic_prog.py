@@ -15,11 +15,13 @@
 """Quadratic programming in JAX."""
 
 from typing import Any
+from typing import Callable
 from typing import Optional
 from typing import Tuple
 
 from dataclasses import dataclass
 
+import jax
 import jax.numpy as jnp
 
 from jaxopt._src import base
@@ -55,17 +57,36 @@ def _check_params(params_obj, params_eq=None, params_ineq=None):
       raise ValueError("G.shape[1] != Q.shape[1]")
 
 
-def _solve_eq_constrained_qp(params_obj, params_eq):
-  """Solve 0.5 * x^T Q x + c^T x subject to Ax = b."""
-  Q, c = params_obj
-  A, b = params_eq
+def _matvec_and_rmatvec(matvec, x, y):
+  """Returns both matvec(x) = dot(A, x) and rmatvec(y) = dot(A.T, y)."""
+  matvec_x, vjp = jax.vjp(matvec, x)
+  rmatvec_y, = vjp(y)
+  return matvec_x, rmatvec_y
+
+
+def _solve_eq_constrained_qp(init_params,
+                             matvec_Q,
+                             c,
+                             matvec_A,
+                             b,
+                             maxiter):
+  """Solves 0.5 * x^T Q x + c^T x subject to Ax = b.
+
+  This solver returns both the primal solution (x) and the dual solution.
+  """
 
   def matvec(u):
     primal_u, dual_u = u
-    # todo: access Q and A only through matvecs
-    return (jnp.dot(Q, primal_u) + jnp.dot(A.T, dual_u), jnp.dot(A, primal_u))
+    mv_A, rmv_A = _matvec_and_rmatvec(matvec_A, primal_u, dual_u)
+    return (tree_util.tree_add(matvec_Q(primal_u), rmv_A), mv_A)
 
-  return linear_solve.solve_cg(matvec, (-c, b))
+  minus_c = tree_util.tree_scalar_mul(-1, c)
+
+  # Solves the following linear system:
+  # [[Q A^T]  [primal_var = [-c
+  #  [A 0  ]]  dual_var  ]    b]
+  return linear_solve.solve_cg(matvec, (minus_c, b), init=init_params,
+                               maxiter=maxiter)
 
 
 def _solve_constrained_qp_cvxpy(params_obj, params_eq, params_ineq):
@@ -91,7 +112,15 @@ def _solve_constrained_qp_cvxpy(params_obj, params_eq, params_ineq):
           jnp.array(pb.constraints[1].dual_value))
 
 
-def _make_quadratic_prog_optimality_fun():
+def _create_matvec(matvec, M):
+  if matvec is not None:
+    # M = params_M
+    return lambda u: matvec(M, u)
+  else:
+    return lambda u: jnp.dot(M, u)
+
+
+def _make_quadratic_prog_optimality_fun(matvec_Q, matvec_A):
   """Makes the optimality function for quadratic programming.
 
   Returns:
@@ -103,12 +132,14 @@ def _make_quadratic_prog_optimality_fun():
   """
   def obj_fun(primal_var, params_obj):
     Q, c = params_obj
-    return (0.5 * jnp.dot(primal_var, jnp.dot(Q, primal_var)) +
-            jnp.dot(primal_var, c))
+    _matvec_Q = _create_matvec(matvec_Q, Q)
+    return (0.5 * tree_util.tree_vdot(primal_var, _matvec_Q(primal_var)) +
+            tree_util.tree_vdot(primal_var, c))
 
   def eq_fun(primal_var, params_eq):
     A, b = params_eq
-    return jnp.dot(A, primal_var) - b
+    _matvec_A = _create_matvec(matvec_A, A)
+    return tree_util.tree_sub(_matvec_A(primal_var), b)
 
   def ineq_fun(primal_var, params_ineq):
     G, h = params_ineq
@@ -124,7 +155,19 @@ class QuadraticProgramming:
   The objective function is::
 
     0.5 * x^T Q x + c^T x subject to Gx <= h, Ax = b.
+
+  Attributes:
+    matvec_Q: a Callable matvec_Q(params_Q, u).
+      By default, matvec_Q(Q, u) = dot(Q, u), where Q = params_Q.
+    matvec_A: a Callable matvec_A(params_A, u).
+      By default, matvec_A(A, u) = dot(A, u), where A = params_A.
+    maxiter: maximum number of iterations.
   """
+
+  # TODO(mblondel): add matvec_G when we implement our own QP solvers.
+  matvec_Q: Optional[Callable] = None
+  matvec_A: Optional[Callable] = None
+  maxiter: int = 1000
 
   def run(self,
           init_params: Optional[Tuple] = None,
@@ -137,21 +180,28 @@ class QuadraticProgramming:
 
     Args:
       init_params: ignored.
-      params_obj: (Q, c)
-      params_eq: (A, b)
+      params_obj: (Q, c) or (params_Q, c) if matvec_Q is provided.
+      params_eq: (A, b) or (params_A, b) if matvec_A is provided.
       params_ineq: = (G, h) or None if no inequality constraints.
     Return type:
       base.OptStep
     Returns:
       (params, state), ``params = (primal_var, dual_var_eq, dual_var_ineq)``
     """
-    # Not used at the moment but it will be when we implement our own solvers.
-    del init_params
+    if self.matvec_Q is None and self.matvec_A is None:
+      _check_params(params_obj, params_eq, params_ineq)
 
-    _check_params(params_obj, params_eq, params_ineq)
+    Q, c = params_obj
+    A, b = params_eq
+
+    matvec_Q = _create_matvec(self.matvec_Q, Q)
+    matvec_A = _create_matvec(self.matvec_A, A)
 
     if params_ineq is None:
-      primal, dual_eq = _solve_eq_constrained_qp(params_obj, params_eq)
+      primal, dual_eq = _solve_eq_constrained_qp(init_params,
+                                                 matvec_Q, c,
+                                                 matvec_A, b,
+                                                 self.maxiter)
       params = (primal, dual_eq, None)
     else:
       params = _solve_constrained_qp_cvxpy(params_obj, params_eq, params_ineq)
@@ -159,17 +209,19 @@ class QuadraticProgramming:
     # No state needed currently as we use CVXPY.
     return base.OptStep(params=params, state=None)
 
-  def l2_optimality_error(self,
-                          params: Any,
-                          params_obj: Tuple,
-                          params_eq: Tuple,
-                          params_ineq: Optional[Tuple]) -> base.OptStep:
+  def l2_optimality_error(
+      self,
+      params: Any,
+      params_obj: ArrayPair,
+      params_eq: ArrayPair,
+      params_ineq: Optional[ArrayPair] = None) -> base.OptStep:
     """Computes the L2 norm of the KKT residuals."""
     pytree = self.optimality_fun(params, params_obj, params_eq, params_ineq)
     return tree_util.tree_l2_norm(pytree)
 
   def __post_init__(self):
-    self.optimality_fun = _make_quadratic_prog_optimality_fun()
+    self.optimality_fun = _make_quadratic_prog_optimality_fun(self.matvec_Q,
+                                                              self.matvec_A)
 
     # Set up implicit diff.
     decorator = idf.custom_root(self.optimality_fun, has_aux=True)
