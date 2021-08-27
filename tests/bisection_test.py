@@ -46,7 +46,7 @@ def _threshold_proj_simplex(x, s):
   lower = jax.lax.stop_gradient(jnp.min(x)) - s / len(x)
 
   bisect = Bisection(optimality_fun=_optimality_fun_proj_simplex,
-                     lower=lower, upper=upper, increasing=False)
+                     lower=lower, upper=upper)
   return bisect.run(None, x, s).params
 
 
@@ -54,7 +54,13 @@ def _projection_simplex_bisect(x, s=1.0):
   return jnp.maximum(x - _threshold_proj_simplex(x, s), 0)
 
 
-class RootFindingTest(jtu.JaxTestCase):
+class BisectionTest(jtu.JaxTestCase):
+
+  def test_bracket_floats(self):
+    bisect = Bisection(optimality_fun=_optimality_fun_proj_simplex,
+                       lower=0, upper=100)
+    self.assertEqual(str(bisect.lower.dtype), "float32")
+    self.assertEqual(str(bisect.upper.dtype), "float32")
 
   def test_bisect(self):
     rng = onp.random.RandomState(0)
@@ -75,7 +81,7 @@ class RootFindingTest(jtu.JaxTestCase):
     s = 1.0
     upper = jnp.max(x)
     bisect = Bisection(optimality_fun=_optimality_fun_proj_simplex,
-                       lower=upper, upper=upper, increasing=False)
+                       lower=upper, upper=upper)
     self.assertRaises(ValueError, bisect.run, None, x, s)
 
   def test_bisect_wrong_upper_bracket(self):
@@ -84,7 +90,7 @@ class RootFindingTest(jtu.JaxTestCase):
     s = 1.0
     lower = jnp.min(x) - s / len(x)
     bisect = Bisection(optimality_fun=_optimality_fun_proj_simplex,
-                       lower=lower, upper=lower, increasing=False)
+                       lower=lower, upper=lower)
     self.assertRaises(ValueError, bisect.run, None, x, s)
 
 if __name__ == '__main__':

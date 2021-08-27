@@ -285,7 +285,6 @@ def _root_proj_box_sec(x, hyperparams):
   bisect = Bisection(optimality_fun=_optimality_fun_proj_box_sec,
                      lower=lower,
                      upper=upper,
-                     increasing=True,
                      check_bracket=False)
   return bisect.run(None, x, hyperparams).params
 
