@@ -10,7 +10,7 @@ from jaxopt._src import test_util
 
 from sklearn import datasets
 
-X, y = datasets.make_regression(n_samples=10, n_features=1000, random_state=0)
+X, y = datasets.make_regression(n_samples=10, n_features=10_000, random_state=0)
 
 L = jax.numpy.linalg.norm(X, ord=2) ** 2
 
@@ -58,7 +58,7 @@ t_jac_sparse = time.time() - t_start
 
 print("Time taken to solve the Lasso optimization problem %.3f" % t_optim)
 print("Time taken to compute the Jacobian %.3f" % t_jac)
-print("Time taken to compute the Jacobian with the sparse implementation %.3f" % t_jac)
+print("Time taken to compute the Jacobian with the sparse implementation %.3f" % t_jac_sparse)
 
 
 # Computation time are the same, which is very weird to me

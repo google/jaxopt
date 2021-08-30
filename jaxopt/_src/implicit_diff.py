@@ -28,51 +28,51 @@ from jaxopt._src.tree_util import tree_sub
 from jaxopt._src.tree_util import tree_zeros_like
 
 
-def root_vjp(optimality_fun: Callable,
-             sol: Any,
-             args: Tuple,
-             cotangent: Any,
-             solve: Callable = linear_solve.solve_normal_cg) -> Any:
-  """Vector-Jacobian product of a root.
+# def root_vjp(optimality_fun: Callable,
+#              sol: Any,
+#              args: Tuple,
+#              cotangent: Any,
+#              solve: Callable = linear_solve.solve_normal_cg) -> Any:
+#   """Vector-Jacobian product of a root.
 
-  The invariant is ``optimality_fun(sol, *args) == 0``.
+#   The invariant is ``optimality_fun(sol, *args) == 0``.
 
-  Args:
-    optimality_fun: the optimality function to use.
-    sol: solution / root (pytree).
-    args: tuple containing the arguments with respect to which we wish to
-      differentiate ``sol`` against.
-    cotangent: vector to left-multiply the Jacobian with
-      (pytree, same structure as ``sol``).
-    solve: a linear solver of the form, ``x = solve(matvec, b)``,
-      where ``matvec(x) = Ax`` and ``Ax=b``.
-  Returns:
-    vjps: tuple of the same length as ``len(args)`` containing the vjps w.r.t.
-      each argument. Each ``vjps[i]` has the same pytree structure as
-      ``args[i]``.
-  """
-  def fun_sol(sol):
-    # We close over the arguments.
-    return optimality_fun(sol, *args)
+#   Args:
+#     optimality_fun: the optimality function to use.
+#     sol: solution / root (pytree).
+#     args: tuple containing the arguments with respect to which we wish to
+#       differentiate ``sol`` against.
+#     cotangent: vector to left-multiply the Jacobian with
+#       (pytree, same structure as ``sol``).
+#     solve: a linear solver of the form, ``x = solve(matvec, b)``,
+#       where ``matvec(x) = Ax`` and ``Ax=b``.
+#   Returns:
+#     vjps: tuple of the same length as ``len(args)`` containing the vjps w.r.t.
+#       each argument. Each ``vjps[i]` has the same pytree structure as
+#       ``args[i]``.
+#   """
+#   def fun_sol(sol):
+#     # We close over the arguments.
+#     return optimality_fun(sol, *args)
 
-  _, vjp_fun_sol = jax.vjp(fun_sol, sol)
+#   _, vjp_fun_sol = jax.vjp(fun_sol, sol)
 
-  # Compute the multiplication A^T u = (u^T A)^T.
-  matvec = lambda u: vjp_fun_sol(u)[0]
+#   # Compute the multiplication A^T u = (u^T A)^T.
+#   matvec = lambda u: vjp_fun_sol(u)[0]
 
-  # The solution of A^T u = v, where
-  # A = jacobian(optimality_fun, argnums=0)
-  # v = -cotangent.
-  v = tree_scalar_mul(-1, cotangent)
-  u = solve(matvec, v)
+#   # The solution of A^T u = v, where
+#   # A = jacobian(optimality_fun, argnums=0)
+#   # v = -cotangent.
+#   v = tree_scalar_mul(-1, cotangent)
+#   u = solve(matvec, v)
 
-  def fun_args(*args):
-    # We close over the solution.
-    return optimality_fun(sol, *args)
+#   def fun_args(*args):
+#     # We close over the solution.
+#     return optimality_fun(sol, *args)
 
-  _, vjp_fun_args = jax.vjp(fun_args, *args)
+#   _, vjp_fun_args = jax.vjp(fun_args, *args)
 
-  return vjp_fun_args(u)
+#   return vjp_fun_args(u)
 
 
 def root_vjp(optimality_fun: Callable,
