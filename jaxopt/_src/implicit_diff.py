@@ -124,10 +124,8 @@ def sparse_root_vjp(optimality_fun: Callable,
   def fun_args(*args):
     # We close over the solution.
     return restricted_optimality_fun(restricted_sol, *args)
-    # return optimality_fun(restricted_sol, *args)
 
   _, vjp_fun_args = jax.vjp(fun_args, *args)
-  # _, vjp_fun_args = jax.vjp(fun_args, *new_args)
 
   return vjp_fun_args(restricted_u)
 
