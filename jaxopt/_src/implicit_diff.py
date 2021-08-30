@@ -201,6 +201,36 @@ def _custom_root(solver_fun, optimality_fun, solve, has_aux):
   return wrapped_solver_fun
 
 
+def _sparse_custom_root(
+  solver_fun, optimality_fun, make_restricted_optimality_fun, solve, has_aux):
+  def solver_fun_fwd(init_params, *args):
+    res = solver_fun(init_params, *args)
+    return res, (res, args)
+
+  def solver_fun_bwd(tup, cotangent):
+    res, args = tup
+
+    # solver_fun can return auxiliary data if has_aux = True.
+    if has_aux:
+      cotangent = cotangent[0]
+      sol = res[0]
+    else:
+      sol = res
+
+    # Compute VJPs w.r.t. args.
+    vjps = sparse_root_vjp(
+      optimality_fun=optimality_fun,
+      make_restricted_optimality_fun=make_restricted_optimality_fun,
+      sol=sol, args=args, cotangent=cotangent, solve=solve)
+    # For init_params, we return None.
+    return (None,) + vjps
+
+  wrapped_solver_fun = jax.custom_vjp(solver_fun)
+  wrapped_solver_fun.defvjp(solver_fun_fwd, solver_fun_bwd)
+
+  return wrapped_solver_fun
+
+
 def custom_root(optimality_fun: Callable,
                 has_aux: bool = False,
                 solve: Callable = linear_solve.solve_normal_cg):
@@ -219,6 +249,30 @@ def custom_root(optimality_fun: Callable,
   """
   def wrapper(solver_fun):
     return _custom_root(solver_fun, optimality_fun, solve, has_aux)
+  return wrapper
+
+
+def sparse_custom_root(optimality_fun: Callable,
+                       make_restricted_optimality_fun: Callable,
+                       has_aux: bool = False,
+                       solve: Callable = linear_solve.solve_normal_cg):
+  """Decorator for adding implicit differentiation to a root solver.
+
+  Args:
+    optimality_fun: an equation function, ``optimality_fun(params, *args)`.
+      The invariant is ``optimality_fun(sol, *args) == 0`` at the
+      solution / root ``sol``.
+    has_aux: whether the decorated solver function returns auxiliary data.
+    solve: a linear solver of the form, ``solve(matvec, b)``.
+
+  Returns:
+    A solver function decorator, i.e.,
+      ``custom_root(optimality_fun)(solver_fun)``.
+  """
+  def wrapper(solver_fun):
+    return _sparse_custom_root(
+      solver_fun, optimality_fun, make_restricted_optimality_fun, solve,
+      has_aux)
   return wrapper
 
 
