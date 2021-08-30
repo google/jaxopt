@@ -143,6 +143,8 @@ def _make_quadratic_prog_optimality_fun(matvec_Q, matvec_A):
 
   def ineq_fun(primal_var, params_ineq):
     G, h = params_ineq
+    # TODO(mblondel): Add support for matvec_G when we implement our own QP
+    # solver.
     return jnp.dot(G, primal_var) - h
 
   return idf.make_kkt_optimality_fun(obj_fun, eq_fun, ineq_fun)
@@ -198,16 +200,17 @@ class QuadraticProgramming:
     matvec_A = _create_matvec(self.matvec_A, A)
 
     if params_ineq is None:
-      primal, dual_eq = _solve_eq_constrained_qp(init_params,
-                                                 matvec_Q, c,
-                                                 matvec_A, b,
-                                                 self.maxiter)
-      params = (primal, dual_eq, None)
+      sol = base.KKTSolution(*_solve_eq_constrained_qp(init_params,
+                                                       matvec_Q, c,
+                                                       matvec_A, b,
+                                                       self.maxiter))
     else:
-      params = _solve_constrained_qp_cvxpy(params_obj, params_eq, params_ineq)
+      sol = base.KKTSolution(*_solve_constrained_qp_cvxpy(params_obj,
+                                                          params_eq,
+                                                          params_ineq))
 
     # No state needed currently as we use CVXPY.
-    return base.OptStep(params=params, state=None)
+    return base.OptStep(params=sol, state=None)
 
   def l2_optimality_error(
       self,

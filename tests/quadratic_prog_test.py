@@ -128,6 +128,48 @@ class QuadraticProgTest(jtu.JaxTestCase):
     J2 = jax.jacrev(_projection_simplex_qp)(x)
     self.assertArraysAllClose(J, J2, atol=1e-5)
 
+  def test_eq_constrained_qp_with_pytrees(self):
+    rng = onp.random.RandomState(0)
+    Q = rng.randn(7, 7)
+    Q = onp. dot(Q, Q.T)
+    A = rng.randn(4, 7)
+
+    tmp = rng.randn(7)
+    # Must have the same pytree structure as the output of matvec_Q.
+    c = (tmp[:3], tmp[3:])
+    # Must have the same pytree structure as the output of matvec_A.
+    b = rng.randn(4)
+
+    def matvec_Q(Q, tup):
+      x_ = jnp.concatenate(tup)
+      res = jnp.dot(Q, x_)
+      return res[:3], res[3:]
+
+    def matvec_A(A, tup):
+      x_ = jnp.concatenate(tup)
+      return jnp.dot(A, x_)
+
+    # With pytrees directly.
+    hyperparams = dict(params_obj=(Q, c), params_eq=(A, b))
+    qp = QuadraticProgramming(matvec_Q=matvec_Q, matvec_A=matvec_A)
+    # sol.primal has the same pytree structure as the output of matvec_Q.
+    # sol.dual_eq has the same pytree structure as the output of matvec_A.
+    sol_pytree = qp.run(**hyperparams).params
+    self.assertAllClose(qp.l2_optimality_error(sol_pytree, **hyperparams), 0.0,
+                        atol=1e-4)
+
+    # With flattened pytrees.
+    hyperparams = dict(params_obj=(Q, jnp.concatenate(c)), params_eq=(A, b))
+    qp = QuadraticProgramming()
+    sol = qp.run(**hyperparams).params
+    self.assertAllClose(qp.l2_optimality_error(sol, **hyperparams), 0.0,
+                        atol=1e-4)
+
+    # Check that the solutions match.
+    self.assertArraysAllClose(jnp.concatenate(sol_pytree.primal), sol.primal,
+                              atol=1e-4)
+    self.assertArraysAllClose(sol_pytree.dual_eq, sol.dual_eq, atol=1e-4)
+
 
 if __name__ == '__main__':
   absltest.main(testLoader=jtu.JaxTestLoader())
