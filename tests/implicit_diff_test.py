@@ -40,7 +40,11 @@ def lasso_objective(params, lam, X, y):
     jnp.abs(params))
 
 
-# def ridge_solver(init_params, lam, X, y):
+def lasso_solver(params, X, y, lam):
+  sol = test_util.lasso_skl(X, y, lam)
+  return sol
+
+
 def ridge_solver(init_params, lam, X, y):
   del init_params  # not used
   XX = jnp.dot(X.T, X)
@@ -135,15 +139,15 @@ class ImplicitDiffTest(jtu.JaxTestCase):
     J = jax.jacrev(ridge_solver_decorated, argnums=1)(None, lam, X=X, y=y)
     self.assertArraysAllClose(J, J_num, atol=5e-2)
 
-  # def test_custom_root_lasso(self):
-  #   lasso_solver_decorated = idf.custom_root(
-  #     lasso_optimality_fun)(test_util.lasso_skl)
-  #   sol = test_util.lasso_skl(X=X, y=y, lam=lam)
-  #   sol_decorated = lasso_solver_decorated(X=X, y=y, lam=lam)
-  #   self.assertArraysAllClose(sol, sol_decorated, atol=1e-4)
-  #   J_num = test_util.lasso_skl_jac(X=X, y=y, lam=lam, tol=1e-4)
-  #   J = jax.jacrev(lasso_solver_decorated, argnums=2)(X, y, lam)
-  #   self.assertArraysAllClose(J, J_num, atol=5e-2)
+  def test_custom_root_lasso(self):
+    lasso_solver_decorated = idf.custom_root(
+      lasso_optimality_fun)(lasso_solver)
+    sol = test_util.lasso_skl(X=X, y=y, lam=lam)
+    sol_decorated = lasso_solver_decorated(None, X=X, y=y, lam=lam)
+    self.assertArraysAllClose(sol, sol_decorated, atol=1e-4)
+    J_num = test_util.lasso_skl_jac(X=X, y=y, lam=lam, tol=1e-4)
+    J = jax.jacrev(lasso_solver_decorated, argnums=3)(None, X, y, lam)
+    self.assertArraysAllClose(J, J_num, atol=5e-2)
 
   def test_custom_root_with_has_aux(self):
     def ridge_solver_with_aux(init_params, lam, X, y):
