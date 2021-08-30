@@ -49,6 +49,17 @@ def ridge_solver(init_params, lam, X, y):
   return jnp.linalg.solve(XX + lam * len(y) * I, Xy)
 
 
+X, y = datasets.make_regression(n_samples=10, n_features=3, random_state=0)
+lam_max = jnp.max(jnp.abs(X.T @ y)) / len(y)
+lam = lam_max / 2
+L = jax.numpy.linalg.norm(X, ord=2) ** 2
+
+
+def lasso_optimality_fun(params, X, y, lam, tol=1e-4):
+  return prox.prox_lasso(
+    params - X.T @ (X @ params - y) / L, lam * len(y) / L) - params
+
+
 class ImplicitDiffTest(jtu.JaxTestCase):
 
   def test_root_vjp(self):
@@ -66,39 +77,23 @@ class ImplicitDiffTest(jtu.JaxTestCase):
     self.assertArraysAllClose(J, J_num, atol=5e-2)
 
   def test_lasso_root_vjp(self):
-    X, y = datasets.make_regression(n_samples=10, n_features=3, random_state=0)
-    L = jax.numpy.linalg.norm(X, ord=2) ** 2
-
-    def optimality_fun(params, lam, X, y):
-      return prox.prox_lasso(
-        params - X.T @ (X @ params - y) / L, lam * len(y) / L) - params
-
-    lam_max = jnp.max(jnp.abs(X.T @ y)) / len(y)
-    lam = lam_max / 2
     sol = test_util.lasso_skl(X, y, lam)
-    vjp = lambda g: idf.root_vjp(optimality_fun=optimality_fun,
+    vjp = lambda g: idf.root_vjp(optimality_fun=lasso_optimality_fun,
                                  sol=sol,
-                                 args=(lam, X, y),
-                                 cotangent=g)[0]  # vjp w.r.t. lam
+                                 args=(X, y, lam),
+                                 cotangent=g)[2]  # vjp w.r.t. lam
     I = jnp.eye(len(sol))
     J = jax.vmap(vjp)(I)
     J_num = test_util.lasso_skl_jac(X, y, lam, eps=1e-4)
     self.assertArraysAllClose(J, J_num, atol=5e-2)
 
   def test_lasso_sparse_root_vjp(self):
-    X, y = datasets.make_regression(n_samples=10, n_features=3, random_state=0)
-
-    L = jax.numpy.linalg.norm(X, ord=2) ** 2
-
-    def optimality_fun(params, lam, X, y):
-      return prox.prox_lasso(
-        params - X.T @ (X @ params - y) / L, lam * len(y) / L) - params
 
     def make_restricted_optimality_fun(support):
-      def restricted_optimality_fun(restricted_params, lam, X, y):
+      def restricted_optimality_fun(restricted_params, X, y, lam):
         # this is suboptimal, I would try to compute restricted_X once for all
         restricted_X = X[:, support]
-        return optimality_fun(restricted_params, lam, restricted_X, y)
+        return lasso_optimality_fun(restricted_params, restricted_X, y, lam)
       return restricted_optimality_fun
 
     lam_max = jnp.max(jnp.abs(X.T @ y)) / len(y)
@@ -106,11 +101,11 @@ class ImplicitDiffTest(jtu.JaxTestCase):
     sol = test_util.lasso_skl(X, y, lam)
 
     vjp = lambda g: idf.sparse_root_vjp(
-      optimality_fun=optimality_fun,
+      optimality_fun=lasso_optimality_fun,
       make_restricted_optimality_fun=make_restricted_optimality_fun,
       sol=sol,
-      args=(lam, X, y),
-      cotangent=g)[0]  # vjp w.r.t. lam
+      args=(X, y, lam),
+      cotangent=g)[2]  # vjp w.r.t. lam
     I = jnp.eye(len(sol))
     J = jax.vmap(vjp)(I)
     J_num = test_util.lasso_skl_jac(X, y, lam, eps=1e-4)
@@ -139,6 +134,16 @@ class ImplicitDiffTest(jtu.JaxTestCase):
     J_num = test_util.ridge_solver_jac(X, y, lam, eps=1e-4)
     J = jax.jacrev(ridge_solver_decorated, argnums=1)(None, lam, X=X, y=y)
     self.assertArraysAllClose(J, J_num, atol=5e-2)
+
+  # def test_custom_root_lasso(self):
+  #   lasso_solver_decorated = idf.custom_root(
+  #     lasso_optimality_fun)(test_util.lasso_skl)
+  #   sol = test_util.lasso_skl(X=X, y=y, lam=lam)
+  #   sol_decorated = lasso_solver_decorated(X=X, y=y, lam=lam)
+  #   self.assertArraysAllClose(sol, sol_decorated, atol=1e-4)
+  #   J_num = test_util.lasso_skl_jac(X=X, y=y, lam=lam, tol=1e-4)
+  #   J = jax.jacrev(lasso_solver_decorated, argnums=2)(X, y, lam)
+  #   self.assertArraysAllClose(J, J_num, atol=5e-2)
 
   def test_custom_root_with_has_aux(self):
     def ridge_solver_with_aux(init_params, lam, X, y):
