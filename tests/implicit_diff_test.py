@@ -94,25 +94,23 @@ class ImplicitDiffTest(jtu.JaxTestCase):
       return prox.prox_lasso(
         params - X.T @ (X @ params - y) / L, lam * len(y) / L) - params
 
-    # def optimality_fun(params, lam, X, y):
-    #   support = params != 0
-    #   res = X[:, support].T @ (X[:, support] @ params[support] - y) / L
-    #   res = params[support] - res
-    #   res = prox.prox_lasso(res, lam * len(y) / L)
-    #   res -= params[support]
-    #   return res
+    def make_restricted_optimality_fun(support):
+      def restricted_optimality_fun(restricted_params, lam, X, y):
+        # this is suboptimal, I would try to compute restricted_X once for all
+        restricted_X = X[:, support]
+        return optimality_fun(restricted_params, lam, restricted_X, y)
+      return restricted_optimality_fun
 
     lam_max = jnp.max(jnp.abs(X.T @ y)) / len(y)
     lam = lam_max / 2
     sol = test_util.lasso_skl(X, y, lam)
 
-    # jax.jacobian(optimality_fun)(jnp.ones(X.shape[1]), lam, X, y)
-    # test the mask in optimality_fun
-
-    vjp = lambda g: idf.sparse_root_vjp(optimality_fun=optimality_fun,
-                                        sol=sol,
-                                        args=(lam, X, y),
-                                        cotangent=g)[0]  # vjp w.r.t. lam
+    vjp = lambda g: idf.sparse_root_vjp(
+      optimality_fun=optimality_fun,
+      make_restricted_optimality_fun=make_restricted_optimality_fun,
+      sol=sol,
+      args=(lam, X, y),
+      cotangent=g)[0]  # vjp w.r.t. lam
     I = jnp.eye(len(sol))
     J = jax.vmap(vjp)(I)
     J_num = test_util.lasso_skl_jac(X, y, lam, eps=1e-4)

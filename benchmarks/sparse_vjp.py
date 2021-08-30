@@ -10,7 +10,8 @@ from jaxopt._src import test_util
 
 from sklearn import datasets
 
-X, y = datasets.make_regression(n_samples=10, n_features=10_000, random_state=0)
+X, y = datasets.make_regression(
+  n_samples=10, n_features=10_000, random_state=0)
 
 L = jax.numpy.linalg.norm(X, ord=2) ** 2
 
@@ -20,19 +21,19 @@ def optimality_fun(params, lam, X, y):
     params - X.T @ (X @ params - y) / L, lam * len(y) / L) - params
 
 
-# def optimality_fun_sparse(params, lam, X, y):
-#     support = params != 0
-#     res = X[:, support].T @ (X[:, support] @ params[support] - y) / L
-#     res = params[support] - res
-#     res = prox.prox_lasso(res, lam * len(y) / L)
-#     res -= params[support]
-#     return res
+def make_restricted_optimality_fun(support):
+  def restricted_optimality_fun(restricted_params, lam, X, y):
+    # this is suboptimal, I would try to compute restricted_X once for all
+    restricted_X = X[:, support]
+    return optimality_fun(restricted_params, lam, restricted_X, y)
+  return restricted_optimality_fun
 
 
 lam_max = jnp.max(jnp.abs(X.T @ y)) / len(y)
 lam = lam_max / 2
 t_start = time.time()
 sol = test_util.lasso_skl(X, y, lam)
+print(sol)
 t_optim = time.time() - t_start
 
 vjp = lambda g: idf.root_vjp(optimality_fun=optimality_fun,
@@ -42,6 +43,7 @@ vjp = lambda g: idf.root_vjp(optimality_fun=optimality_fun,
 
 vjp_sparse = lambda g: idf.sparse_root_vjp(
   optimality_fun=optimality_fun,
+  make_restricted_optimality_fun=make_restricted_optimality_fun,
   sol=sol,
   args=(lam, X, y),
   cotangent=g)[0]  # vjp w.r.t. lam
