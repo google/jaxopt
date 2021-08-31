@@ -25,8 +25,7 @@ using projection_box_section.
 from absl import app
 import jax.numpy as jnp
 from jaxopt import projection
-from jaxopt import prox
-from jaxopt import ProximalGradient
+from jaxopt import ProjectedGradient
 import numpy as onp
 from sklearn import datasets
 from sklearn import preprocessing
@@ -66,25 +65,19 @@ def main(argv):
   K = jnp.dot(X, X.T)  # Use a linear kernel.
 
   # Define projection operator.
-  box_lower = jnp.where(y == 1, 0, -C)
-  box_upper = jnp.where(y == 1, C, 0)
   w = jnp.ones(X.shape[0])
 
-  def proj(beta, hyperparams_proj):
-    # Not used here but all prox and projection operators must accept an
-    # hyperparameter.
-    del hyperparams_proj
+  def proj(beta, C):
+    box_lower = jnp.where(y == 1, 0, -C)
+    box_upper = jnp.where(y == 1, C, 0)
     proj_params = (box_lower, box_upper, w, 0.0)
     return projection.projection_box_section(beta, proj_params)
 
-  prox_fun = prox.make_prox_from_projection(proj)
-
   # Run solver.
   beta_init = jnp.ones(X.shape[0])
-  solver = ProximalGradient(fun=objective_fun, prox=prox_fun,
+  solver = ProjectedGradient(fun=objective_fun, projection=proj,
                             tol=1e-3, maxiter=500)
-  beta_fit = solver.run(beta_init, hyperparams_prox=None, lam=lam,
-                        K=K, y=y).params
+  beta_fit = solver.run(beta_init, hyperparams_proj=C, lam=lam, K=K, y=y).params
 
   # Compare the obtained dual coefficients with sklearn.
   beta_fit_skl = binary_kernel_svm_skl(K, y, lam)
