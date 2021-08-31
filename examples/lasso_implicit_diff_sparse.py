@@ -14,6 +14,7 @@
 
 """Implicit differentiation of the lasso based on a sparse implementation."""
 
+import time
 from absl import app
 import jax
 import jax.numpy as jnp
@@ -34,7 +35,7 @@ from sklearn import preprocessing
 # X, y = datasets.load_boston(return_X_y=True)
 
 X, y = datasets.make_regression(
-  n_samples=10, n_features=10_000, random_state=0)
+  n_samples=30, n_features=10_000, random_state=0)
 
 X = preprocessing.normalize(X)
 # data = (X_tr, X_val, y_tr, y_val)
@@ -49,13 +50,35 @@ def optimality_fun(params, lam, data):
     params - X.T @ (X @ params - y) / L, lam * len(y) / L) - params
 
 
-@implicit_diff.custom_root(optimality_fun=optimality_fun)
+def make_restricted_optimality_fun(support):
+  def restricted_optimality_fun(restricted_params, lam, data):
+    # this is suboptimal, I would try to compute restricted_X once for all
+    X, y = data
+    restricted_X = X[:, support]
+    return optimality_fun(restricted_params, lam, (restricted_X, y))
+  return restricted_optimality_fun
+
+
+@implicit_diff.sparse_custom_root(
+  optimality_fun=optimality_fun,
+  make_restricted_optimality_fun=make_restricted_optimality_fun)
 def lasso_solver(init_params, lam, data):
   """Solve Lasso."""
   X_tr, y_tr = data
   # TODO add warm start?
   sol = test_util.lasso_skl(X, y, lam)
   return sol
+
+# @implicit_diff.custom_root(
+#   optimality_fun=optimality_fun)
+# def lasso_solver(init_params, lam, data):
+#   """Solve Lasso."""
+#   X_tr, y_tr = data
+#   # TODO add warm start?
+#   sol = test_util.lasso_skl(X, y, lam)
+#   return sol
+
+
 
 
 # Perhaps confusingly, theta is a parameter of the outer objective,
@@ -82,6 +105,7 @@ theta_init = jnp.log(lam)
 theta, state = solver.init(theta_init)
 init_w = jnp.zeros(X.shape[1])
 
+t_start = time.time()
 # Run outer loop.
 for _ in range(10):
   theta, state = solver.update(
@@ -89,6 +113,8 @@ for _ in range(10):
   # The auxiliary data returned by the outer loss is stored in the state.
   init_w = state.aux
   print(f"[Step {state.iter_num}] Validation loss: {state.value:.3f}.")
+t_ellapsed = time.time() - t_start
 
 # if __name__ == "__main__":
 #   app.run(main)
+print("Time taken for 10 iterations: %.2f" % t_ellapsed)
