@@ -19,6 +19,7 @@ import itertools
 from typing import Any
 from typing import Callable
 from typing import NamedTuple
+from typing import Optional
 
 import jax
 import jax.numpy as jnp
@@ -32,6 +33,12 @@ from jaxopt import tree_util
 class OptStep(NamedTuple):
   params: Any
   state: Any
+
+
+class KKTSolution(NamedTuple):
+  primal: Any
+  dual_eq: Optional[Any] = None
+  dual_ineq: Optional[Any] = None
 
 
 class IterativeSolverMixin:
