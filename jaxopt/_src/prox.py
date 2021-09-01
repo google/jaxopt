@@ -45,6 +45,7 @@ def prox_lasso(x: Any, hyperparams: Any, scaling: float = 1.0):
 
   The output is:
     argmin_y 0.5 ||y - x||^2 + scaling * hyperparams * ||y||_1.
+
   When hyperparams is a pytree, the weights are applied coordinate-wise.
 
   Args:
@@ -161,6 +162,7 @@ def prox_non_negative_ridge(x, hyperparam=1.0, scaling=1.0):
 
 
 def make_prox_from_projection(projection):
+  """Transforms a projection into a proximal operator."""
   def prox(x, hyperparams=None, scaling=1.0):
     del scaling  # The scaling parameter is meaningless for projections.
     return projection(x, hyperparams)

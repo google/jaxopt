@@ -41,11 +41,11 @@ class MirrorDescentState(NamedTuple):
 class MirrorDescent(base.IterativeSolverMixin):
   """Mirror descent solver.
 
-  This solver minimizes::
+  This solver minimizes:
     argmin_x fun(x, *args, **kwargs),
   where fun is smooth with convex domain.
 
-  The stopping criterion is::
+  The stopping criterion is:
     ||x - projection_grad(x, g, 1.0, hyperparams_proj)||_2 <= tol,
   where ``g = grad(fun)(x, *args, **kwargs)``.
 

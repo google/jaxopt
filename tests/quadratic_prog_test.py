@@ -39,10 +39,16 @@ class QuadraticProgTest(jtu.JaxTestCase):
 
   def _check_derivative_A_and_b(self, solver, params, A, b):
     def fun(A, b):
-      # reduce the primal variables to a scalar value for test purpose.
+      try:
+        params_ineq = params["params_ineq"]
+      except KeyError:
+        params_ineq = None
+
       hyperparams = dict(params_obj=params["params_obj"],
                          params_eq=(A, b),
-                         params_ineq=params["params_ineq"])
+                         params_ineq=params_ineq)
+
+      # reduce the primal variables to a scalar value for test purpose.
       return jnp.sum(solver.run(**hyperparams).params[0])
 
     # Derivative w.r.t. A.
@@ -81,7 +87,7 @@ class QuadraticProgTest(jtu.JaxTestCase):
     A = jnp.array([[1.0, 1.0]])
     b = jnp.array([1.0])
     qp = QuadraticProgramming()
-    hyperparams = dict(params_obj=(Q, c), params_eq=(A, b), params_ineq=None)
+    hyperparams = dict(params_obj=(Q, c), params_eq=(A, b))
     sol = qp.run(**hyperparams).params
     self.assertAllClose(qp.l2_optimality_error(sol, **hyperparams), 0.0)
     self._check_derivative_A_and_b(qp, hyperparams, A, b)
