@@ -12,7 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Multiclass linear SVM (without intercept)."""
+"""
+Multiclass linear SVM (without intercept).
+==========================================
+"""
 
 from absl import app
 import jax.numpy as jnp

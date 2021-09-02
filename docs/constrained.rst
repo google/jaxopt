@@ -18,6 +18,10 @@ Projected gradient
 Projected gradient descent is gradient descent with an additional projection
 onto the constraint set.
 
+.. topic:: Examples
+
+  * :ref:`sphx_glr_auto_examples_binary_kernel_svm_with_intercept.py`
+
 Projections
 ~~~~~~~~~~~
 

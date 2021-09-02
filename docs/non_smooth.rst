@@ -7,7 +7,7 @@ This section is concerned with problems of the form
 
     \min_{x} f(x, \theta) + g(x, \upsilon)
 
-where :math:`f(x, \theta)` is a smooth function,
+where :math:`f(x, \theta)` is differentiable (almost everywhere),
 :math:`x` are the parameters with respect to which the function is minimized,
 :math:`\theta` are optional extra arguments,
 :math:`g(x, \upsilon)` is possibly non-smooth,
@@ -23,6 +23,11 @@ Proximal gradient
     jaxopt.ProximalGradient
 
 
+.. topic:: Examples
+
+   * :ref:`sphx_glr_auto_examples_sparse_coding.py`
+
+
 Block coordinate descent
 ------------------------
 
@@ -30,6 +35,13 @@ Block coordinate descent
   :toctree: _autosummary
 
     jaxopt.BlockCoordinateDescent
+
+
+.. topic:: Examples
+
+   * :ref:`sphx_glr_auto_examples_multiclass_linear_svm.py`
+   * :ref:`sphx_glr_auto_examples_nmf.py`
+
 
 Proximal operators
 ------------------

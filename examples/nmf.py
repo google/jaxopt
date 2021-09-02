@@ -12,7 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Non-negative matrix factorizaton (NMF) using alternating minimization."""
+"""
+Non-negative matrix factorizaton (NMF) using alternating minimization.
+======================================================================
+"""
 
 from absl import app
 from absl import flags

@@ -15,6 +15,17 @@ we would like to compute the Jacobian :math:`\partial x^\star(\theta)`.  This
 is usually done either by implicit differentiation or by autodiff through an
 algorithm's unrolled iterates.
 
+
+
+.. topic:: Examples
+
+   * :ref:`sphx_glr_auto_examples_plot_dataset_distillation.py`
+   * :ref:`sphx_glr_auto_examples_lasso_implicit_diff.py`
+   * :ref:`sphx_glr_auto_examples_ridge_reg_implicit_diff.py`
+   * :ref:`sphx_glr_auto_examples_sparse_coding.py`
+
+
+
 JAXopt solvers
 --------------
 

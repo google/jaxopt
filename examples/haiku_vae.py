@@ -13,7 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""VAE example with Haiku and JAXopt."""
+"""
+VAE example with Haiku and JAXopt.
+==================================
+"""
 
 from typing import NamedTuple
 

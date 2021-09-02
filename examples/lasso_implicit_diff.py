@@ -12,7 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Implicit differentiation of lasso."""
+"""
+Implicit differentiation of lasso.
+==================================
+"""
 
 from absl import app
 from absl import flags

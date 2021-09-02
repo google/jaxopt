@@ -55,6 +55,7 @@ class Bisection:
     implicit_diff: if True, enable implicit differentiation.
     verbose: whether to print error on every iteration or not.
       Warning: verbose=True will automatically disable jit.
+
   """
   optimality_fun: Callable
   lower: float

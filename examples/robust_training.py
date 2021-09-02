@@ -12,7 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Robust Training in JAXOpt.
+"""
+Robust Training in JAXOpt.
+==========================
 
 The following code trains a convolutional neural network (CNN) to be robust
 with respect to the fast sign gradient (FGSM) method.
@@ -24,7 +26,8 @@ ensures this perturbation locally maximizes the objective, while the sign ensure
 that the update is on the boundary of the L-infinity ball.
 
 
-References:
+References
+----------
   Goodfellow, Ian J., Jonathon Shlens, and Christian Szegedy. "Explaining
   and harnessing adversarial examples." https://arxiv.org/abs/1412.6572
 """

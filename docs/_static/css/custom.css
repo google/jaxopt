@@ -1,0 +1,25 @@
+
+div.topic {
+    padding: 0.5rem;
+    background-color: #eee;
+    margin-bottom: 1rem;
+    border-radius: 0.25rem;
+    border: 1px solid #CCC;
+}
+
+div.topic p {
+    margin-bottom: 0.25rem;
+}
+
+div.topic dd {
+    margin-bottom: 0.25rem;
+}
+
+p.topic-title {
+    font-weight: bold;
+    margin-bottom: 0.5rem;
+}
+
+div.topic > ul.simple {
+    margin-bottom: 0.25rem;
+}

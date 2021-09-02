@@ -12,7 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Binary kernel SVM with intercept.
+"""
+Binary kernel SVM with intercept.
+=================================
 
 The dual objective of binary kernel SVMs with an intercept contains both
 box constraints and an equality constraint, making it challenging to solve.
