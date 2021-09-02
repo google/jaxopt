@@ -35,6 +35,7 @@ class BisectionState(NamedTuple):
   error: float
   low: float
   high: float
+  sign: int
 
 
 @dataclass
@@ -43,13 +44,10 @@ class Bisection:
 
   Attributes:
     optimality_fun: a function ``optimality_fun(x, *args, **kwargs)``
-      where ``x`` is a 1d variable. The function should be increasing w.r.t.
-      ``x`` on ``[lower, upper]`` if ``increasing=True`` and decreasing
-      otherwise.
+      where ``x`` is a 1d variable. The function should have opposite signs
+      when evaluated at ``lower`` and at ``upper``.
     lower: the lower end of the bracketing interval.
     upper: the upper end of the bracketing interval.
-    increasing: whether ``optimality_fun(x, *args, **kwargs)`` is an
-      increasing function of ``x``. Default: True.
     maxiter: maximum number of iterations.
     tol: tolerance.
     check_bracket: whether to check correctness of the bracketing interval.
@@ -61,42 +59,53 @@ class Bisection:
   optimality_fun: Callable
   lower: float
   upper: float
-  increasing: bool = True
   maxiter: int = 30
   tol: float = 1e-5
   check_bracket: bool = True
   implicit_diff: bool = True
   verbose: bool = False
 
-  def _check_bracket(self, *args, **kwargs):
-    if self._fun(self.lower, *args, **kwargs) > 0:
-      raise ValueError("optimality_fun(lower, *args, **kwargs) should be < 0 "
-                       "if increasing=True and > 0 if increasing=False.")
-
-    if self._fun(self.upper, *args, **kwargs) < 0:
-      raise ValueError("optimality_fun(upper, *args, **kwargs) should be > 0 "
-                       "if increasing=True and < 0 if increasing=False.")
-
   def init(self,
-           init_params,
+           init_params=None,
            *args,
            **kwargs) -> base.OptStep:
     """Initialize the ``(params, state)`` pair.
 
     Args:
+      init_params: initial scalar value. If None (default), we use
+        0.5 * (self.high + self.low) instead. This initialization is mainly for
+        API consistency with the rest of JAXopt and will not affect the next
+        bracketed interval.
+      *args: additional positional arguments to be passed to ``optimality_fun``.
+      **kwargs: additional keyword arguments to be passed to ``optimality_fun``.
     Return type:
       base.OptStep
     Returns:
       (params, state)
     """
+    lower_value = self.optimality_fun(self.lower, *args, **kwargs)
+    upper_value = self.optimality_fun(self.upper, *args, **kwargs)
+
+    # sign = 1: the function is increasing
+    # sign = -1: the function is decreasing
+    # sign = 0: the root is not contained in [lower, upper]
+    sign = jnp.where((lower_value < 0) & (upper_value >= 0),
+                     1,
+                     jnp.where((lower_value > 0) & (upper_value <= 0), -1, 0))
+
     if self.check_bracket:
-      self._check_bracket(*args, **kwargs)
+      # Not jittable...
+      if sign == 0:
+        raise ValueError("The root is not contained in [lower, upper]. "
+                         "`optimality_fun` evaluated at lower and upper should "
+                         "have opposite signs.")
 
     state = BisectionState(iter_num=0,
                            value=jnp.inf,
                            error=jnp.inf,
                            low=self.lower,
-                           high=self.upper)
+                           high=self.upper,
+                           sign=sign)
 
     if init_params is None:
       init_params = 0.5 * (state.high + state.low)
@@ -118,8 +127,9 @@ class Bisection:
     Returns:
       (params, state)
     """
-    value = self._fun(params, *args, **kwargs)
-    too_large = value > 0
+    value = self.optimality_fun(params, *args, **kwargs)
+    too_large = state.sign * value > 0
+
     # When `value` is too large, `params` becomes the next `high`,
     # and `low` remains the same. Otherwise, it is the opposite.
     high = jnp.where(too_large, params, state.high)
@@ -129,7 +139,8 @@ class Bisection:
                            value=value,
                            error=jnp.sqrt(value ** 2),
                            low=low,
-                           high=high)
+                           high=high,
+                           sign=state.sign)
 
     # We return `midpoint` as the next guess.
     # Users can also inspect state.low and state.high.
@@ -137,12 +148,18 @@ class Bisection:
     return base.OptStep(params=midpoint, state=state)
 
   def run(self,
-          init_params,
+          init_params=None,
           *args,
           **kwargs) -> base.OptStep:
     """Runs the bisection algorithm.
 
     Args:
+      init_params: initial scalar value. If None (default), we use
+        0.5 * (self.high + self.low) instead. This initialization is mainly for
+        API consistency with the rest of JAXopt and will not affect the next
+        bracketed interval.
+      *args: additional positional arguments to be passed to ``optimality_fun``.
+      **kwargs: additional keyword arguments to be passed to ``optimality_fun``.
     Return type:
       base.OptStep
     Returns:
@@ -168,12 +185,9 @@ class Bisection:
     return jnp.sqrt(self.optimality_fun(params, *args, **kwargs) ** 2)
 
   def __post_init__(self):
-    # We prepare the function below so that we don't have to worry about
-    # the sign during the algorithm.
-    if self.increasing:
-      self._fun = self.optimality_fun
-    else:
-      self._fun = lambda x, *a, **kw: -self.optimality_fun(x, *a, **kw)
+    # Make sure integers are converted to floats.
+    self.lower = jnp.array(self.lower, float)
+    self.upper = jnp.array(self.upper, float)
 
     # We always jit unless verbose mode is enabled.
     self._jit = not self.verbose
