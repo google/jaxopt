@@ -255,9 +255,10 @@ class ScipyWrapper(abc.ABC):
 
 @dataclass
 class ScipyMinimize(ScipyWrapper):
-  """Wraps over `scipy.optimize.minimize` with PyTree and implicit diff support.
+  """`scipy.optimize.minimize` wrapper
 
   This wrapper is for unconstrained minimization only.
+  It supports pytrees and implicit diff.
 
   Attributes:
     fun: a smooth function of the form `fun(x, *args, **kwargs)`.
@@ -346,7 +347,7 @@ class ScipyMinimize(ScipyWrapper):
 
 @dataclass
 class ScipyBoundedMinimize(ScipyMinimize):
-  """Wraps over `scipy.optimize.minimize` with PyTree and implicit diff support.
+  """`scipy.optimize.minimize` wrapper.
 
   This wrapper is for minimization subject to box constraints only.
 
@@ -401,7 +402,9 @@ class ScipyBoundedMinimize(ScipyMinimize):
 
 @dataclass
 class ScipyRootFinding(ScipyWrapper):
-  """Wraps over `scipy.optimize.root` with PyTree and implicit diff support.
+  """`scipy.optimize.root` wrapper.
+
+  It supports pytrees and implicit diff.
 
   Attributes:
     optimality_fun: a smooth vector function of the form

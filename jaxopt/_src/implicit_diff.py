@@ -45,11 +45,11 @@ def root_vjp(optimality_fun: Callable,
       differentiate ``sol`` against.
     cotangent: vector to left-multiply the Jacobian with
       (pytree, same structure as ``sol``).
-    solve: a linear solver of the form, ``x = solve(matvec, b)``,
+    solve: a linear solver of the form ``x = solve(matvec, b)``,
       where ``matvec(x) = Ax`` and ``Ax=b``.
   Returns:
     vjps: tuple of the same length as ``len(args)`` containing the vjps w.r.t.
-      each argument. Each ``vjps[i]` has the same pytree structure as
+      each argument. Each ``vjps[i]`` has the same pytree structure as
       ``args[i]``.
   """
   def fun_sol(sol):
@@ -105,7 +105,7 @@ def root_jvp(optimality_fun: Callable,
     args: tuple containing the arguments with respect to which to differentiate.
     tangents: a tuple of the same size as ``len(args)``. Each ``tangents[i]``
       has the same pytree structure as ``args[i]``.
-    solve: a linear solver of the form, ``solve(matvec, b)``.
+    solve: a linear solver of the form ``solve(matvec, b)``.
   Returns:
     jvp: a pytree with the same structure as ``sol``.
   """
@@ -153,11 +153,11 @@ def custom_root(optimality_fun: Callable,
   """Decorator for adding implicit differentiation to a root solver.
 
   Args:
-    optimality_fun: an equation function, ``optimality_fun(params, *args)`.
+    optimality_fun: an equation function, ``optimality_fun(params, *args)``.
       The invariant is ``optimality_fun(sol, *args) == 0`` at the
       solution / root ``sol``.
     has_aux: whether the decorated solver function returns auxiliary data.
-    solve: a linear solver of the form, ``solve(matvec, b)``.
+    solve: a linear solver of the form ``solve(matvec, b)``.
 
   Returns:
     A solver function decorator, i.e.,
@@ -174,11 +174,11 @@ def custom_fixed_point(fixed_point_fun: Callable,
   """Decorator for adding implicit differentiation to a fixed point solver.
 
   Args:
-    fixed_point_fun: a function, ``fixed_point_fun(params, *args)`.
+    fixed_point_fun: a function, ``fixed_point_fun(params, *args)``.
       The invariant is ``fixed_point_fun(sol, *args) == sol`` at the
       solution ``sol``.
     has_aux: whether the decorated solver function returns auxiliary data.
-    solve: a linear solver of the form, ``solve(matvec, b)``.
+    solve: a linear solver of the form ``solve(matvec, b)``.
 
   Returns:
     A solver function decorator, i.e.,

@@ -7,7 +7,7 @@ dist/
 .DS_Store
 .mypy_cache/
 .pytype/
-docs/build
+docs/_build
 docs/notebooks/.ipynb_checkpoints/
 docs/_autosummary
 .idea
