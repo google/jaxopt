@@ -12,7 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""MNIST example with Flax and JAXopt."""
+"""
+MNIST example with Flax and JAXopt.
+===================================
+"""
 
 from absl import app
 from absl import flags

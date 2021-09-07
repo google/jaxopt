@@ -9,7 +9,7 @@ Hardware accelerated (GPU/TPU), batchable and differentiable optimizers in JAX.
 Installation
 ------------
 
-You may install JAXopt from GitHub with:
+You may install JAXopt from GitHub with::
 
     $ pip install git+https://github.com/google/jaxopt
 
@@ -24,6 +24,12 @@ You may install JAXopt from GitHub with:
    stochastic
    implicit_diff
    root_finding
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Examples
+
+   auto_examples/index
 
 Contribute
 ----------

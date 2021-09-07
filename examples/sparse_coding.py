@@ -12,7 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Implementation of sparse coding using jaxopt."""
+"""
+Implementation of sparse coding using jaxopt.
+=============================================
+"""
 
 import functools
 from typing import Optional

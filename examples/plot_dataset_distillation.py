@@ -12,14 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-r"""Dataset Distillation Example.
+r"""
+Dataset Distillation Example.
+=============================
 
-Dataset distillation ([Maclaurin et al. 2015](https://arxiv.org/pdf/1502.03492.pdf),
-[Wang et al. 2020](https://arxiv.org/pdf/1811.10959.pdf) ) aims to learn a small synthetic
+Dataset distillation `[Maclaurin et al. 2015] <https://arxiv.org/pdf/1502.03492.pdf>`_,
+`[Wang et al. 2020] <https://arxiv.org/pdf/1811.10959.pdf>`_ ) aims to learn a small synthetic
 training dataset such that a model trained on this learned data set achieves small loss
 on the original training set.
 
-## Bi-level problem
+Bi-level formulation
+--------------------
 
 Dataset distillation can be written formally as a bi-level problem, where in the inner problem
 we estimate a logistic regression model $x^\star(\theta) \in \mathbb{R}^{p \times k}$ trained on

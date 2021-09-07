@@ -12,7 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Implicit differentiation of ridge regression."""
+"""
+Implicit differentiation of ridge regression.
+=============================================
+"""
 
 from absl import app
 import jax

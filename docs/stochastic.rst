@@ -12,6 +12,14 @@ are the parameters with respect to which the function is minimized,
 :math:`\theta` are optional fixed extra arguments and :math:`D` is a random
 variable (typically a mini-batch).
 
+
+.. topic:: Examples
+
+   * :ref:`sphx_glr_auto_examples_haiku_mnist.py`
+   * :ref:`sphx_glr_auto_examples_flax_mnist.py`
+   * :ref:`sphx_glr_auto_examples_haiku_vae.py`
+
+
 Defining an objective function
 ------------------------------
 
