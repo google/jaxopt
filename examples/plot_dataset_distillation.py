@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-r"""
+"""
 Dataset Distillation Example.
 =============================
 
@@ -25,16 +25,16 @@ Bi-level formulation
 --------------------
 
 Dataset distillation can be written formally as a bi-level problem, where in the inner problem
-we estimate a logistic regression model $x^\star(\theta) \in \mathbb{R}^{p \times k}$ trained on
-the distilled images $\theta \in \mathbb{R}^{k \times p}$, while in the outer problem we want to
-minimize the loss achieved by $x^\star(\theta)$ over the training set: 
+we estimate a logistic regression model :math:`x^\star(\theta) \in \mathbb{R}^{p \times k}` trained on
+the distilled images :math:`\theta \in \mathbb{R}^{k \times p}`, while in the outer problem we want to
+minimize the loss achieved by :math:`x^\star(\theta)` over the training set: 
 
-$$
-\underbrace{\min_{\theta \in \mathbb{R}^{k \times p}} f(x^\star(\theta), X_{\text{tr}}; y_{\text{tr}})}_{\text{outer problem}} ~\text{ subject to }~ x^\star(\theta) \in \underbrace{\text{argmin}_{x \in \mathbb{R}^{p \times k}} f(x, \theta; [k]) + \varepsilon \|x\|^2\,}_{\text{inner problem}},
-$$
+.. math::
 
-where $f(W, X; y) := \ell(y, XW)$, $\ell$ denotes the multiclass logistic regression loss, and
-$\varepsilon = 10^{-3}$ is a regularization parameter that we found improved convergence.
+    \underbrace{\min_{\theta \in \mathbb{R}^{k \times p}} f(x^\star(\theta), X_{\text{tr}}; y_{\text{tr}})}_{\text{outer problem}} ~\text{ subject to }~ x^\star(\theta) \in \underbrace{\text{argmin}_{x \in \mathbb{R}^{p \times k}} f(x, \theta; [k]) + \varepsilon \|x\|^2\,}_{\text{inner problem}},
+
+where :math:`f(W, X; y) := \ell(y, XW)`, and :math:`\ell` denotes the multiclass logistic regression loss, and
+:math:`\varepsilon = 10^{-3}` is a regularization parameter that we found improved convergence.
 """
 
 import tensorflow_datasets as tfds
