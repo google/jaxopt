@@ -47,7 +47,7 @@ def ridge_solver(init_params, l2reg, data):
   return linear_solve.solve_cg(matvec=matvec,
                                b=jnp.dot(X_tr.T, y_tr),
                                ridge=len(y_tr) * l2reg,
-                               x0=init_params,
+                               init=init_params,
                                maxiter=20)
 
 
