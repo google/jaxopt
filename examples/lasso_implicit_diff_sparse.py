@@ -18,6 +18,7 @@ import time
 from absl import app
 import jax
 import jax.numpy as jnp
+import numpy as onp
 from jaxopt import implicit_diff
 from jaxopt import linear_solve
 from jaxopt import OptaxSolver
@@ -37,11 +38,11 @@ from sklearn import preprocessing
 X, y = datasets.make_regression(
   n_samples=30, n_features=10_000, random_state=0)
 
-X = preprocessing.normalize(X)
+# X = preprocessing.normalize(X)
 # data = (X_tr, X_val, y_tr, y_val)
 data = model_selection.train_test_split(X, y, test_size=0.33, random_state=0)
 
-L = jax.numpy.linalg.norm(X, ord=2) ** 2
+L = onp.linalg.norm(X, ord=2) ** 2
 
 
 def optimality_fun(params, lam, data):
@@ -77,8 +78,6 @@ def lasso_solver(init_params, lam, data):
 #   # TODO add warm start?
 #   sol = test_util.lasso_skl(X, y, lam)
 #   return sol
-
-
 
 
 # Perhaps confusingly, theta is a parameter of the outer objective,

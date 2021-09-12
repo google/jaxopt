@@ -79,7 +79,7 @@ def sparse_root_vjp(optimality_fun: Callable,
                     sol: Any,
                     args: Tuple,
                     cotangent: Any,
-                    solve: Callable = linear_solve.solve_normal_cg) -> Any:
+                    solve: Callable = linear_solve.solve_cg) -> Any:
   """Sparse vector-Jacobian product of a root.
 
   The invariant is ``optimality_fun(sol, *args) == 0``.
