@@ -129,6 +129,62 @@ def sparse_root_vjp(optimality_fun: Callable,
 
   return vjp_fun_args(restricted_u)
 
+def sparse_root_vjp2(optimality_fun: Callable,
+                    # filter_args: Callable,
+                    sol: Any,
+                    args: Tuple,
+                    cotangent: Any,
+                    solve: Callable = linear_solve.solve_cg) -> Any:
+  """Sparse vector-Jacobian product of a root.
+
+  The invariant is ``optimality_fun(sol, *args) == 0``.
+
+  Args:
+    optimality_fun: the optimality function to use.
+    F in the paper
+    make_restricted_optimality_fun: TODO XXX.
+    sol: solution / root (pytree).
+    args: tuple containing the arguments with respect to which we wish to
+      differentiate ``sol`` against.
+    cotangent: vector to left-multiply the Jacobian with
+      (pytree, same structure as ``sol``).
+    solve: a linear solver of the form, ``x = solve(matvec, b)``,
+      where ``matvec(x) = Ax`` and ``Ax=b``.
+  Returns:
+    vjps: tuple of the same length as ``len(args)`` containing the vjps w.r.t.
+      each argument. Each ``vjps[i]` has the same pytree structure as
+      ``args[i]``.
+  """
+  support = sol != 0  # nonzeros coefficients of the solution
+  restricted_sol = sol[support]  # solution restricted to the support
+
+  X, y, lam = args
+  new_args = X[:, support], y, lam
+
+  def fun_sol(restricted_sol):
+    # We close over the arguments.
+    return optimality_fun(restricted_sol, *new_args)
+
+  _, vjp_fun_sol = jax.vjp(fun_sol, restricted_sol)
+
+  # Compute the multiplication A^T u = (u^T A)^T resticted to the support.
+  def restricted_matvec(restricted_v):
+    return vjp_fun_sol(restricted_v)[0]
+
+  # The solution of A^T u = v, where
+  # A = jacobian(optimality_fun, argnums=0)
+  # v = -cotangent.
+  restricted_v = tree_scalar_mul(-1, cotangent[support])
+  restricted_u = solve(restricted_matvec, restricted_v)
+
+  def fun_args(*args):
+    # We close over the solution.
+    return optimality_fun(restricted_sol, *args)
+
+  _, vjp_fun_args = jax.vjp(fun_args, * new_args)
+
+  return vjp_fun_args(restricted_u)
+
 
 def _jvp_sol(optimality_fun, sol, args, tangent):
   """JVP in the first argument of optimality_fun."""

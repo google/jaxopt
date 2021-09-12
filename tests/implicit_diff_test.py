@@ -108,10 +108,17 @@ class ImplicitDiffTest(jtu.JaxTestCase):
       sol=sol,
       args=(X, y, lam),
       cotangent=g)[2]  # vjp w.r.t. lam
+    vjp2 = lambda g: idf.sparse_root_vjp2(
+      optimality_fun=lasso_optimality_fun,
+      sol=sol,
+      args=(X, y, lam),
+      cotangent=g)[2]  # vjp w.r.t. lam
     I = jnp.eye(len(sol))
     J = jax.vmap(vjp)(I)
+    J2 = jax.vmap(vjp2)(I)
     J_num = test_util.lasso_skl_jac(X, y, lam, eps=1e-4)
     self.assertArraysAllClose(J, J_num, atol=5e-2)
+    self.assertArraysAllClose(J2, J_num, atol=5e-2)
 
   def test_root_jvp(self):
     X, y = datasets.make_regression(n_samples=10, n_features=3, random_state=0)
