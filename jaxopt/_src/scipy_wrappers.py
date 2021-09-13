@@ -60,6 +60,17 @@ class ScipyRootInfo(NamedTuple):
   status: int
 
 
+class ScipyLeastSquaresInfo(NamedTuple):
+  """Named tuple with results for `scipy.optimize.least_squares` wrappers."""
+  cost_val: float
+  fun_val: jnp.ndarray
+  success: bool
+  status: int
+  nfev: int
+  njev: Optional[int]
+  error: float
+
+
 class PyTreeTopology(NamedTuple):
   """Stores info to reconstruct PyTree from flattened PyTree leaves.
 
@@ -487,3 +498,226 @@ class ScipyRootFinding(ScipyWrapper):
     if self.jit:
       self.optimality_fun = jax.jit(self.optimality_fun)
       self._jac_fun = jax.jit(self._jac_fun)
+
+
+# NOTE: relative to `scipy.optimize.least_squares`, the functions below absorb
+# the squaring of residuals to avoid numerical issues for the gradient of the
+# Huber loss at 0.
+LS_RHO_FUNS = {
+    'linear': lambda z: z ** 2,
+    'soft_l1': lambda z: 2.0 * ((1 + z ** 2) ** 0.5 - 1),
+    'huber': lambda z: jnp.where(z <= 1, z ** 2, 2.0 * z - 1),
+    'cauchy': lambda z: jnp.log1p(z ** 2),
+    'arctan': lambda z: jnp.arctan(z ** 2),
+}
+LS_DEFAULT_OPTIONS = {
+    'ftol': 1e-8,  # float
+    'xtol': 1e-8,  # float
+    'gtol': 1e-8,  # float
+    'x_scale': 1.0,  # Any
+    'f_scale': 1.0,  # float
+    'tr_solver': None,  # Optional[str]
+    'tr_options': {},  # Optional[Dict[str, Any]]
+    'max_nfev': None,  # Optional[int],
+}
+
+
+@dataclass
+class ScipyLeastSquares(ScipyWrapper):
+  """Wraps over `scipy.optimize.least_squares` with PyTree & imp. diff support.
+
+  This solver minimizes::
+    0.5 * sum(loss(fun(x, *args, **kwargs) ** 2)).
+  This wrapper is for unconstrained minimization only.
+
+  Attributes:
+    fun: a smooth function of the form ``fun(x, *args, **kwargs)`` computing the
+      residuals from the model parameters `x`.
+    loss: the `loss` argument for `scipy.optimize.least_squares`. However,
+      arbitrary losses specified with a Callable are not yet supported.
+    options: additional kwargs for `scipy.optimize.least_squares`.
+    method: the `method` argument for `scipy.optimize.least_squares`.
+    dtype: if not None, cast all NumPy arrays to this dtype. Note that some
+      methods relying on FORTRAN code, such as the `L-BFGS-B` solver for
+      `scipy.optimize.minimize`, require casting to float64.
+    jit: whether to JIT-compile JAX-based values and grad evals.
+    implicit_diff: if True, enable implicit differentiation using cg,
+      if Callable, do implicit differentiation using callable as linear solver.
+      Autodiff through the solver implementation (`implicit_diff = False`) not
+      supported. Setting `implicit_diff` to False will thus make the solver
+      not support JAX's autodiff transforms.
+    has_aux: whether function `fun` outputs one (False) or more values (True).
+      When True it will be assumed by default that `fun(...)[0]` are the
+      residuals.
+    use_jacrev: whether to compute the Jacobian of `fun` using `jax.jacrev`
+      (True) or `jax.jacfwd` (False).
+  """
+  fun: Callable = None
+  loss: str = 'linear'
+  options: Optional[Dict[str, Any]] = None
+  use_jacrev: bool = True
+
+  def _cost_fun(self, params, *args, **kwargs):
+    residuals = self.fun(params, *args, **kwargs)
+    # NOTE: `self._rho` includes the squaring of residuals in its definition.
+    losses = self._rho(residuals / self.options['f_scale'])
+    return 0.5 * jnp.square(self.options['f_scale']) * jnp.mean(losses)
+
+  def optimality_fun(self, sol, *args, **kwargs):
+    """Optimality function mapping compatible with `@custom_root`."""
+    return self._grad_cost_fun(sol, *args, **kwargs)
+
+  def _run(self, init_params, bounds, *args, **kwargs):
+    """Wraps `scipy.optimize.least_squares`."""
+    # Sets up the "JAX-SciPy" bridge.
+    init_output = self.fun(init_params, *args, **kwargs)
+    input_pytree_topology = pytree_topology_from_example(init_params)
+    output_pytree_topology = pytree_topology_from_example(init_output)
+    onp_to_jnp = make_onp_to_jnp(input_pytree_topology)
+    jac_jnp_to_onp = make_jac_jnp_to_onp(input_pytree_topology,
+                                         output_pytree_topology,
+                                         self.dtype)
+
+    def scipy_fun(x_onp: onp.ndarray) -> onp.ndarray:
+      x_jnp = onp_to_jnp(x_onp)
+      value_jnp = self.fun(x_jnp, *args, **kwargs)
+      return jnp_to_onp(value_jnp, self.dtype)
+
+    def scipy_jac(x_onp: onp.ndarray) -> onp.ndarray:
+      x_jnp = onp_to_jnp(x_onp)
+      jacs_jnp = self._jac_fun(x_jnp, *args, **kwargs)
+      return jac_jnp_to_onp(jacs_jnp)
+
+    if bounds is not None:
+      bounds = (jnp_to_onp(bounds[0], self.dtype),
+                jnp_to_onp(bounds[1], self.dtype))
+    else:
+      bounds = (-onp.inf, onp.inf)
+
+    res = osp.optimize.least_squares(scipy_fun,
+                                     jnp_to_onp(init_params, self.dtype),
+                                     jac=scipy_jac,
+                                     bounds=bounds,
+                                     method=self.method,
+                                     loss=self.loss,
+                                     **self.options)
+
+    params = tree_util.tree_map(jnp.asarray, onp_to_jnp(res.x))
+    info = ScipyLeastSquaresInfo(cost_val=jnp.asarray(res.cost),
+                                 fun_val=jnp.asarray(res.fun),
+                                 success=res.success,
+                                 status=res.status,
+                                 nfev=res.nfev,
+                                 njev=res.njev,
+                                 error=jnp.asarray(res.optimality))
+    return base.OptStep(params, info)
+
+  def run(self,
+          init_params: Any,
+          *args,
+          **kwargs) -> base.OptStep:
+    """Runs `scipy.optimize.least_squares`.
+
+    Args:
+      init_params: pytree containing the initial parameters.
+      *args: additional positional arguments to be passed to `fun`.
+      **kwargs: additional keyword arguments to be passed to `fun`.
+    Return type:
+      base.OptStep.
+    Returns:
+      (params, info).
+    """
+    return self._run(init_params, None, *args, **kwargs)
+
+  def __post_init__(self):
+    super().__post_init__()
+
+    if self.options is None:
+      self.options = LS_DEFAULT_OPTIONS
+    else:
+      for k, v in LS_DEFAULT_OPTIONS.items():
+        if k not in self.options:
+          self.options[k] = v
+
+    if self.has_aux:
+      self.fun = lambda x, *args, **kwargs: self.fun(x, *args, **kwargs)[0]
+
+    # Handles PyTree inputs for `x_scale` arg.
+    if self.options['x_scale'] != 'jac' and not isinstance(
+        self.options['x_scale'], float):
+      self.options['x_scale'] = jnp_to_onp(self.options['x_scale'], self.dtype)
+
+    # Pre-compile useful functions.
+    if self.loss not in LS_RHO_FUNS:
+      raise ValueError(f'`loss` must be one of {LS_RHO_FUNS.keys()}.')
+    self._rho = LS_RHO_FUNS[self.loss]
+    self._jac_fun = (jax.jacrev(self.fun) if self.use_jacrev
+                     else jax.jacfwd(self.fun))
+    self._grad_cost_fun = jax.grad(self._cost_fun)
+    if self.jit:
+      self.fun = jax.jit(self.fun)
+      self._rho = jax.jit(self._rho)
+      self._jac_fun = jax.jit(self._jac_fun)
+      self._grad_cost_fun = jax.jit(self._grad_cost_fun)
+
+
+@dataclass
+class ScipyBoundedLeastSquares(ScipyLeastSquares):
+  """Wraps over `scipy.optimize.least_squares` with PyTree & imp. diff support.
+
+  This solver minimizes::
+    0.5 * sum(loss(fun(x, *args, **kwargs) ** 2))
+      subject to bounds[0] <= x <= bounds[1].
+  This wrapper is for minimization subject to box constraints only.
+
+  Attributes:
+    fun: a smooth function of the form ``fun(x, *args, **kwargs)`` computing the
+      residuals from the model parameters `x`.
+    loss: the `loss` argument for `scipy.optimize.least_squares`. However,
+      arbitrary losses specified with a Callable are not yet supported.
+    options: additional kwargs for `scipy.optimize.least_squares`.
+    method: the `method` argument for `scipy.optimize.least_squares`.
+    dtype: if not None, cast all NumPy arrays to this dtype. Note that some
+      methods relying on FORTRAN code, such as the `L-BFGS-B` solver for
+      `scipy.optimize.minimize`, require casting to float64.
+    jit: whether to JIT-compile JAX-based values and grad evals.
+    implicit_diff: if True, enable implicit differentiation using cg,
+      if Callable, do implicit differentiation using callable as linear solver.
+      Autodiff through the solver implementation (`implicit_diff = False`) not
+      supported. Setting `implicit_diff` to False will thus make the solver
+      not support JAX's autodiff transforms.
+    has_aux: whether function `fun` outputs one (False) or more values (True).
+      When True it will be assumed by default that `fun(...)[0]` are the
+      residuals.
+    use_jacrev: whether to compute the Jacobian of `fun` using `jax.jacrev`
+      (True) or `jax.jacfwd` (False).
+  """
+
+  def _fixed_point_fun(self, sol, bounds, args, kwargs):
+    step = tree_sub(sol, self._grad_cost_fun(sol, *args, **kwargs))
+    return projection.projection_box(step, bounds)
+
+  def optimality_fun(self, sol, bounds, *args, **kwargs):
+    """Optimality function mapping compatible with `@custom_root`."""
+    fp = self._fixed_point_fun(sol, bounds, args, kwargs)
+    return tree_sub(fp, sol)
+
+  def run(self,
+          init_params: Any,
+          bounds: Optional[Any],
+          *args,
+          **kwargs) -> base.OptStep:
+    """Runs `scipy.optimize.least_squares`.
+
+    Args:
+      init_params: pytree containing the initial parameters.
+      bounds: an optional tuple `(lb, ub)` of pytrees with structure identical
+        to `init_params`, representing box constraints.
+      *args: additional positional arguments to be passed to `fun`.
+      **kwargs: additional keyword arguments to be passed to `fun`.
+    Return type:
+      base.OptStep.
+    Returns:
+      (params, info).
+    """
+    return self._run(init_params, bounds, *args, **kwargs)

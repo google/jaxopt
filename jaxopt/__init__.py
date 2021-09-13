@@ -21,6 +21,8 @@ from jaxopt._src.polyak_sgd import PolyakSGD
 from jaxopt._src.projected_gradient import ProjectedGradient
 from jaxopt._src.proximal_gradient import ProximalGradient
 from jaxopt._src.quadratic_prog import QuadraticProgramming
+from jaxopt._src.scipy_wrappers import ScipyBoundedLeastSquares
 from jaxopt._src.scipy_wrappers import ScipyBoundedMinimize
+from jaxopt._src.scipy_wrappers import ScipyLeastSquares
 from jaxopt._src.scipy_wrappers import ScipyMinimize
 from jaxopt._src.scipy_wrappers import ScipyRootFinding
