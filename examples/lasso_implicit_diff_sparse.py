@@ -23,6 +23,7 @@ from jaxopt import implicit_diff
 from jaxopt import linear_solve
 from jaxopt import OptaxSolver
 from jaxopt import prox
+from jaxopt import objective
 from jaxopt._src import test_util
 import optax
 from sklearn import datasets
@@ -47,8 +48,10 @@ L = onp.linalg.norm(X, ord=2) ** 2
 
 def optimality_fun(params, lam, data):
   X, y = data
+  n_samples = X.shape[0]
   return prox.prox_lasso(
-    params - X.T @ (X @ params - y) / L, lam * len(y) / L) - params
+    params - jax.grad(objective.least_squares)(params, (X, y)) * n_samples / L,
+    lam * len(y) / L) - params
 
 
 def make_restricted_optimality_fun(support):

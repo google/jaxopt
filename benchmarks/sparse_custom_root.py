@@ -19,6 +19,7 @@ import jax.numpy as jnp
 from jaxopt import prox
 from jaxopt import implicit_diff as idf
 from jaxopt._src import test_util
+from jaxopt import objective
 
 from sklearn import datasets
 
@@ -50,8 +51,9 @@ def make_restricted_optimality_fun(support):
 
 
 def lasso_optimality_fun(params, X, y, lam, tol=1e-4):
+  n_samples = X.shape[0]
   return prox.prox_lasso(
-    params - X.T @ (X @ params - y) / L, lam * len(y) / L) - params
+    params - jax.grad(objective.least_squares)(params, (X, y)) * n_samples / L, lam * len(y) / L) - params
 
 
 t_start = time.time()
