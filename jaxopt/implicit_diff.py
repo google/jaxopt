@@ -19,3 +19,4 @@ from jaxopt._src.implicit_diff import root_vjp
 from jaxopt._src.implicit_diff import sparse_root_vjp
 from jaxopt._src.implicit_diff import sparse_root_vjp2
 from jaxopt._src.implicit_diff import sparse_custom_root
+from jaxopt._src.implicit_diff import sparse_custom_root2
