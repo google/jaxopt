@@ -177,11 +177,14 @@ def sparse_root_vjp2(optimality_fun: Callable,
   restricted_v = tree_scalar_mul(-1, cotangent[support])
   restricted_u = solve(restricted_matvec, restricted_v)
 
-  def fun_args(*args_):
+  def fun_args(*args):
     # We close over the solution.
-    return optimality_fun(restricted_sol, *args_)
+    X, y, lam = args
+    new_args = X[:, support], y, lam
+    return optimality_fun(restricted_sol, *new_args)
 
-  _, vjp_fun_args = jax.vjp(fun_args, *new_args)
+  _, vjp_fun_args = jax.vjp(fun_args, *args)
+  # _, vjp_fun_args = jax.vjp(fun_args, *new_args)
 
   return vjp_fun_args(restricted_u)
 
