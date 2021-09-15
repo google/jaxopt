@@ -17,7 +17,6 @@
 from typing import Any
 from typing import Callable
 from typing import NamedTuple
-from typing import Union
 
 from dataclasses import dataclass
 
@@ -25,6 +24,7 @@ import jax
 import jax.numpy as jnp
 
 from jaxopt._src import base
+from jaxopt._src import linear_solve
 from jaxopt._src import loop
 from jaxopt._src.prox import prox_none
 from jaxopt._src.tree_util import tree_add_scalar_mul
@@ -50,7 +50,7 @@ class AccelProxGradState(NamedTuple):
 
 
 @dataclass
-class ProximalGradient(base.IterativeSolverMixin):
+class ProximalGradient(base.IterativeSolver):
   """Proximal gradient solver.
 
   This solver minimizes::
@@ -71,12 +71,13 @@ class ProximalGradient(base.IterativeSolverMixin):
     stepfactor: factor by which to reduce the stepsize during line search.
     verbose: whether to print error on every iteration or not.
       Warning: verbose=True will automatically disable jit.
-    implicit_diff: if True, enable implicit differentiation using cg,
-      if Callable, do implicit differentiation using callable as linear solver,
-      if False, use autodiff through the solver implementation (note:
-        this will unroll syntactic loops).
+    implicit_diff: whether to enable implicit diff or autodiff of unrolled
+      iterations.
+    implicit_diff_solve: the linear system solver to use.
     has_aux: whether function fun outputs one (False) or more values (True).
       When True it will be assumed by default that fun(...)[0] is the objective.
+    jit: whether to JIT-compile the optimization loop (default: "auto").
+    unroll: whether to unroll the optimization loop (default: "auto").
 
   References:
     Beck, Amir, and Marc Teboulle. "A fast iterative shrinkage-thresholding
@@ -94,8 +95,11 @@ class ProximalGradient(base.IterativeSolverMixin):
   acceleration: bool = True
   stepfactor: float = 0.5
   verbose: int = 0
-  implicit_diff: Union[bool, Callable] = False
+  implicit_diff: bool = False
+  implicit_diff_solve: Callable = linear_solve.solve_normal_cg
   has_aux: bool = False
+  jit: base.AutoOrBoolean = "auto"
+  unroll: base.AutoOrBoolean = "auto"
 
   def init(self,
            init_params: Any,
@@ -157,7 +161,7 @@ class ProximalGradient(base.IterativeSolverMixin):
       # The expression below checks the sufficient decrease condition
       # f(next_x) < f(x) + dot(grad_f(x), diff_x) + (0.5/stepsize) ||diff_x||^2
       # where the terms have been reordered for numerical stability.
-      fun_decrease = stepsize * (self.fun(next_x, *args, **kwargs) - x_fun_val)
+      fun_decrease = stepsize * (self._fun(next_x, *args, **kwargs) - x_fun_val)
       condition = stepsize * tree_vdot(diff_x, x_fun_grad) + 0.5 * sqdist
       return fun_decrease > condition + eps
 
@@ -259,12 +263,10 @@ class ProximalGradient(base.IterativeSolverMixin):
 
   def __post_init__(self):
     if self.has_aux:
-      self.fun = jax.jit(lambda x, par: self.fun(x, par)[0])
+      self._fun = lambda x, par: self.fun(x, par)[0]
     else:
-      self.fun = jax.jit(self.fun)
+      self._fun = self.fun
 
     # Pre-compile useful functions.
-    self._value_and_grad_fun = jax.jit(jax.value_and_grad(self.fun))
-    self._grad_fun = jax.jit(jax.grad(self.fun))
-
-    self._set_implicit_diff_run()
+    self._value_and_grad_fun = jax.value_and_grad(self._fun)
+    self._grad_fun = jax.grad(self._fun)

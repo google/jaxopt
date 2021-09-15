@@ -26,6 +26,7 @@ import jax
 import jax.numpy as jnp
 
 from jaxopt._src import base
+from jaxopt._src import linear_solve
 from jaxopt._src.tree_util import tree_add_scalar_mul
 from jaxopt._src.tree_util import tree_l2_norm
 from jaxopt._src.tree_util import tree_sub
@@ -38,7 +39,7 @@ class MirrorDescentState(NamedTuple):
 
 
 @dataclass
-class MirrorDescent(base.IterativeSolverMixin):
+class MirrorDescent(base.IterativeSolver):
   """Mirror descent solver.
 
   This solver minimizes:
@@ -62,12 +63,13 @@ class MirrorDescent(base.IterativeSolverMixin):
     tol: tolerance to use.
     verbose: whether to print error on every iteration or not. verbose=True will
       automatically disable jit.
-    implicit_diff: if True, enable implicit differentiation using cg,
-      if Callable, do implicit differentiation using callable as linear solver,
-      if False, use autodiff through the solver implementation (note:
-        this will unroll syntactic loops).
+    implicit_diff: whether to enable implicit diff or autodiff of unrolled
+      iterations.
+    implicit_diff_solve: the linear system solver to use.
     has_aux: whether function fun outputs one (False) or more values (True).
       When True it will be assumed by default that fun(...)[0] is the objective.
+    jit: whether to JIT-compile the optimization loop (default: "auto").
+    unroll: whether to unroll the optimization loop (default: "auto").
 
   References:
     Nemirovskij, Arkadij Semenovič, and David Borisovich Yudin. "Problem
@@ -80,8 +82,11 @@ class MirrorDescent(base.IterativeSolverMixin):
   maxiter: int = 500
   tol: float = 1e-2
   verbose: int = 0
-  implicit_diff: Union[bool, Callable] = False
+  implicit_diff: bool = False
+  implicit_diff_solve: Callable = linear_solve.solve_normal_cg
   has_aux: bool = False
+  jit: base.AutoOrBoolean = "auto"
+  unroll: base.AutoOrBoolean = "auto"
 
   @staticmethod
   def make_projection_grad(projection: Callable,
@@ -171,11 +176,9 @@ class MirrorDescent(base.IterativeSolverMixin):
 
   def __post_init__(self):
     if self.has_aux:
-      self.fun = jax.jit(lambda x, par: self.fun(x, par)[0])
+      fun = lambda x, par: self.fun(x, par)[0]
     else:
-      self.fun = jax.jit(self.fun)
+      fun = self.fun
 
     # Pre-compile useful functions.
-    self._grad_fun = jax.jit(jax.grad(self.fun))
-
-    self._set_implicit_diff_run()
+    self._grad_fun = jax.grad(fun)

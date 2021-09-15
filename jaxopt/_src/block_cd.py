@@ -40,7 +40,7 @@ class BlockCDState(NamedTuple):
 
 
 @dataclass
-class BlockCoordinateDescent(base.IterativeSolverMixin):
+class BlockCoordinateDescent(base.IterativeSolver):
   """Block coordinate solver.
 
   This solver minimizes::
@@ -58,17 +58,21 @@ class BlockCoordinateDescent(base.IterativeSolverMixin):
     tol: tolerance to use.
     verbose: whether to print error on every iteration or not.
       Warning: verbose=True will automatically disable jit.
-    implicit_diff: if True, enable implicit differentiation using cg,
-      if Callable, do implicit differentiation using callable as linear solver,
-      if False, use autodiff through the solver implementation (note:
-        this will unroll syntactic loops).
+    implicit_diff: whether to enable implicit diff or autodiff of unrolled
+      iterations.
+    implicit_diff_solve: the linear system solver to use.
+    jit: whether to JIT-compile the optimization loop (default: "auto").
+    unroll: whether to unroll the optimization loop (default: "auto").
   """
   fun: Callable
   block_prox: Callable
   maxiter: int = 500
   tol: float = 1e-4
   verbose: int = 0
-  implicit_diff: Union[bool, Callable] = False
+  implicit_diff: bool = False
+  implicit_diff_solve: Callable = linear_solve.solve_normal_cg
+  jit: base.AutoOrBoolean = "auto"
+  unroll: base.AutoOrBoolean = "auto"
 
   def init(self,
            init_params: Any,
@@ -191,5 +195,3 @@ class BlockCoordinateDescent(base.IterativeSolverMixin):
     self._grad_fun = jax.grad(self.fun)
     self._grad_subfun = jax.grad(self.fun.subfun)
     self._prox = jax.vmap(self.block_prox, in_axes=(0, None))
-
-    self._set_implicit_diff_run()

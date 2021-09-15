@@ -18,14 +18,14 @@ from typing import Any
 from typing import Callable
 from typing import NamedTuple
 from typing import Optional
-from typing import Union
 
 import dataclasses
 
 import jax
 import jax.numpy as jnp
 
-from jaxopt import base
+from jaxopt._src import base
+from jaxopt._src import linear_solve
 from jaxopt.tree_util import tree_add
 from jaxopt.tree_util import tree_add_scalar_mul
 from jaxopt.tree_util import tree_l2_norm
@@ -44,7 +44,7 @@ class PolyakSGDState(NamedTuple):
 
 
 @dataclasses.dataclass
-class PolyakSGD(base.IterativeSolverMixin, base.StochasticSolverMixin):
+class PolyakSGD(base.StochasticSolver):
   """SGD with Polyak step size.
 
   This solver computes step sizes in an adaptive manner. If the computed step
@@ -69,14 +69,15 @@ class PolyakSGD(base.IterativeSolverMixin, base.StochasticSolverMixin):
     tol: tolerance to use.
     verbose: whether to print error on every iteration or not. verbose=True will
       automatically disable jit.
-    implicit_diff: if True, enable implicit differentiation using cg,
-      if Callable, do implicit differentiation using callable as linear solver,
-      if False, use autodiff through the solver implementation (note:
-        this will unroll syntactic loops).
+    implicit_diff: whether to enable implicit diff or autodiff of unrolled
+      iterations.
+    implicit_diff_solve: the linear system solver to use.
     has_aux: whether ``fun`` outputs one (False) or more values (True).
       When True it will be assumed by default that ``fun(...)[0]``
       is the objective value. The auxiliary outputs are stored in
       ``state.aux``.
+    jit: whether to JIT-compile the optimization loop (default: "auto").
+    unroll: whether to unroll the optimization loop (default: "auto").
 
   References:
     Berrada, Leonard and Zisserman, Andrew and Kumar, M Pawan.
@@ -99,8 +100,11 @@ class PolyakSGD(base.IterativeSolverMixin, base.StochasticSolverMixin):
   maxiter: int = 500
   tol: float = 1e-3
   verbose: int = 0
-  implicit_diff: Union[bool, Callable] = False
+  implicit_diff: bool = False
+  implicit_diff_solve: Callable = linear_solve.solve_normal_cg
   has_aux: bool = False
+  jit: base.AutoOrBoolean = "auto"
+  unroll: base.AutoOrBoolean = "auto"
 
   def init(self,
            init_params: Any,
@@ -145,6 +149,9 @@ class PolyakSGD(base.IterativeSolverMixin, base.StochasticSolverMixin):
     Returns:
       (params, state)
     """
+    if self.pre_update:
+      params, state = self.pre_update(params, state, *args, **kwargs)
+
     (value, aux), grad = self._value_and_grad_fun(params, *args, **kwargs)
 
     grad_sqnorm = tree_l2_norm(grad, squared=True)
@@ -182,6 +189,3 @@ class PolyakSGD(base.IterativeSolverMixin, base.StochasticSolverMixin):
     # Pre-compile useful functions.
     self._value_and_grad_fun = jax.value_and_grad(fun_with_aux, has_aux=True)
     self._grad_fun = jax.grad(fun_with_aux, has_aux=True)
-
-    # TODO(mblondel): run_iterator needs to be decorated as well.
-    self._set_implicit_diff_run()

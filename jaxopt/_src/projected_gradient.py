@@ -18,17 +18,17 @@ from typing import Any
 from typing import Callable
 from typing import NamedTuple
 from typing import Optional
-from typing import Union
 
 from dataclasses import dataclass
 
 from jaxopt._src import base
+from jaxopt._src import linear_solve
 from jaxopt._src import prox
 from jaxopt._src.proximal_gradient import ProximalGradient
 
 
 @dataclass
-class ProjectedGradient(base.IterativeSolverMixin):
+class ProjectedGradient(base.IterativeSolver):
   """Projected gradient solver.
 
   This solver is a convenience wrapper around ``ProximalGradient``.
@@ -47,12 +47,13 @@ class ProjectedGradient(base.IterativeSolverMixin):
     acceleration: whether to use acceleration (also known as FISTA) or not.
     verbose: whether to print error on every iteration or not.
       Warning: verbose=True will automatically disable jit.
-    implicit_diff: if True, enable implicit differentiation using cg,
-      if Callable, do implicit differentiation using callable as linear solver,
-      if False, use autodiff through the solver implementation (note:
-        this will unroll syntactic loops).
+    implicit_diff: whether to enable implicit diff or autodiff of unrolled
+      iterations.
+    implicit_diff_solve: the linear system solver to use.
     has_aux: whether function fun outputs one (False) or more values (True).
       When True it will be assumed by default that fun(...)[0] is the objective.
+    jit: whether to JIT-compile the optimization loop (default: "auto").
+    unroll: whether to unroll the optimization loop (default: "auto").
   """
   fun: Callable
   projection: Callable
@@ -63,8 +64,11 @@ class ProjectedGradient(base.IterativeSolverMixin):
   acceleration: bool = True
   stepfactor: float = 0.5
   verbose: int = 0
-  implicit_diff: Union[bool, Callable] = False
+  implicit_diff: bool = False
+  implicit_diff_solve: Callable = linear_solve.solve_normal_cg
   has_aux: bool = False
+  jit: base.AutoOrBoolean = "auto"
+  unroll: base.AutoOrBoolean = "auto"
 
   def init(self,
            init_params: Any,
