@@ -14,12 +14,14 @@
 
 """Base definitions useful across the project."""
 
+import abc
 import itertools
 
 from typing import Any
 from typing import Callable
 from typing import NamedTuple
 from typing import Optional
+from typing import Union
 
 import jax
 import jax.numpy as jnp
@@ -28,6 +30,9 @@ from jaxopt import implicit_diff as idf
 from jaxopt import linear_solve
 from jaxopt import loop
 from jaxopt import tree_util
+
+
+AutoOrBoolean = Union[str, bool]
 
 
 class OptStep(NamedTuple):
@@ -41,30 +46,84 @@ class KKTSolution(NamedTuple):
   dual_ineq: Optional[Any] = None
 
 
-class IterativeSolverMixin:
-  """Base mixin for iterative batch solvers.
+class Solver(abc.ABC):
+  """Base class for solvers.
 
-  A batch solver is expected to see the whole dataset on each iteration.
-  It stops when convergence is detected using an optimality criterion,
-  defined in `optimality_fun`.
+  A solver should implement a `run` method:
 
-  This mixin implements:
-    - a method `params, state = run(init_params, *args, **kwargs)`
-    - a method `l2_optimality_error`
-    - a private method `_set_implicit_diff_run(self)`
+    `params, state = run(init_params, *args, **kwargs)`
 
-  The following is needed from the child solver:
-    - a method `params, state = init(init_params, *args, **kwargs)`
-    - a method `params, state = update(params, state, *args, **kwargs)
-    - a method `optimality_fun(params, *args, **kwargs)
-    - an attribute `verbose`
-    - an attribute `maxiter`
-    - an attribute `tol`
-    - an attribute `implicit_diff`
-
-  The following is needed from the state:
-    - an attribute `error`
+  In addition, we will assume that the solver defines a notion of optimality:
+    - `pytree = optimality_fun(params, *args, **kwargs)
   """
+
+  @abc.abstractmethod
+  def run(self,
+          init_params: Any,
+          *args,
+          **kwargs) -> OptStep:
+    pass
+
+  def l2_optimality_error(self, params, *args, **kwargs):
+    """Computes the L2 optimality error."""
+    optimality = self.optimality_fun(params, *args, **kwargs)
+    return tree_util.tree_l2_norm(optimality)
+
+
+class IterativeSolver(Solver):
+  """Base class for iterative solvers.
+
+  Any iterative solver should implement `init` and `update` methods:
+    - `params, state = init(init_params, *args, **kwargs)`
+    - `next_params, next_state = update(params, state, *args, **kwargs)`
+
+  This class implements a `run` method:
+
+    `params, state = run(init_params, *args, **kwargs)`
+
+  The following attributes are needed by the `run` method:
+    - `verbose`
+    - `maxiter`
+    - `tol`
+    - `implicit_diff`
+    - `implicit_diff_solve`
+
+  If `implicit_diff` is not present, it is assumed to be True.
+
+  The following attribute is needed in the state:
+    - `error`
+  """
+
+  def _run(self,
+           init_params: Any,
+           *args,
+           **kwargs) -> OptStep:
+
+    def cond_fun(pair):
+      _, state = pair
+      if self.verbose:
+        print(state.error)
+      return state.error > self.tol
+
+    def body_fun(pair):
+      params, state = pair
+      return self.update(params, state, *args, **kwargs)
+
+    if self.jit == "auto":
+      # We always jit unless verbose mode is enabled.
+      jit = not self.verbose
+    else:
+      jit = self.jit
+
+    if self.unroll == "auto":
+      # We unroll when implicit diff is disabled or when jit is disabled.
+      unroll = not getattr(self, "implicit_diff", True) or not jit
+    else:
+      unroll = self.unroll
+
+    return loop.while_loop(cond_fun=cond_fun, body_fun=body_fun,
+                           init_val=self.init(init_params, *args, **kwargs),
+                           maxiter=self.maxiter, jit=jit, unroll=unroll)
 
   def run(self,
           init_params: Any,
@@ -81,57 +140,29 @@ class IterativeSolverMixin:
     Returns:
       (params, state)
     """
-    def cond_fun(pair):
-      _, state = pair
-      if self.verbose:
-        print(state.error)
-      return state.error > self.tol
+    run = self._run
 
-    def body_fun(pair):
-      params, state = pair
-      return self.update(params, state, *args, **kwargs)
-
-    # We always jit unless verbose mode is enabled.
-    jit = not self.verbose
-    # We unroll when implicit diff is disabled or when jit is disabled.
-    unroll = not self.implicit_diff or not jit
-
-    return loop.while_loop(cond_fun=cond_fun, body_fun=body_fun,
-                           init_val=self.init(init_params, *args, **kwargs),
-                           maxiter=self.maxiter, jit=jit, unroll=unroll)
-
-  def l2_optimality_error(self, params, *args, **kwargs):
-    """Computes the L2 optimality error."""
-    optimality = self.optimality_fun(params, *args, **kwargs)
-    return tree_util.tree_l2_norm(optimality)
-
-  def _set_implicit_diff_run(self):
-    # Set up implicit diff.
-    if self.implicit_diff:
-      if isinstance(self.implicit_diff, Callable):
-        solve = self.implicit_diff
-      else:
-        solve = linear_solve.solve_normal_cg
-
+    if getattr(self, "implicit_diff", True):
       decorator = idf.custom_root(self.optimality_fun,
                                   has_aux=True,
-                                  solve=solve)
-      # pylint: disable=g-missing-from-attributes
-      self.run = decorator(self.run)
+                                  solve=self.implicit_diff_solve)
+      run = decorator(run)
+
+    return run(init_params, *args, **kwargs)
 
 
-class StochasticSolverMixin:
-  """Implements a run_iterator method for a stochastic solver.
+class StochasticSolver(IterativeSolver):
+  """Stochastic solver.
 
-  A stochastic solver is expected to only see a batch on each iteration.
-  It does not monitor convergence, apart from checking if `maxiter` is reached.
+  This class implements a method:
 
-  The following is needed from the child solver:
-    - a method `params, state = init(init_params, *args, **kwargs)`
-    - a method `params, state = update(params, state, *args, **kwargs)
-    - an optional attribute `pre_update`
-    - an attribute `maxiter`
+    `params, state = run_iterator(init_params, iterator, *args, **kwargs)`
 
+  The following attribute is needed in the solver:
+    - an `maxiter`
+
+  The `update` method must accept a `data` argument for receiving mini-batches
+  produced by `iterator`.
   """
 
   def run_iterator(self,
@@ -139,7 +170,7 @@ class StochasticSolverMixin:
                    iterator,
                    *args,
                    **kwargs) -> OptStep:
-    """Runs the solver on a dataset iterator.
+    """Runs the solver on a dataset iterator until `maxiter` is reached.
 
     Args:
       init_params: pytree containing the initial parameters.
@@ -156,9 +187,6 @@ class StochasticSolverMixin:
 
     # TODO(mblondel): try and benchmark lax.fori_loop with host_call for `next`.
     for data in itertools.islice(iterator, 0, self.maxiter):
-
-      if self.pre_update:
-        params, state = self.pre_update(params, state, *args, **kwargs)
 
       params, state = self.update(params, state, *args, **kwargs, data=data)
 

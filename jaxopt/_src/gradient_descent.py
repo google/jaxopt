@@ -39,10 +39,9 @@ class GradientDescent(ProximalGradient):
     acceleration: whether to use acceleration (also known as FISTA) or not.
     verbose: whether to print error on every iteration or not.
       Warning: verbose=True will automatically disable jit.
-    implicit_diff: if True, enable implicit differentiation using cg,
-      if Callable, do implicit differentiation using callable as linear solver,
-      if False, use autodiff through the solver implementation (note:
-        this will unroll syntactic loops).
+    implicit_diff: whether to enable implicit diff or autodiff of unrolled
+      iterations.
+    implicit_diff_solve: the linear system solver to use.
     has_aux: whether function fun outputs one (False) or more values (True).
       When True it will be assumed by default that fun(...)[0] is the objective.
   """

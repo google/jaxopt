@@ -202,7 +202,7 @@ def pytree_topology_from_example(x_jnp: Any) -> PyTreeTopology:
 
 
 @dataclass
-class ScipyWrapper(abc.ABC):
+class ScipyWrapper(base.Solver):
   """Wraps over `scipy.optimize` methods with PyTree and implicit diff support.
 
   Attributes:
@@ -211,11 +211,7 @@ class ScipyWrapper(abc.ABC):
       methods relying on FORTRAN code, such as the `L-BFGS-B` solver for
       `scipy.optimize.minimize`, require casting to float64.
     jit: whether to JIT-compile JAX-based values and grad evals.
-    implicit_diff: if True, enable implicit differentiation using cg,
-      if Callable, do implicit differentiation using callable as linear solver.
-      Autodiff through the solver implementation (`implicit_diff = False`) not
-      supported. Setting `implicit_diff` to False will thus make the solver
-      not support JAX's autodiff transforms.
+    implicit_diff_solve: the linear system solver to use.
     has_aux: whether function `fun` outputs one (False) or more values (True).
       When True it will be assumed by default that `fun(...)[0]` is the
       objective.
@@ -223,7 +219,8 @@ class ScipyWrapper(abc.ABC):
   method: Optional[str] = None
   dtype: Optional[Any] = onp.float64
   jit: bool = True
-  implicit_diff: Union[bool, Callable] = False
+  implicit_diff: bool = False
+  implicit_diff_solve: Callable = linear_solve.solve_normal_cg
   has_aux: bool = False
 
   def init(self, init_params: Any) -> base.OptStep:
@@ -242,26 +239,17 @@ class ScipyWrapper(abc.ABC):
     raise NotImplementedError(
         'ScipyWrapper subclasses must implement `optimality_fun` as needed.')
 
-  @abc.abstractmethod
-  def run(self,
-          init_params: Any,
-          *args,
-          **kwargs) -> base.OptStep:
-    pass
-
   def __post_init__(self):
     # Set up implicit diff.
     if self.implicit_diff:
-      if isinstance(self.implicit_diff, Callable):
-        solve = self.implicit_diff
-      else:
-        solve = linear_solve.solve_normal_cg
+      # TODO(mblondel): when we resolve the kwargs issue, we should remove this
+      # option and do implicit diff by default.
+
       decorator = idf.custom_root(self.optimality_fun,
                                   has_aux=True,
-                                  solve=solve)
+                                  solve=self.implicit_diff_solve)
       # pylint: disable=g-missing-from-attributes
       self.run = decorator(self.run)
-    # else: not differentiable in this case (autodiff through unroll not supp.)
 
 
 @dataclass
@@ -280,11 +268,7 @@ class ScipyMinimize(ScipyWrapper):
       methods relying on FORTRAN code, such as the `L-BFGS-B` solver for
       `scipy.optimize.minimize`, require casting to float64.
     jit: whether to JIT-compile JAX-based values and grad evals.
-    implicit_diff: if True, enable implicit differentiation using cg,
-      if Callable, do implicit differentiation using callable as linear solver.
-      Autodiff through the solver implementation (`implicit_diff = False`) not
-      supported. Setting `implicit_diff` to False will thus make the solver
-      not support JAX's autodiff transforms.
+    implicit_diff_solve: the linear system solver to use.
     has_aux: whether function `fun` outputs one (False) or more values (True).
       When True it will be assumed by default that `fun(...)[0]` is the
       objective.
@@ -371,11 +355,7 @@ class ScipyBoundedMinimize(ScipyMinimize):
       methods relying on FORTRAN code, such as the `L-BFGS-B` solver for
       `scipy.optimize.minimize`, require casting to float64.
     jit: whether to JIT-compile JAX-based values and grad evals.
-    implicit_diff: if True, enable implicit differentiation using cg,
-      if Callable, do implicit differentiation using callable as linear solver.
-      Autodiff through the solver implementation (`implicit_diff = False`) not
-      supported. Setting `implicit_diff` to False will thus make the solver
-      not support JAX's autodiff transforms.
+    implicit_diff_solve: the linear system solver to use.
     has_aux: whether function `fun` outputs one (False) or more values (True).
       When True it will be assumed by default that `fun(...)[0]` is the
       objective.
@@ -428,11 +408,7 @@ class ScipyRootFinding(ScipyWrapper):
       methods relying on FORTRAN code, such as the `L-BFGS-B` solver for
       `scipy.optimize.minimize`, require casting to float64.
     jit: whether to JIT-compile JAX-based values and grad evals.
-    implicit_diff: if True, enable implicit differentiation using cg,
-      if Callable, do implicit differentiation using callable as linear solver.
-      Autodiff through the solver implementation (`implicit_diff = False`) not
-      supported. Setting `implicit_diff` to False will thus make the solver
-      not support JAX's autodiff transforms.
+    implicit_diff_solve: the linear system solver to use.
     has_aux: whether function `fun` outputs one (False) or more values (True).
       When True it will be assumed by default that `optimality_fun(...)[0]` is
       the optimality function.
@@ -541,11 +517,7 @@ class ScipyLeastSquares(ScipyWrapper):
       methods relying on FORTRAN code, such as the `L-BFGS-B` solver for
       `scipy.optimize.minimize`, require casting to float64.
     jit: whether to JIT-compile JAX-based values and grad evals.
-    implicit_diff: if True, enable implicit differentiation using cg,
-      if Callable, do implicit differentiation using callable as linear solver.
-      Autodiff through the solver implementation (`implicit_diff = False`) not
-      supported. Setting `implicit_diff` to False will thus make the solver
-      not support JAX's autodiff transforms.
+    implicit_diff_solve: the linear system solver to use.
     has_aux: whether function `fun` outputs one (False) or more values (True).
       When True it will be assumed by default that `fun(...)[0]` are the
       residuals.
@@ -681,11 +653,7 @@ class ScipyBoundedLeastSquares(ScipyLeastSquares):
       methods relying on FORTRAN code, such as the `L-BFGS-B` solver for
       `scipy.optimize.minimize`, require casting to float64.
     jit: whether to JIT-compile JAX-based values and grad evals.
-    implicit_diff: if True, enable implicit differentiation using cg,
-      if Callable, do implicit differentiation using callable as linear solver.
-      Autodiff through the solver implementation (`implicit_diff = False`) not
-      supported. Setting `implicit_diff` to False will thus make the solver
-      not support JAX's autodiff transforms.
+    implicit_diff_solve: the linear system solver to use.
     has_aux: whether function `fun` outputs one (False) or more values (True).
       When True it will be assumed by default that `fun(...)[0]` are the
       residuals.

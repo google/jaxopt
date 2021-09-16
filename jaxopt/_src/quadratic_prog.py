@@ -151,7 +151,7 @@ def _make_quadratic_prog_optimality_fun(matvec_Q, matvec_A):
 
 
 @dataclass
-class QuadraticProgramming:
+class QuadraticProgramming(base.Solver):
   """Quadratic programming solver.
 
   The objective function is::
@@ -164,12 +164,14 @@ class QuadraticProgramming:
     matvec_A: a Callable matvec_A(params_A, u).
       By default, matvec_A(A, u) = dot(A, u), where A = params_A.
     maxiter: maximum number of iterations.
+    implicit_diff_solve: the linear system solver to use.
   """
 
   # TODO(mblondel): add matvec_G when we implement our own QP solvers.
   matvec_Q: Optional[Callable] = None
   matvec_A: Optional[Callable] = None
   maxiter: int = 1000
+  implicit_diff_solve: Callable = linear_solve.solve_normal_cg
 
   def run(self,
           init_params: Optional[Tuple] = None,
@@ -227,6 +229,7 @@ class QuadraticProgramming:
                                                               self.matvec_A)
 
     # Set up implicit diff.
-    decorator = idf.custom_root(self.optimality_fun, has_aux=True)
+    decorator = idf.custom_root(self.optimality_fun, has_aux=True,
+                                solve=self.implicit_diff_solve)
     # pylint: disable=g-missing-from-attributes
     self.run = decorator(self.run)

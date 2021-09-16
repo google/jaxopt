@@ -39,7 +39,7 @@ class BisectionState(NamedTuple):
 
 
 @dataclass
-class Bisection:
+class Bisection(base.IterativeSolver):
   """One-dimensional root finding using bisection.
 
   Attributes:
@@ -52,9 +52,11 @@ class Bisection:
     tol: tolerance.
     check_bracket: whether to check correctness of the bracketing interval.
       If True, the method ``run`` cannot be jitted.
-    implicit_diff: if True, enable implicit differentiation.
+    implicit_diff_solve: the linear system solver to use.
     verbose: whether to print error on every iteration or not.
       Warning: verbose=True will automatically disable jit.
+    jit: whether to JIT-compile the bisection loop (default: "auto").
+    unroll: whether to unroll the bisection loop (default: "auto").
 
   """
   optimality_fun: Callable
@@ -63,8 +65,10 @@ class Bisection:
   maxiter: int = 30
   tol: float = 1e-5
   check_bracket: bool = True
-  implicit_diff: bool = True
+  implicit_diff_solve: Callable = linear_solve.solve_lu
   verbose: bool = False
+  jit: base.AutoOrBoolean = "auto"
+  unroll: base.AutoOrBoolean = "auto"
 
   def init(self,
            init_params=None,
@@ -148,56 +152,7 @@ class Bisection:
     midpoint = 0.5 * (low + high)
     return base.OptStep(params=midpoint, state=state)
 
-  def run(self,
-          init_params=None,
-          *args,
-          **kwargs) -> base.OptStep:
-    """Runs the bisection algorithm.
-
-    Args:
-      init_params: initial scalar value. If None (default), we use
-        0.5 * (self.high + self.low) instead. This initialization is mainly for
-        API consistency with the rest of JAXopt and will not affect the next
-        bracketed interval.
-      *args: additional positional arguments to be passed to ``optimality_fun``.
-      **kwargs: additional keyword arguments to be passed to ``optimality_fun``.
-    Return type:
-      base.OptStep
-    Returns:
-      (params, state)
-    """
-    def cond_fun(pair):
-      _, state = pair
-      if self.verbose:
-        print(state.error)
-      return state.error > self.tol
-
-    def body_fun(pair):
-      params, state = pair
-      return self.update(params, state, *args, **kwargs)
-
-    return loop.while_loop(cond_fun=cond_fun, body_fun=body_fun,
-                           init_val=self.init(init_params, *args, **kwargs),
-                           maxiter=self.maxiter, jit=self._jit,
-                           unroll=self._unroll)
-
-  def l2_optimality_error(self, params, *args, **kwargs):
-    """Computes the L2 optimality error."""
-    return jnp.sqrt(self.optimality_fun(params, *args, **kwargs) ** 2)
-
   def __post_init__(self):
     # Make sure integers are converted to floats.
     self.lower = jnp.array(self.lower, float)
     self.upper = jnp.array(self.upper, float)
-
-    # We always jit unless verbose mode is enabled.
-    self._jit = not self.verbose
-    # We unroll when implicit diff is disabled or when jit is disabled.
-    self._unroll = not self.implicit_diff or not self._jit
-
-    if self.implicit_diff:
-      decorator = idf.custom_root(self.optimality_fun,
-                                  has_aux=True,
-                                  solve=linear_solve.solve_lu)
-      # pylint: disable=g-missing-from-attributes
-      self.run = decorator(self.run)
