@@ -86,7 +86,7 @@ class QuadraticProgTest(jtu.JaxTestCase):
     c = jnp.array([1.0, 1.0])
     A = jnp.array([[1.0, 1.0]])
     b = jnp.array([1.0])
-    qp = QuadraticProgramming()
+    qp = QuadraticProgramming(tol=1e-7)
     hyperparams = dict(params_obj=(Q, c), params_eq=(A, b))
     sol = qp.run(**hyperparams).params
     self.assertAllClose(qp.l2_optimality_error(sol, **hyperparams), 0.0)
