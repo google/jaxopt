@@ -69,7 +69,9 @@ def _solve_eq_constrained_qp(init_params,
                              c,
                              matvec_A,
                              b,
-                             maxiter):
+                             maxiter,
+                             tol=1e-5,
+                             solve=linear_solve.solve_gmres): 
   """Solves 0.5 * x^T Q x + c^T x subject to Ax = b.
 
   This solver returns both the primal solution (x) and the dual solution.
@@ -85,8 +87,7 @@ def _solve_eq_constrained_qp(init_params,
   # Solves the following linear system:
   # [[Q A^T]  [primal_var = [-c
   #  [A 0  ]]  dual_var  ]    b]
-  return linear_solve.solve_cg(matvec, (minus_c, b), init=init_params,
-                               maxiter=maxiter)
+  return solve(matvec, (minus_c, b), tol=tol, maxiter=maxiter)
 
 
 def _solve_constrained_qp_cvxpy(params_obj, params_eq, params_ineq):
@@ -171,6 +172,7 @@ class QuadraticProgramming(base.Solver):
   matvec_Q: Optional[Callable] = None
   matvec_A: Optional[Callable] = None
   maxiter: int = 1000
+  tol: float = 1e-5
   implicit_diff_solve: Callable = linear_solve.solve_normal_cg
 
   def run(self,
@@ -205,7 +207,7 @@ class QuadraticProgramming(base.Solver):
       sol = base.KKTSolution(*_solve_eq_constrained_qp(init_params,
                                                        matvec_Q, c,
                                                        matvec_A, b,
-                                                       self.maxiter))
+                                                       self.maxiter, tol=self.tol))
     else:
       sol = base.KKTSolution(*_solve_constrained_qp_cvxpy(params_obj,
                                                           params_eq,

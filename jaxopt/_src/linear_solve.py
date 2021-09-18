@@ -154,6 +154,7 @@ def solve_normal_cg(matvec: Callable,
 def solve_gmres(matvec: Callable,
                 b: Any,
                 ridge: Optional[float] = None,
+                tol: float = 1e-5,
                 **kwargs) -> Any:
   """Solves ``A x = b`` using gmres.
 
@@ -168,7 +169,7 @@ def solve_gmres(matvec: Callable,
   """
   if ridge is not None:
     matvec = _make_ridge_matvec(matvec, ridge=ridge)
-  return jax.scipy.sparse.linalg.gmres(matvec, b, **kwargs)[0]
+  return jax.scipy.sparse.linalg.gmres(matvec, b, tol=tol, **kwargs)[0]
 
 
 def solve_bicgstab(matvec: Callable,
