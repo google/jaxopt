@@ -14,7 +14,7 @@
 
 """Implicit differentiation of roots and fixed points."""
 
-
+import inspect
 from typing import Any
 from typing import Callable
 from typing import Tuple
@@ -120,29 +120,124 @@ def root_jvp(optimality_fun: Callable,
   return solve(matvec, Jv)
 
 
+def _extract_kwargs(kwarg_keys, flat_args):
+  n = len(flat_args) - len(kwarg_keys)
+  args, kwarg_vals = flat_args[:n], flat_args[n:]
+  kwargs = dict(zip(kwarg_keys, kwarg_vals))
+  return args, kwargs
+
+
+def _signature_bind(signature, *args, **kwargs):
+  ba = signature.bind(*args, **kwargs)
+  ba.apply_defaults()
+  return ba.args, ba.kwargs
+
+
+def _signature_bind_and_match(signature, *args, **kwargs):
+  # We want to bind *args and **kwargs based on the provided
+  # signature, but also to associate the resulting positional
+  # arguments back. To achieve this, we lift arguments to a triple:
+  #
+  #   (was_kwarg, ref, value)
+  #
+  # where ref is an index position (int) if the original argument was
+  # from *args and a dictionary key if the original argument was from
+  # **kwargs. After binding to the inspected signature, we use the
+  # tags to associate the resolved positional arguments back to their
+  # arg and kwarg source.
+
+  args = [(False, i, v) for i, v in enumerate(args)]
+  kwargs = {k: (True, k, v) for (k, v) in kwargs.items()}
+  ba = signature.bind(*args, **kwargs)
+
+  mapping = [(was_kwarg, ref) for was_kwarg, ref, _ in ba.args]
+
+  def map_back(out_args):
+    src_args = [None] * len(args)
+    src_kwargs = {}
+    for (was_kwarg, ref), out_arg in zip(mapping, out_args):
+      if was_kwarg:
+        src_kwargs[ref] = out_arg
+      else:
+        src_args[ref] = out_arg
+    return src_args, src_kwargs
+
+  out_args = tuple(v for _, _, v in ba.args)
+  out_kwargs = {k: v for k, (_, _, v) in ba.kwargs.items()}
+  return out_args, out_kwargs, map_back
+
+
 def _custom_root(solver_fun, optimality_fun, solve, has_aux):
-  def solver_fun_fwd(init_params, *args):
-    res = solver_fun(init_params, *args)
-    return res, (res, args)
+  # When caling through `jax.custom_vjp`, jax attempts to resolve all
+  # arguments passed by keyword to positions (this is in order to
+  # match against a `nondiff_argnums` parameter that we do not use
+  # here). It does so by resolving them according to the custom_jvp'ed
+  # function's signature. It disallows functions defined with a
+  # catch-all `**kwargs` expression, since their signature cannot
+  # always resolve all keyword arguments to positions.
+  #
+  # We can loosen the constraint on the signature of `solver_fun` so
+  # long as we resolve keywords to positions ourselves. We can do so
+  # just in time, by flattening the `kwargs` dict (respecting its
+  # iteration order) and supplying `custom_vjp` with a
+  # positional-argument-only function. We then explicitly coordinate
+  # flattening and unflattening around the `custom_vjp` boundary.
+  #
+  # Once we make it past the `custom_vjp` boundary, we do some more
+  # work to align arguments with the signature of `optimality_fun`.
 
-  def solver_fun_bwd(tup, cotangent):
-    res, args = tup
+  solver_fun_signature = inspect.signature(solver_fun)
+  optimality_signature = inspect.signature(optimality_fun)
 
-    # solver_fun can return auxiliary data if has_aux = True.
-    if has_aux:
-      cotangent = cotangent[0]
-      sol = res[0]
-    else:
-      sol = res
+  def make_custom_vjp_solver_fun(solver_fun, kwarg_keys):
+    def solver_fun_fwd(*flat_args):
+      args, kwargs = _extract_kwargs(kwarg_keys, flat_args)
+      res = solver_fun(*args, **kwargs)
+      return res, (res, flat_args)
 
-    # Compute VJPs w.r.t. args.
-    vjps = root_vjp(optimality_fun=optimality_fun, sol=sol, args=args,
-                    cotangent=cotangent, solve=solve)
-    # For init_params, we return None.
-    return (None,) + vjps
+    def solver_fun_bwd(tup, cotangent):
+      res, flat_args = tup
+      args, kwargs = _extract_kwargs(kwarg_keys, flat_args)
 
-  wrapped_solver_fun = jax.custom_vjp(solver_fun)
-  wrapped_solver_fun.defvjp(solver_fun_fwd, solver_fun_bwd)
+      # solver_fun can return auxiliary data if has_aux = True.
+      if has_aux:
+        cotangent = cotangent[0]
+        sol = res[0]
+      else:
+        sol = res
+
+      ba_args, ba_kwargs, map_back = _signature_bind_and_match(
+          optimality_signature, *args, **kwargs)
+      if ba_kwargs:
+        raise TypeError(
+            "keyword arguments to solver_fun could not be resolved to "
+            f"positional arguments based on the signature {signature}. This "
+            "can happen under custom_root if optimality_fun takes catch-all "
+            "**kwargs, or under custom_fixed_point if fixed_point_fun takes "
+            "catch-all **kwargs, both of which are currently unsupported.")
+
+      # Compute VJPs w.r.t. args.
+      vjps = root_vjp(optimality_fun=optimality_fun, sol=sol,
+                      args=ba_args[1:], cotangent=cotangent, solve=solve)
+      # Prepend None as the vjp for init_params.
+      vjps = (None,) + vjps
+
+      arg_vjps, kws_vjps = map_back(vjps)
+      ordered_vjps = tuple(arg_vjps) + tuple(kws_vjps[k] for k in kwargs.keys())
+      return ordered_vjps
+
+    @jax.custom_vjp
+    def solver_fun_flat(*flat_args):
+      args, kwargs = _extract_kwargs(kwarg_keys, flat_args)
+      return solver_fun(*args, **kwargs)
+
+    solver_fun_flat.defvjp(solver_fun_fwd, solver_fun_bwd)
+    return solver_fun_flat
+
+  def wrapped_solver_fun(*args, **kwargs):
+    args, kwargs = _signature_bind(solver_fun_signature, *args, **kwargs)
+    keys, vals = list(kwargs.keys()), list(kwargs.values())
+    return make_custom_vjp_solver_fun(solver_fun, keys)(*args, *vals)
 
   return wrapped_solver_fun
 
@@ -186,6 +281,9 @@ def custom_fixed_point(fixed_point_fun: Callable,
   """
   def optimality_fun(params, *args):
     return tree_sub(fixed_point_fun(params, *args), params)
+
+  # carry over fixed_point_fun's signature
+  optimality_fun.__wrapped__ = fixed_point_fun
 
   return custom_root(optimality_fun=optimality_fun,
                      has_aux=has_aux,

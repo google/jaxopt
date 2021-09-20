@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import functools
+
 from absl.testing import absltest
 from absl.testing import parameterized
 
@@ -37,6 +39,10 @@ def ridge_solver(init_params, lam, X, y):
   Xy = jnp.dot(X.T, y)
   I = jnp.eye(X.shape[1])
   return jnp.linalg.solve(XX + lam * len(y) * I, Xy)
+
+
+def ridge_solver_with_kwargs(init_params, **kw):
+  return ridge_solver(init_params, kw['lam'], kw['X'], kw['y'])
 
 
 class ImplicitDiffTest(jtu.JaxTestCase):
@@ -99,6 +105,7 @@ class ImplicitDiffTest(jtu.JaxTestCase):
     X, y = datasets.make_regression(n_samples=10, n_features=3, random_state=0)
     grad_fun = jax.grad(ridge_objective)
     fp_fun = lambda x, *args: x - grad_fun(x, *args)
+    fp_fun = functools.wraps(grad_fun)(fp_fun)  # carries grad_fun signature
     lam = 5.0
     ridge_solver_decorated = idf.custom_fixed_point(fp_fun)(ridge_solver)
     sol = ridge_solver(None, lam=lam, X=X, y=y)
@@ -107,6 +114,56 @@ class ImplicitDiffTest(jtu.JaxTestCase):
     J_num = test_util.ridge_solver_jac(X, y, lam, eps=1e-4)
     J = jax.jacrev(ridge_solver_decorated, argnums=1)(None, lam, X=X, y=y)
     self.assertArraysAllClose(J, J_num, atol=5e-2)
+
+  def test_custom_root_with_kwargs(self):
+    X, y = datasets.make_regression(n_samples=10, n_features=3, random_state=0)
+    lam = 5.0
+    w_ref = ridge_solver(None, lam, X, y)
+
+    cr_solver = idf.custom_root(jax.grad(ridge_objective))(ridge_solver_with_kwargs)
+    w = cr_solver(None, lam=lam, X=X, y=y)
+    w_jit = jax.jit(cr_solver)(None, lam=lam, X=X, y=y)
+
+    self.assertArraysAllClose(w_ref, w, atol=5e-2)
+    self.assertArraysAllClose(w_jit, w, atol=5e-2)
+
+  def test_custom_root_with_kwargs_unordered(self):
+    X, y = datasets.make_regression(n_samples=10, n_features=3, random_state=0)
+    lam = 5.0
+    w_ref = ridge_solver(None, lam, X, y)
+
+    cr_solver = idf.custom_root(jax.grad(ridge_objective))(ridge_solver_with_kwargs)
+    w = cr_solver(None, X=X, lam=lam, y=y)
+    w_jit = jax.jit(cr_solver)(None, X=X, lam=lam, y=y)
+
+    self.assertArraysAllClose(w_ref, w, atol=5e-2)
+    self.assertArraysAllClose(w_jit, w, atol=5e-2)
+
+  def test_custom_root_with_kwargs_grad(self):
+    X, y = datasets.make_regression(n_samples=10, n_features=3, random_state=0)
+    lam = 5.0
+    lam_grad_ref = jax.grad(lambda lam: ridge_solver(None, lam, X, y)[0])(lam)
+
+    cr_solver = idf.custom_root(jax.grad(ridge_objective))(ridge_solver_with_kwargs)
+    grad_fun = jax.grad(lambda lam: cr_solver(None, lam=lam, X=X, y=y)[0])
+    lam_grad = grad_fun(lam)
+    lam_grad_jit = jax.jit(grad_fun)(lam)
+
+    self.assertArraysAllClose(lam_grad_ref, lam_grad, atol=5e-2)
+    self.assertArraysAllClose(lam_grad_jit, lam_grad, atol=5e-2)
+
+  def test_custom_root_with_kwargs_grad_unordered(self):
+    X, y = datasets.make_regression(n_samples=10, n_features=3, random_state=0)
+    lam = 5.0
+    lam_grad_ref = jax.grad(lambda lam: ridge_solver(None, lam, X, y)[0])(lam)
+
+    cr_solver = idf.custom_root(jax.grad(ridge_objective))(ridge_solver_with_kwargs)
+    grad_fun = jax.grad(lambda lam: cr_solver(None, X=X, lam=lam, y=y)[0])
+    lam_grad = grad_fun(lam)
+    lam_grad_jit = jax.jit(grad_fun)(lam)
+
+    self.assertArraysAllClose(lam_grad_ref, lam_grad, atol=5e-2)
+    self.assertArraysAllClose(lam_grad_jit, lam_grad, atol=5e-2)
 
 if __name__ == '__main__':
   # Uncomment the line below in order to run in float64.
