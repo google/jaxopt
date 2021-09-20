@@ -152,6 +152,10 @@ class Bisection(base.IterativeSolver):
     midpoint = 0.5 * (low + high)
     return base.OptStep(params=midpoint, state=state)
 
+  def run(self, init_params=None, *args, **kwargs):
+    # We override run in order to set init_params=None by default.
+    return super().run(init_params, *args, **kwargs)
+
   def __post_init__(self):
     # Make sure integers are converted to floats.
     self.lower = jnp.array(self.lower, float)

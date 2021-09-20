@@ -5,13 +5,13 @@ This section is concerned with problems of the form
 
 .. math::
 
-    \min_{x} f(x, \theta) + g(x, \upsilon)
+    \min_{x} f(x, \theta) + g(x, \lambda)
 
 where :math:`f(x, \theta)` is differentiable (almost everywhere),
 :math:`x` are the parameters with respect to which the function is minimized,
 :math:`\theta` are optional extra arguments,
-:math:`g(x, \upsilon)` is possibly non-smooth,
-and :math:`\upsilon` are extra parameters :math:`g` may depend on.
+:math:`g(x, \lambda)` is possibly non-smooth,
+and :math:`\lambda` are extra parameters :math:`g` may depend on.
 
 
 Proximal gradient
@@ -22,11 +22,69 @@ Proximal gradient
 
     jaxopt.ProximalGradient
 
+Instantiating and running the solver
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Proximal gradient is a generalization of :ref:`projected gradient descent
+<constrained_optim>`. The non-smooth term :math:`g` above is specified by
+setting the corresponding ``prox`` argument.
+
+For instance, suppose we want to solve the following optimization problem
+
+.. math::
+
+    \min_{w} \frac{1}{2n} ||Xw - y||^2 + \lambda ||w||_1
+
+which corresponds to the choice :math:`g(w, \lambda) = \lambda ||w||_1`.  The
+corresponding ``prox`` operator is :func:`prox_lasso <jaxopt.prox.prox_lasso>`.
+This gives::
+
+  from jaxopt import ProximalGradient
+  from jaxopt.prox import prox_lasso
+
+  def least_squares(params, data):
+    X, y = data
+    residuals = jnp.dot(X, params) - y
+    return jnp.mean(residuals ** 2)
+
+  pg = ProximalGradient(fun=least_squares, prox=prox_lasso)
+  pg_sol = pg.run(w_init, data=(X, y)).params
+
+Numerous proximal operators are available, see below.
+
+Specifying prox parameters
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Most proximal operators have a hyperparameter that can be specified.  For
+instance, the hyperparameter of :func:`prox_lasso
+<jaxopt.prox.prox_lasso>` is the :math:`L_1` regularization strength.
+This can be passed using the ``hyperparams_prox`` argument of ``run``::
+
+    l1reg = 1.0
+    pg = ProximalGradient(fun=least_squares, prox=prox_lasso)
+    pg_sol = pg.run(w_init, hyperparams_prox=l1reg, data=(X, y)).params
+
+Differentiation
+~~~~~~~~~~~~~~~
+
+In some applications, it is useful to differentiate the solution of the solver
+with respect to some hyperparameters.  Continuing the previous example, we can
+now differentiate the solution w.r.t. ``l1reg``::
+
+  def solution(l1reg):
+    pg = ProximalGradient(fun=least_squares, prox=prox_lasso, implicit_diff=True)
+    return pg.run(w_init, hyperparams_prox=l1reg, data=(X, y)).params
+
+  print(jax.jacobian(solution)(l1reg))
+
+Under the hood, we use the implicit function theorem if ``implicit_diff=True``
+and autodiff of unrolled iterations if ``implicit_diff=False``.  See the
+:ref:`implicit differentiation <implicit_diff>` section for more details.
 
 .. topic:: Examples
 
+   * :ref:`sphx_glr_auto_examples_lasso_implicit_diff.py`
    * :ref:`sphx_glr_auto_examples_sparse_coding.py`
-
 
 Block coordinate descent
 ------------------------
@@ -42,17 +100,16 @@ Block coordinate descent
    * :ref:`sphx_glr_auto_examples_multiclass_linear_svm.py`
    * :ref:`sphx_glr_auto_examples_nmf.py`
 
-
 Proximal operators
 ------------------
 
-Proximal gradient and block coordinate descent do not access :math:`g(x, \upsilon)`
-directly but instead require its associated proximal operator
+Proximal gradient and block coordinate descent do not access :math:`g(x, \lambda)`
+directly but instead require its associated proximal operator. It is defined as:
 
 .. math::
 
-    \text{prox}_{g}(x', \upsilon, \eta) :=
-    \underset{x}{\text{argmin}} ~ \frac{1}{2} ||x' - x||^2 + \eta g(x, \upsilon).
+    \text{prox}_{g}(x', \lambda, \eta) :=
+    \underset{x}{\text{argmin}} ~ \frac{1}{2} ||x' - x||^2 + \eta g(x, \lambda).
 
 The following operators are available.
 

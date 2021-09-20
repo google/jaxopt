@@ -3,8 +3,15 @@
 JAXopt Documentation
 ====================
 
-Hardware accelerated (GPU/TPU), batchable and differentiable optimizers in JAX.
+Hardware accelerated, batchable and differentiable optimizers in JAX.
 
+- **Hardware accelerated:** our implementations run on GPU and TPU, in addition
+  to CPU.
+- **Batchable:** multiple instances of the same optimization problem can be
+  automatically vectorized using JAX's vmap.
+- **Differentiable:** optimization problem solutions can be differentiated with
+  respect to their inputs either implicitly or via autodiff of unrolled
+  algorithm iterations.
 
 Installation
 ------------
@@ -15,15 +22,22 @@ You may install JAXopt from GitHub with::
 
 .. toctree::
    :maxdepth: 1
-   :caption: Public API
+   :caption: Documentation
 
    basics
    unconstrained
    constrained
    non_smooth
    stochastic
-   implicit_diff
+   objective_and_loss
    root_finding
+   implicit_diff
+
+.. toctree::
+   :maxdepth: 1
+   :caption: API
+
+   api
 
 .. toctree::
    :maxdepth: 1

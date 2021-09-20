@@ -48,9 +48,9 @@ def root_vjp(optimality_fun: Callable,
     solve: a linear solver of the form ``x = solve(matvec, b)``,
       where ``matvec(x) = Ax`` and ``Ax=b``.
   Returns:
-    vjps: tuple of the same length as ``len(args)`` containing the vjps w.r.t.
-      each argument. Each ``vjps[i]`` has the same pytree structure as
-      ``args[i]``.
+    tuple of the same length as ``len(args)`` containing the vjps w.r.t.
+    each argument. Each ``vjps[i]`` has the same pytree structure as
+    ``args[i]``.
   """
   def fun_sol(sol):
     # We close over the arguments.
@@ -97,7 +97,7 @@ def root_jvp(optimality_fun: Callable,
              solve:Callable = linear_solve.solve_normal_cg) -> Any:
   """Jacobian-vector product of a root.
 
-  The invariant is ``sol = optimality_fun(sol, *args) == 0``.
+  The invariant is ``optimality_fun(sol, *args) == 0``.
 
   Args:
     optimality_fun: the optimality function to use.
@@ -107,7 +107,7 @@ def root_jvp(optimality_fun: Callable,
       has the same pytree structure as ``args[i]``.
     solve: a linear solver of the form ``solve(matvec, b)``.
   Returns:
-    jvp: a pytree with the same structure as ``sol``.
+    a pytree with the same structure as ``sol``.
   """
   if len(args) != len(tangents):
     raise ValueError("args and tangents should be tuples of the same length.")
@@ -256,7 +256,7 @@ def custom_root(optimality_fun: Callable,
 
   Returns:
     A solver function decorator, i.e.,
-      ``custom_root(optimality_fun)(solver_fun)``.
+    ``custom_root(optimality_fun)(solver_fun)``.
   """
   def wrapper(solver_fun):
     return _custom_root(solver_fun, optimality_fun, solve, has_aux)
@@ -277,7 +277,7 @@ def custom_fixed_point(fixed_point_fun: Callable,
 
   Returns:
     A solver function decorator, i.e.,
-      ``custom_fixed_point(fixed_point_fun)(solver_fun)``.
+    ``custom_fixed_point(fixed_point_fun)(solver_fun)``.
   """
   def optimality_fun(params, *args):
     return tree_sub(fixed_point_fun(params, *args), params)

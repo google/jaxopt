@@ -1,3 +1,5 @@
+.. _unconstrained_optim:
+
 Unconstrained optimization
 ==========================
 
@@ -22,7 +24,7 @@ The following illustrates how to express the ridge regression objective::
 
   def ridge_reg_objective(params, l2reg, X, y):
     residuals = jnp.dot(X, params) - y
-    return jnp.mean(residuals) + 0.5 * l2reg * jnp.dot(w ** 2)
+    return jnp.mean(residuals ** 2) + 0.5 * l2reg * jnp.dot(w ** 2)
 
 The model parameters ``params`` correspond to :math:`x` while ``l2reg``, ``X``
 and ``y`` correspond to the extra arguments :math:`\theta` in the mathematical
@@ -37,8 +39,27 @@ Solvers
     jaxopt.GradientDescent
     jaxopt.ScipyMinimize
 
+Instantiating and running the solver
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 Continuing the ridge regression example above, gradient descent can be
 instantiated and run as follows::
 
-  gd = jaxpot.GradientDescent(fun=ridge_reg_objective, maxiter=500)
-  params = gd.run(init_params, l2reg=l2reg, X=X, y=y).params
+  gd = jaxopt.GradientDescent(fun=ridge_reg_objective, maxiter=500)
+  res = gd.run(init_params, l2reg=l2reg, X=X, y=y)
+
+Unpacking results
+~~~~~~~~~~~~~~~~~
+
+Note that ``res`` has the form ``NamedTuple(params, state)``, where ``params``
+are the approximate solution found by the solver and ``state`` contains
+solver-specific information about convergence.
+
+Because ``res`` is a ``NamedTuple``, we can unpack it as::
+
+  params, state = res
+  print(params, state)
+
+Alternatively, we can also access attributes directly::
+
+  print(res.params, res.state)

@@ -26,33 +26,38 @@ from jaxopt._src import tree_util
 
 
 def projection_non_negative(x: Any, hyperparams=None) -> Any:
-  r"""Projection onto the non-negative orthant.
+  r"""Projection onto the non-negative orthant:
 
-  The output is ``argmin_{p >= 0} ||x - p||``
+  .. math::
+
+    \underset{p}{\text{argmin}} ~ ||x - p||_2^2 \quad
+    \textrm{subject to} \quad p \ge 0
 
   Args:
     x: pytree to project.
     hyperparams: ignored.
   Returns:
-    p: projected pytree, same structure as ``x``.
+    projected pytree, with the same structure as ``x``.
   """
   del hyperparams  # Not used.
   return tree_util.tree_map(jax.nn.relu, x)
 
 
 def projection_box(x: Any, hyperparams: Tuple) -> Any:
-  r"""Projection onto box constraints.
+  r"""Projection onto box constraints:
 
-  The output is ``argmin_{lower <= p <= upper} ||x - p||``
+  .. math::
 
-  where ``(lower, upper) = hyperparams``.
+    \underset{p}{\text{argmin}} ~ ||x - p||_2^2 \quad \textrm{subject to} \quad
+    \text{lower} \le p \le \text{upper}
 
   Args:
     x: pytree to project.
-    hyperparams: a tuple ``(lower, upper)``. ``lower`` and ``upper`` can be
-      either scalar values or pytrees of the same structure as ``x``.
+    hyperparams: a tuple ``hyperparams = (lower, upper)``, where ``lower`` and
+      ``upper`` can be either scalar values or pytrees of the same structure as
+      ``x``.
   Returns:
-    p: projected pytree, same structure as ``x``.
+    projected pytree, with the same structure as ``x``.
   """
   lower, upper = hyperparams
   return tree_util.tree_multimap(jnp.clip, x, lower, upper)
@@ -84,15 +89,20 @@ def _projection_unit_simplex_jvp(primals, tangents):
 
 
 def projection_simplex(x: jnp.ndarray, value: float = 1.0) -> jnp.ndarray:
-  r"""Projection onto the simplex.
+  r"""Projection onto a simplex:
 
-  The output is ``argmin_{p : 0 <= p <= s, jnp.sum(p) = value} ||x - p||``
+  .. math::
+
+    \underset{p}{\text{argmin}} ~ ||x - p||_2^2 \quad \textrm{subject to} \quad
+    p \ge 0, p^\top 1 = \text{value}
+
+  By default, the projection is onto the probability simplex.
 
   Args:
     x: vector to project, an array of shape (n,).
     value: value p should sum to (default: 1.0).
   Returns:
-    p: projected vector, an array of shape (n,).
+    projected vector, an array with the same shape as ``x``.
   """
   if value is None:
     value = 1.0
@@ -100,33 +110,37 @@ def projection_simplex(x: jnp.ndarray, value: float = 1.0) -> jnp.ndarray:
 
 
 def projection_l1_sphere(x: jnp.ndarray, value: float = 1.0) -> jnp.ndarray:
-  r"""Projection onto the l1 sphere.
+  r"""Projection onto the l1 sphere:
 
-  The output is:
-    ``argmin_{y, ||y||_1 = value} ||y - x||``.
+  .. math::
+
+    \underset{y}{\text{argmin}} ~ ||x - y||_2^2 \quad \textrm{subject to} \quad
+    ||y||_1 = \text{value}
 
   Args:
     x: array to project.
     value: radius of the sphere.
 
   Returns:
-    y: output array (same shape as x)
+    output array, with the same shape as ``x``.
   """
   return jnp.sign(x) * projection_simplex(jnp.abs(x), value)
 
 
 def projection_l1_ball(x: jnp.ndarray, max_value: float = 1.0) -> jnp.ndarray:
-  r"""Projection onto the l1 ball.
+  r"""Projection onto the l1 ball:
 
-  The output is:
-    ``argmin_{y, ||y||_1 <= max_value} ||y - x||``.
+  .. math::
+
+    \underset{y}{\text{argmin}} ~ ||x - y||_2^2 \quad \textrm{subject to} \quad
+    ||y||_1 \le \text{max_value}
 
   Args:
     x: array to project.
     max_value: radius of the ball.
 
   Returns:
-    y: output array (same structure as x) normalized to have suitable norm.
+    output array, with the same structure as ``x``.
   """
   l1_norm = jax.numpy.linalg.norm(x, ord=1)
   return jax.lax.cond(l1_norm <= max_value,
@@ -136,34 +150,38 @@ def projection_l1_ball(x: jnp.ndarray, max_value: float = 1.0) -> jnp.ndarray:
 
 
 def projection_l2_sphere(x: Any, value: float = 1.0) -> Any:
-  r"""Projection onto the l2 sphere.
+  r"""Projection onto the l2 sphere:
 
-  The output is:
-    ``argmin_{y, ||y|| = value} ||y - x|| = value * x / ||x||``.
+  .. math::
+
+    \underset{y}{\text{argmin}} ~ ||x - y||_2^2 \quad \textrm{subject to} \quad
+    ||y||_2 = \text{value}
 
   Args:
     x: pytree to project.
     value: radius of the sphere.
 
   Returns:
-    y: output pytree (same structure as x) normalized to have suitable norm.
+    output pytree, with the same structure as ``x``.
   """
   factor = value / tree_util.tree_l2_norm(x)
   return tree_util.tree_scalar_mul(factor, x)
 
 
 def projection_l2_ball(x: Any, max_value: float = 1.0) -> Any:
-  r"""Projection onto the l2 ball.
+  r"""Projection onto the l2 ball:
 
-  The output is:
-    ``argmin_{y, ||y|| <= max_value} ||y - x||``.
+  .. math::
+
+    \underset{y}{\text{argmin}} ~ ||x - y||_2^2 \quad \textrm{subject to} \quad
+    ||y||_2 \le \text{max_value}
 
   Args:
     x: pytree to project.
     max_value: radius of the ball.
 
   Returns:
-    y: output pytree (same structure as x)
+    output pytree, with the same structure as ``x``.
   """
   l2_norm = tree_util.tree_l2_norm(x)
   factor = max_value / l2_norm
@@ -174,26 +192,30 @@ def projection_l2_ball(x: Any, max_value: float = 1.0) -> Any:
 
 
 def projection_linf_ball(x: Any, max_value: float = 1.0) -> Any:
-  r"""Projection onto the l-infinity ball.
+  r"""Projection onto the l-infinity ball:
 
-  The output is:
-    ``argmin_{y, ||y||_inf <= max_value} ||y - x||``.
+  .. math::
+
+    \underset{y}{\text{argmin}} ~ ||x - y||_2^2 \quad \textrm{subject to} \quad
+    ||y||_{\infty} \le \text{max_value}
 
   Args:
     x: pytree to project.
     max_value: radius of the ball.
 
   Returns:
-    y: output pytree (same structure as x)
+    output pytree, with the same structure as ``x``.
   """
   return projection_box(x, (-max_value, max_value))
 
 
 def projection_hyperplane(x: jnp.ndarray, hyperparams: Tuple) -> jnp.ndarray:
-  r"""Projection onto a hyperplane.
+  r"""Projection onto a hyperplane:
 
-  The output is:
-    ``argmin_{y, dot(a, y) = b} ||y - x||``.
+  .. math::
+
+    \underset{y}{\text{argmin}} ~ ||x - y||_2^2 \quad \textrm{subject to} \quad
+    a^\top y = b
 
   Args:
     x: pytree to project.
@@ -201,17 +223,19 @@ def projection_hyperplane(x: jnp.ndarray, hyperparams: Tuple) -> jnp.ndarray:
       ``b`` is a scalar.
 
   Returns:
-    y: output array (same shape as ``x``)
+    output array, with the same shape as ``x`.
   """
   a, b = hyperparams
   return x - (jnp.dot(a, x) - b) / jnp.dot(a, a) * a
 
 
 def projection_halfspace(x: jnp.ndarray, hyperparams: Tuple) -> jnp.ndarray:
-  r"""Projection onto a halfspace.
+  r"""Projection onto a halfspace:
 
-  The output is:
-    ``argmin_{y, dot(a, y) <= b} ||y - x||``.
+  .. math::
+
+    \underset{y}{\text{argmin}} ~ ||x - y||_2^2 \quad \textrm{subject to} \quad
+    a^\top y \le b
 
   Args:
     x: pytree to project.
@@ -219,25 +243,27 @@ def projection_halfspace(x: jnp.ndarray, hyperparams: Tuple) -> jnp.ndarray:
       ``b`` is a scalar.
 
   Returns:
-    y: output array (same shape as ``x``)
+    output array, with same shape as ``x``.
   """
   a, b = hyperparams
   return x - jax.nn.relu(jnp.dot(a, x) - b) / jnp.dot(a, a) * a
 
 
 def projection_affine_set(x: jnp.ndarray, hyperparams: Tuple) -> jnp.ndarray:
-  r"""Projection onto an affine set.
+  r"""Projection onto an affine set:
 
-  The output is:
-    ``argmin_{y, dot(A, y) = b} ||y - x||``.
+  .. math::
+
+    \underset{y}{\text{argmin}} ~ ||x - y||_2^2 \quad \textrm{subject to} \quad
+    A y = b
 
   Args:
-    x: pytree to project.
+    x: array to project.
     hyperparams: tuple ``hyperparams = (A, b)``, where ``A`` is a matrix and
       ``b`` is a vector.
 
   Returns:
-    y: output array (same shape as ``x``)
+    output array, with the same shape as ``x``.
   """
   # todo: support matvec for A
   A, b = hyperparams
@@ -248,10 +274,12 @@ def projection_affine_set(x: jnp.ndarray, hyperparams: Tuple) -> jnp.ndarray:
 
 
 def projection_polyhedron(x: jnp.ndarray, hyperparams: Tuple) -> jnp.ndarray:
-  r"""Projection onto a polyhedron.
+  r"""Projection onto a polyhedron:
 
-  The output is:
-    ``argmin_{y, dot(A, y) = b, dot(G, y) <= h} ||y - x||``.
+  .. math::
+
+    \underset{y}{\text{argmin}} ~ ||x - y||_2^2 \quad \textrm{subject to} \quad
+    A y = b, G y \le h
 
   Args:
     x: pytree to project.
@@ -259,7 +287,7 @@ def projection_polyhedron(x: jnp.ndarray, hyperparams: Tuple) -> jnp.ndarray:
       ``b`` is a vector, ``G`` is a matrix and ``h`` is a vector.
 
   Returns:
-    y: output array (same shape as ``x``)
+    output array, with the same shape as ``x``.
   """
   # todo: support matvecs for A and G
   A, b, G, h = hyperparams
@@ -292,23 +320,25 @@ def _root_proj_box_sec(x, hyperparams):
 def projection_box_section(x: jnp.ndarray,
                            hyperparams: Tuple,
                            check_feasible: bool = False):
-  """Projection onto a box section.
+  r"""Projection onto a box section:
 
-  The projection is::
+  .. math::
 
-    argmin_{p : alpha_i <= p_i <= beta_i, jnp.dot(w, p) = c} ||x - p||
+    \underset{p}{\text{argmin}} ~ ||x - p||_2^2 \quad \textrm{subject to} \quad
+    \alpha \le p \le \beta, p^\top w = c
 
-  where ``(alpha, beta, w, c) = hyperparams``.
+  The problem is infeasible if :math:`w^\top \alpha > c` or
+  if :math:`w^\top \beta < c`.
 
   Args:
     x: vector to project, an array of shape (n,).
     hyperparams: tuple of parameters, ``hyperparams = (alpha, beta, w, c)``,
-      where ``w`` is a positive vector. The problem is infeasible if
-      dot(w, alpha) > c or if dot(w, beta) < c.
+      where ``w``, ``alpha`` and ``beta`` are of the same shape as ``x``,
+      and ``c`` is a scalar. Moreover, ``w`` should be positive.
     check_feasible: whether to check feasibility or not.
       If True, function cannot be jitted.
   Returns:
-    p: projected vector, an array of shape (n,).
+    projected vector, an array with the same shape as ``x``.
   """
 
   alpha, beta, w, c = hyperparams
