@@ -13,10 +13,14 @@
 # limitations under the License.
 
 from jaxopt._src.objective import CompositeLinearFunction
+
 from jaxopt._src.objective import least_squares
+
+from jaxopt._src.objective import binary_logreg
+
 from jaxopt._src.objective import multiclass_logreg
 from jaxopt._src.objective import multiclass_logreg_with_intercept
 from jaxopt._src.objective import l2_multiclass_logreg
 from jaxopt._src.objective import l2_multiclass_logreg_with_intercept
-from jaxopt._src.objective import binary_logreg
+
 from jaxopt._src.objective import multiclass_linear_svm_dual

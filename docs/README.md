@@ -7,4 +7,4 @@ https://jaxopt.readthedocs.io/en/latest/
 
 1. Install the requirements using `pip install -r docs/requirements.txt`
 2. Make sure `pandoc` is installed
-3. Run the make script `make html`
+3. Run the make script `make html` or `make html-noplot` for building without running the examples.

@@ -1,4 +1,4 @@
-Objective and loss functions
+Loss and objective functions
 ============================
 
 Loss functions
@@ -44,3 +44,32 @@ Applying loss functions on a batch
 
 All loss functions above are pointwise, meaning that they operate on a single sample. Use ``jax.vmap(loss)``
 followed by a reduction such as ``jnp.mean`` or ``jnp.sum`` to use on a batch.
+
+Objective functions
+-------------------
+
+.. _composite_linear_functions:
+
+Composite linear functions
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. autosummary::
+  :toctree: _autosummary
+
+    jaxopt.objective.least_squares
+    jaxopt.objective.binary_logreg
+    jaxopt.objective.multiclass_logreg
+    jaxopt.objective.multiclass_linear_svm_dual
+
+Composite linear objective functions can be used with
+:ref:`block coordinate descent <block_coordinate_descent>`.
+
+Other functions
+~~~~~~~~~~~~~~~
+
+.. autosummary::
+  :toctree: _autosummary
+
+    jaxopt.objective.multiclass_logreg_with_intercept
+    jaxopt.objective.l2_multiclass_logreg
+    jaxopt.objective.l2_multiclass_logreg_with_intercept

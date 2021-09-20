@@ -225,6 +225,11 @@ class BlockCoordinateDescentTest(jtu.JaxTestCase):
     W_fit = jnp.dot(X.T, (Y - sol.params)) / l2reg
     self.assertArraysAllClose(W_fit, W_skl, atol=1e-3)
 
+  def test_raise_exception(self):
+    self.assertRaises(AttributeError, BlockCoordinateDescent,
+                      fun=objective.multiclass_logreg_with_intercept,
+                      block_prox=prox.prox_lasso)
+
 if __name__ == '__main__':
   # Uncomment the line below in order to run in float64.
   # jax.config.update("jax_enable_x64", True)

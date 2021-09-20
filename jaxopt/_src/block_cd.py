@@ -28,6 +28,7 @@ from jaxopt._src import base
 from jaxopt._src import implicit_diff as idf
 from jaxopt._src import linear_solve
 from jaxopt._src import loop
+from jaxopt._src import objective
 from jaxopt._src import tree_util
 
 
@@ -64,7 +65,7 @@ class BlockCoordinateDescent(base.IterativeSolver):
     jit: whether to JIT-compile the optimization loop (default: "auto").
     unroll: whether to unroll the optimization loop (default: "auto").
   """
-  fun: Callable
+  fun: objective.CompositeLinearFunction
   block_prox: Callable
   maxiter: int = 500
   tol: float = 1e-4
@@ -191,6 +192,10 @@ class BlockCoordinateDescent(base.IterativeSolver):
     return  fp - params
 
   def __post_init__(self):
+    if not isinstance(self.fun, objective.CompositeLinearFunction):
+      raise AttributeError("fun should be an instance of "
+                           "objective.CompositeLinearFunction.")
+
     # Pre-compile useful functions.
     self._grad_fun = jax.grad(self.fun)
     self._grad_subfun = jax.grad(self.fun.subfun)
