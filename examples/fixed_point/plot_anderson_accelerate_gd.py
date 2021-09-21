@@ -72,8 +72,10 @@ def T(params, eta, l2reg, data):
 w_init = jnp.zeros(X.shape[1])  # null vector
 eta = 1e-1  # small step size
 l2reg = 0.  # no regularization
-aa = AndersonAcceleration(T, history_size=5, maxiter=150, ridge=1e-5, tol=1e-6)
-fpi = FixedPointIteration(T, maxiter=150, tol=1e-6)
+tol = 1e-5
+maxiter = 150
+aa = AndersonAcceleration(T, history_size=5, maxiter=maxiter, ridge=5e-5, tol=tol)
+fpi = FixedPointIteration(T, maxiter=maxiter, tol=tol)
 
 aa_sols, aa_errors = run_all(aa, w_init, eta, l2reg, (X, y))
 fp_sols, fp_errors = run_all(fpi, w_init, eta, l2reg, (X, y))
@@ -102,8 +104,8 @@ for i in range(4):
 # Plot error as function of iteration num
 ax = fig.add_subplot(spec[2, :])
 iters = jnp.arange(len(aa_errors))
-ax.plot(iters, aa_errors, label='Anderson Accelerated GD Error')
 ax.plot(iters, fp_errors, label='Gradient Descent Error')
+ax.plot(iters, aa_errors, label='Anderson Accelerated GD Error')
 ax.set_xlabel('Iteration num')
 ax.set_ylabel('Error')
 ax.set_yscale('log')

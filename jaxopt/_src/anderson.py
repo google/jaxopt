@@ -17,15 +17,84 @@
 from typing import Any
 from typing import Callable
 from typing import NamedTuple
-from typing import Optional
+from typing import List
 
+from typing import Optional
 from dataclasses import dataclass
 
+import jax
 import jax.numpy as jnp
-from jax.tree_util import tree_leaves, tree_structure
 
 from jaxopt._src import base
-from jaxopt._src.tree_util import tree_collapse, tree_uncollapse, tree_l2_norm, tree_sub
+from jaxopt._src import linear_solve
+from jaxopt._src.tree_util import tree_l2_norm, tree_sub
+from jaxopt._src.tree_util import tree_vdot, tree_add
+from jaxopt._src.tree_util import tree_mul, tree_scalar_mul
+from jaxopt._src.tree_util import tree_average, tree_add_scalar_mul
+from jaxopt._src.tree_util import tree_map, tree_gram
+
+
+def build_history(params_history_list):
+  tree_stacker = lambda *trees: jnp.stack(trees)
+  params_history = tree_map(tree_stacker, *params_history_list[:-1])
+  f_params_history = tree_map(tree_stacker, *params_history_list[1:])
+  residuals_history = tree_sub(f_params_history, params_history)
+  residual_gram = tree_gram(residuals_history)
+  return params_history, residuals_history, residual_gram
+
+
+def minimize_residuals(residual_gram, ridge):
+  """Return the solution to the linear system with slack variable."""
+  m = residual_gram.shape[0]
+  residual_gram = residual_gram + ridge * jnp.eye(m) # avoid ill-posed systems
+  H = jnp.block([[jnp.zeros((1, 1)), jnp.ones((1, m))],
+                  [ jnp.ones((m, 1)), residual_gram  ]])
+  c = jnp.zeros((m+1)).at[0].set(1)
+  alphas = jnp.linalg.solve(H, c)
+  return alphas
+
+
+def anderson_step(params_history, residuals_history,
+                  residual_gram, ridge, beta):
+  """Produces new Anderson iterate from two sequences.
+
+  Args:
+    params_history: each colum  i must contain f_h_i=f(p_h_i)
+    residual_gram: Gram matrix of residuals
+  """
+  alphas = minimize_residuals(residual_gram, ridge)
+  alphas = alphas[1:]  # drop dummy variable (constraint satisfaction)
+  pa = tree_average(params_history, alphas)
+  ra = tree_average(residuals_history, alphas)
+  extrapolated = tree_add_scalar_mul(pa, beta, ra)
+  return extrapolated
+
+
+def pytree_replace_elem(tree_batched, index, new_elems):
+  """Replace an element of a batch stored in a pytree.
+
+  Args:
+    tree: tree of arrays of shape (batch_size, ...) 
+    index: an integer between ``0`` and ``batch_size-1``
+    values: a pytree with the same structure as ``tree``
+      but without the additional batch dimension on each leaf
+
+  Returns:
+    the same pytree with the element at pos ``index`` replaced
+  """
+  at_set = lambda x, elem: x.at[index].set(elem)
+  return tree_map(at_set, tree_batched, new_elems)
+
+
+def update_history(pos, params_history, residuals_history,
+                   residual_gram, extrapolated, residual):
+  params_history = pytree_replace_elem(params_history, pos, extrapolated)
+  residuals_history = pytree_replace_elem(residuals_history, pos, residual)
+  new_row = jax.vmap(tree_vdot, in_axes=(0, None))(residuals_history, residual)
+  residual_gram = residual_gram.at[pos,:].set(new_row)
+  residual_gram = residual_gram.at[:,pos].set(new_row)
+  error = jnp.sqrt(residual_gram[pos,pos])
+  return params_history, residuals_history, residual_gram, error
 
 
 class AndersonState(NamedTuple):
@@ -33,16 +102,20 @@ class AndersonState(NamedTuple):
 
   Attributes:
     iter_num: iteration number
-    value: pytree of current estimate of fixed point
+    aux: auxiliary data
     error: residuals of current estimate
-    v_history: history of previous iterates
-    f_history: fixed_point_fun(v_history)
+    params_history: history of previous anderson iterates
+    residuals_history: residuals of previous iterates
+      fixed_point_fun(params_history) - params_history
+    residual_gram: Gram matrix: G.T @ G with G the matrix of residuals
+      each column of G is a flattened pytree of residuals_history
   """
   iter_num: int
-  value: Any
+  aux: Any
   error: float
-  v_history: Any
-  f_history: Any
+  params_history: Any
+  residuals_history: Any
+  residual_gram: jnp.array
 
 
 @dataclass
@@ -52,7 +125,6 @@ class AndersonAcceleration(base.IterativeSolver):
   Attributes:
     fixed_point_fun: a function ``fixed_point_fun(x, *args, **kwargs)``
       returning a pytree with the same structure and type as x
-      each leaf must be an array (not a scalar).
       See the reference below for conditions that the function must fulfill
       in order to guarantee convergence.
       In particular, if the Banach fixed point theorem
@@ -64,8 +136,6 @@ class AndersonAcceleration(base.IterativeSolver):
     ridge: ridge regularization in solver.
       Consider increasing this value if the solver returns ``NaN``.
     has_aux: wether fixed_point_fun returns additional data. (default: False)
-      if True, the fixed-point is computed only with respect to first element of the sequence
-      returned. ``AndersonState.value`` will contain the full sequence returned.
     verbose: whether to print error on every iteration or not.
       Warning: verbose=True will automatically disable jit.
     implicit_diff: whether to enable implicit diff or autodiff of unrolled
@@ -92,8 +162,10 @@ class AndersonAcceleration(base.IterativeSolver):
   jit: base.AutoOrBoolean = "auto"
   unroll: base.AutoOrBoolean = "auto"
 
-  def _params(self, fpf_return):
-    return fpf_return[0] if self.has_aux else fpf_return
+  def _pop_aux(self, v):
+    if self.has_aux:
+      return v  # already a tuple (params, aux)
+    return v, None  # not a tuple
 
   def init(self,
            init_params,
@@ -108,32 +180,23 @@ class AndersonAcceleration(base.IterativeSolver):
     Returns:
       (params, state)
     """
-    params = init_params
-    params_history = [tree_collapse(params)]
+    history = [init_params]
     for _ in range(self.history_size):
-      fpf_return = self.fixed_point_fun(params, *args, **kwargs)
-      params = self._params(fpf_return)
-      params_history.append(tree_collapse(params))
+      params = self.fixed_point_fun(history[-1], *args, **kwargs)
+      params, aux = self._pop_aux(params)
+      history.append(params)
 
-    v_h = jnp.stack(params_history[:-1], axis=1)
-    f_h = jnp.stack(params_history[1:], axis=1)
-    error = jnp.linalg.norm(params_history[-1] - params_history[-2])
+    params_history, residuals_history, residual_gram = build_history(history)
+
+    error = tree_l2_norm(tree_sub(history[-1], history[-2]))
 
     state = AndersonState(iter_num=0,
-                          value=fpf_return,
+                          aux=aux,
                           error=error,
-                          v_history=v_h,
-                          f_history=f_h)
+                          params_history=params_history,
+                          residuals_history=residuals_history,
+                          residual_gram=residual_gram)
     return base.OptStep(params=params, state=state)
-
-  def _minimize_residuals(self, m, G):
-    c = jnp.zeros((m+1)).at[0].set(1)
-    GTG = G.T @ G
-    GTG = GTG + self.ridge * jnp.eye(m) # avoid ill-posed systems
-    H = jnp.block([[jnp.zeros((1, 1)), jnp.ones((1, m))],
-                   [ jnp.ones((m, 1)),       GTG       ]])
-    alpha = jnp.linalg.solve(H, c)
-    return alpha
 
   def update(self,
              params: Any,
@@ -150,45 +213,36 @@ class AndersonAcceleration(base.IterativeSolver):
     Returns:
       (params, state)
     """
-    m = self.history_size
-    v_h = state.v_history
-    f_h = state.f_history
+    del params
+    params_history = state.params_history
+    residuals_history = state.residuals_history
+    residual_gram = state.residual_gram
     pos = jnp.mod(state.iter_num, self.history_size)
 
-    G = f_h - v_h  # residuals
-    alpha = self._minimize_residuals(m, G)
-    alpha = alpha[1:]  # drop dummy variable (constraint satisfaction)
+    extrapolated = anderson_step(params_history, residuals_history,
+                                 residual_gram, self.ridge, self.beta)
+    next_params = self.fixed_point_fun(extrapolated, *args, **kwargs)
+    next_params, aux = self._pop_aux(next_params)
 
-    # get next iterate from linear combination
-    old = jnp.dot(v_h, alpha)
-    new = jnp.dot(f_h, alpha)
-
-    # get next iterate from convex combination
-    aa_params_flat = (1-self.beta) * old + self.beta * new
-    aa_params = tree_uncollapse(params, aa_params_flat)
-
-    fpf_return = self.fixed_point_fun(aa_params, *args, **kwargs)
-    faa_params = self._params(fpf_return)
-
-    error = tree_l2_norm(tree_sub(faa_params, aa_params))
-
-    faa_params_flat = tree_collapse(faa_params)
-    v_history = state.v_history.at[:,pos].set(aa_params_flat)
-    f_history = state.f_history.at[:,pos].set(faa_params_flat)
+    residual = tree_sub(next_params, extrapolated)
+    ret = update_history(pos, params_history, residuals_history,
+                         residual_gram, extrapolated, residual)
+    params_history, residuals_history, residual_gram, error = ret
 
     next_state = AndersonState(iter_num=state.iter_num+1,
-                               value=fpf_return,
-                               error=error,
-                               v_history=v_history,
-                               f_history=f_history)
+                               aux=aux,
+                               error=error,  
+                               params_history=params_history,
+                               residuals_history=residuals_history,
+                               residual_gram=residual_gram)
 
-    return base.OptStep(params=faa_params, state=next_state)
+    return base.OptStep(params=next_params, state=next_state)
 
   def optimality_fun(self, params, *args, **kwargs):
     """Optimality function mapping compatible with ``@custom_root``."""
-    fpf_return = self.fixed_point_fun(params, *args, **kwargs)
-    f_params = self._params(fpf_return)
-    return tree_sub(f_params, params)
+    next_params = self.fixed_point_fun(params, *args, **kwargs)
+    next_params, _ = self._pop_aux(next_params)
+    return tree_sub(next_params, params)
 
   def __post_init__(self):
     if self.history_size < 2:
