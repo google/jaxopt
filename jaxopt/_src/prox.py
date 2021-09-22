@@ -24,140 +24,187 @@ import jax.numpy as jnp
 from jaxopt._src import tree_util
 
 
-def prox_none(x: Any, hyperparams: Optional[Any] = None, scaling: float = 1.0):
-  r"""Proximal operator for g(x) = 0, i.e., the identity function.
+def prox_none(x: Any,
+              hyperparams: Optional[Any] = None,
+              scaling: float = 1.0) -> Any:
+  r"""Proximal operator for :math:`g(x) = 0`, i.e., the identity function.
 
-  Since g(x) = 0, the output is: ``argmin_y 0.5 ||y - x||^2 = Id(x)``.
+  Since :math:`g(x) = 0`, the output is:
+
+  .. math::
+
+    \underset{y}{\text{argmin}} ~ \frac{1}{2} ||x - y||_2^2 = x
 
   Args:
     x: input pytree.
     hyperparams: ignored.
     scaling: ignored.
   Returns:
-    y: output pytree with same structure as x.
+    output pytree, with the same structure as ``x``.
   """
   del hyperparams, scaling
   return x
 
 
-def prox_lasso(x: Any, hyperparams: Any, scaling: float = 1.0):
+def prox_lasso(x: Any,
+               l1reg: Optional[Any] = None,
+               scaling: float = 1.0) -> Any:
   r"""Proximal operator for the l1 norm, i.e., soft-thresholding operator.
 
-  The output is:
-    argmin_y 0.5 ||y - x||^2 + scaling * hyperparams * ||y||_1.
+  .. math::
 
-  When hyperparams is a pytree, the weights are applied coordinate-wise.
+    \underset{y}{\text{argmin}} ~ \frac{1}{2} ||x - y||_2^2
+    + \text{scaling} \cdot \text{l1reg} \cdot ||y||_1
+
+  When ``l1reg`` is a pytree, the weights are applied coordinate-wise.
 
   Args:
     x: input pytree.
-    hyperparams: regularization strength, float or pytree (same structure as x).
+    l1reg: regularization strength, float or pytree with the same structure
+      as ``x``.
     scaling: a scaling factor.
 
   Returns:
-    y: output pytree with same structure as x.
+    output pytree, with same structure as ``x``.
   """
+  if l1reg is None:
+    l1reg = 1.0
+
   fun = lambda u, v: jnp.sign(u) * jax.nn.relu(jnp.abs(u) - v * scaling)
-  return tree_util.tree_multimap(fun, x, hyperparams)
+  return tree_util.tree_multimap(fun, x, l1reg)
 
 
-def prox_non_negative_lasso(x, hyperparam=1.0, scaling=1.0):
+def prox_non_negative_lasso(x: Any,
+                            l1reg: Optional[float] = None,
+                            scaling: float = 1.0) -> Any:
   r"""Proximal operator for the l1 norm on the non-negative orthant.
 
-  The output is:
-    argmin_{y >= 0} 0.5 ||y - x||^2 + scaling * hyperparam * ||y||_1.
+  .. math::
+
+    \underset{y \ge 0}{\text{argmin}} ~ \frac{1}{2} ||x - y||_2^2
+    + \text{scaling} \cdot \text{l1reg} \cdot ||y||_1
 
   Args:
     x: input pytree.
-    hyperparam: regularization strength, float.
+    l1reg: regularization strength.
     scaling: a scaling factor.
 
   Returns:
-    y: output pytree with same structure as x.
+    output pytree, with the same structure as ``x``.
   """
-  pytree = tree_util.tree_add(x, -hyperparam * scaling)
+  if l1reg is None:
+    l1reg = 1.0
+
+  pytree = tree_util.tree_add(x, -l1reg * scaling)
   return tree_util.tree_map(jax.nn.relu, pytree)
 
 
 def prox_elastic_net(x: Any,
-                     hyperparams: Tuple[Any, Any],
-                     scaling: float = 1.0):
+                     hyperparams: Optional[Tuple[Any, Any]] = None,
+                     scaling: float = 1.0) -> Any:
   r"""Proximal operator for the elastic net.
 
-  The output is:
-    argmin_y 0.5 ||y - x||^2 + scaling * hyperparams[0] * g(y)
+  .. math::
 
-  where g(y) = ||y||_1 + hyperparams[1] * 0.5 * ||y||_2^2.
+    \underset{y}{\text{argmin}} ~ \frac{1}{2} ||x - y||_2^2
+    + \text{scaling} \cdot \text{hyperparams[0]} \cdot g(y)
+
+  where :math:`g(y) = ||y||_1 + \text{hyperparams[1]} \cdot 0.5 \cdot ||y||_2^2`.
 
   Args:
     x: input pytree.
-    hyperparams: a tuple, where both hyperparams[0] and hyperparams[1] can be
-      either floats or pytrees with the same structure as x.
+    hyperparams: a tuple, where both ``hyperparams[0]`` and ``hyperparams[1]``
+      can be either floats or pytrees with the same structure as ``x``.
     scaling: a scaling factor.
 
   Returns:
-    y: output pytree with same structure as x.
+    output pytree, with the same structure as ``x``.
   """
+  if hyperparams is None:
+    hyperparams = (1.0, 1.0)
+
   prox_l1 = lambda u, lam: jnp.sign(u) * jax.nn.relu(jnp.abs(u) - lam)
   fun = lambda u, lam, gamma: (prox_l1(u, scaling * lam) /
                                (1.0 + scaling * lam * gamma))
   return tree_util.tree_multimap(fun, x, hyperparams[0], hyperparams[1])
 
 
-def prox_group_lasso(x: Any, hyperparam: float, scaling=1.0):
+def prox_group_lasso(x: Any,
+                     l2reg: Optional[float] = 1.0,
+                     scaling=1.0) -> Any:
   r"""Proximal operator for the l2 norm, i.e., block soft-thresholding operator.
 
-  The output is:
-    argmin_y 0.5 ||y - x||^2 + scaling * hyperparam * ||y||_2.
+  .. math::
+
+    \underset{y}{\text{argmin}} ~ \frac{1}{2} ||x - y||_2^2
+    + \text{scaling} \cdot \text{l2reg} \cdot ||y||_2
 
   Blocks can be grouped using ``jax.vmap``.
 
   Args:
     x: input pytree.
-    hyperparam: regularization strength, float.
+    l2reg: regularization strength.
     scaling: a scaling factor.
 
   Returns:
-    y: output pytree with same structure as x.
+    output pytree, with the same structure as ``x``.
   """
+  if l2reg is None:
+    l2reg = 1.0
+
   l2_norm = tree_util.tree_l2_norm(x)
-  factor = 1 - hyperparam * scaling / l2_norm
+  factor = 1 - l2reg * scaling / l2_norm
   factor = jnp.where(factor >= 0, factor, 0)
   return tree_util.tree_scalar_mul(factor, x)
 
 
-def prox_ridge(x: Any, hyperparam: float, scaling=1.0):
+def prox_ridge(x: Any,
+               l2reg: Optional[float] = 1.0,
+               scaling=1.0) -> Any:
   r"""Proximal operator for the squared l2 norm.
 
-  The output is:
-    argmin_y 0.5 ||y - x||^2 + scaling * hyperparam * 0.5 * ||y||_2^2.
+  .. math::
+
+    \underset{y}{\text{argmin}} ~ \frac{1}{2} ||x - y||_2^2
+    + \text{scaling} \cdot \text{l2reg} \cdot ||y||_2^2
 
   Args:
     x: input pytree.
-    hyperparam: regularization strength, float.
+    l2reg: regularization strength.
     scaling: a scaling factor.
 
   Returns:
-    y: output pytree with same structure as x.
+    output pytree, with the same structure as ``x``.
   """
-  factor = 1. / (1 + scaling * hyperparam)
+  if l2reg is None:
+    l2reg = 1.0
+
+  factor = 1. / (1 + scaling * l2reg)
   return tree_util.tree_scalar_mul(factor, x)
 
 
-def prox_non_negative_ridge(x, hyperparam=1.0, scaling=1.0):
+def prox_non_negative_ridge(x: Any,
+                            l2reg: Optional[float] = 1.0,
+                            scaling: float = 1.0):
   r"""Proximal operator for the squared l2 norm on the non-negative orthant.
 
-  The output is:
-    argmin_{y >= 0} 0.5 ||y - x||^2 + scaling * hyperparam * 0.5 * ||y||_2^2.
+  .. math::
+
+    \underset{y \ge 0}{\text{argmin}} ~ \frac{1}{2} ||x - y||_2^2
+    + \text{scaling} \cdot \text{l2reg} \cdot ||y||_2^2
 
   Args:
     x: input pytree.
-    hyperparam: regularization strength, float.
+    l2reg: regularization strength.
     scaling: a scaling factor.
 
   Returns:
-    y: output pytree with same structure as x.
+    output pytree, with the same structure as ``x``.
   """
-  pytree = tree_util.tree_scalar_mul(1./ (1 + hyperparam * scaling), x)
+  if l2reg is None:
+    l2reg = 1.0
+
+  pytree = tree_util.tree_scalar_mul(1./ (1 + l2reg * scaling), x)
   return tree_util.tree_map(jax.nn.relu, pytree)
 
 

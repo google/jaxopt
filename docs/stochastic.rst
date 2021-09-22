@@ -30,7 +30,7 @@ Example::
   def ridge_reg_objective(params, l2reg, data):
     X, y = data
     residuals = jnp.dot(X, params) - y
-    return jnp.mean(residuals) + 0.5 * l2reg * jnp.dot(w ** 2)
+    return jnp.mean(residuals ** 2) + 0.5 * l2reg * jnp.dot(w ** 2)
 
 Data iterator
 -------------
@@ -53,20 +53,39 @@ Solvers
     jaxopt.OptaxSolver
     jaxopt.PolyakSGD
 
-Example::
+Optax solvers
+~~~~~~~~~~~~~
+
+`Optax <https://optax.readthedocs.io>`_ solvers can be used in JAXopt using
+:class:`OptaxSolver <jaxopt.OptaxSolver>`. Here's an example with Adam::
+
+    from jaxopt import OptaxSolver
 
     opt = optax.adam(learning_rate)
     solver = OptaxSolver(opt=opt, fun=ridge_reg_objective, maxiter=1000)
+
+See `common optimizers
+<https://optax.readthedocs.io/en/latest/api.html#common-optimizers>`_ in the
+optax documentation for a list of available stochastic solvers.
+
+Adaptive solvers
+~~~~~~~~~~~~~~~~
+
+Adaptive solvers update the step size at each iteration dynamically.
+An example is :class:`PolyakSGD <jaxopt.PolyakSGD>`, a solver
+which computes step sizes adaptively using function values.
 
 Run iterator vs. manual loop
 ----------------------------
 
 The following::
 
+  iterator = data_iterator()
   solver.run_iterator(init_params, iterator, l2reg=l2reg)
 
 is equivalent to::
 
+  iterator = data_iterator()
   params, state = solver.init(init_params, l2reg=l2reg)
   for _ in range(maxiter):
     data = next(iterator)

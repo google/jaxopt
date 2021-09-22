@@ -50,6 +50,19 @@ class ProjectedGradientTest(jtu.JaxTestCase):
 
     self.assertArraysAllClose(pg_sol, lbfgsb_sol, atol=1e-2)
 
+  def test_projected_gradient_l2_ball(self):
+    rng = onp.random.RandomState(0)
+    X = rng.randn(10, 5)
+    w = rng.rand(5)
+    y = jnp.dot(X, w)
+    fun = objective.least_squares
+    w_init = jnp.zeros_like(w)
+
+    pg = ProjectedGradient(fun=fun,
+                           projection=projection.projection_l2_ball)
+    pg_sol = pg.run(w_init, hyperparams_proj=1.0, data=(X, y)).params
+    self.assertLess(jnp.sqrt(jnp.sum(pg_sol ** 2)), 1.0)
+
 if __name__ == '__main__':
   # Uncomment the line below in order to run in float64.
   # jax.config.update("jax_enable_x64", True)
