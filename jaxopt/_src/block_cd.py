@@ -70,7 +70,7 @@ class BlockCoordinateDescent(base.IterativeSolver):
   maxiter: int = 500
   tol: float = 1e-4
   verbose: int = 0
-  implicit_diff: bool = False
+  implicit_diff: bool = True
   implicit_diff_solve: Callable = linear_solve.solve_normal_cg
   jit: base.AutoOrBoolean = "auto"
   unroll: base.AutoOrBoolean = "auto"

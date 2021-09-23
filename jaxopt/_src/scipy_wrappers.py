@@ -219,7 +219,6 @@ class ScipyWrapper(base.Solver):
   method: Optional[str] = None
   dtype: Optional[Any] = onp.float64
   jit: bool = True
-  implicit_diff: bool = False
   implicit_diff_solve: Callable = linear_solve.solve_normal_cg
   has_aux: bool = False
 
@@ -241,15 +240,11 @@ class ScipyWrapper(base.Solver):
 
   def __post_init__(self):
     # Set up implicit diff.
-    if self.implicit_diff:
-      # TODO(mblondel): when we resolve the kwargs issue, we should remove this
-      # option and do implicit diff by default.
-
-      decorator = idf.custom_root(self.optimality_fun,
-                                  has_aux=True,
-                                  solve=self.implicit_diff_solve)
-      # pylint: disable=g-missing-from-attributes
-      self.run = decorator(self.run)
+    decorator = idf.custom_root(self.optimality_fun,
+                                has_aux=True,
+                                solve=self.implicit_diff_solve)
+    # pylint: disable=g-missing-from-attributes
+    self.run = decorator(self.run)
 
 
 @dataclass

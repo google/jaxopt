@@ -82,7 +82,7 @@ class MirrorDescent(base.IterativeSolver):
   maxiter: int = 500
   tol: float = 1e-2
   verbose: int = 0
-  implicit_diff: bool = False
+  implicit_diff: bool = True
   implicit_diff_solve: Callable = linear_solve.solve_normal_cg
   has_aux: bool = False
   jit: base.AutoOrBoolean = "auto"

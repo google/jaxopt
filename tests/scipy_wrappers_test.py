@@ -169,7 +169,6 @@ class ScipyMinimizeTest(jtu.JaxTestCase):
                                       y=self.data[1],
                                       lam=self.default_l2reg)
     lbfgs = ScipyMinimize(fun=self.logreg_fun,
-                          implicit_diff=True,
                           **self.solver_kwargs)
     def wrapper(hyperparams):
       sol_skl = pytree_skl
@@ -190,7 +189,6 @@ class ScipyMinimizeTest(jtu.JaxTestCase):
                                       lam=self.default_l2reg,
                                       fit_intercept=True)
     lbfgs = ScipyMinimize(fun=self.logreg_with_intercept_fun,
-                          implicit_diff=True,
                           **self.solver_kwargs)
     def wrapper(hyperparams):
       sol_skl = {'W': pytree_skl[0], 'b': pytree_skl[1]}
@@ -277,7 +275,6 @@ class ScipyBoundedMinimizeTest(jtu.JaxTestCase):
 
   def test_bwd_box_len(self):
     lbfgs = ScipyBoundedMinimize(fun=self.fun,
-                                 implicit_diff=True,
                                  **self.solver_kwargs)
     # NOTE: cannot use solution as init since changing box_len might make the
     # init infeasible.
@@ -318,8 +315,7 @@ class ScipyRootFindingTest(jtu.JaxTestCase):
       return {'x1': o1 - b['b1'], 'x2': o2 - b['b2']}
     self.fun_pytree = fun_pytree
 
-    self.solver_kwargs = {'method': 'hybr',
-                          'implicit_diff': True}
+    self.solver_kwargs = {'method': 'hybr'}
 
   def test_linalg_inv(self):
     root = ScipyRootFinding(optimality_fun=self.fun, **self.solver_kwargs)
@@ -455,7 +451,6 @@ class ScipyLeastSquaresTest(jtu.JaxTestCase):
     lsq = ScipyLeastSquares(fun=self.fun,
                             loss=loss,
                             options={'f_scale': f_scale},
-                            implicit_diff=True,
                             **self.solver_kwargs)
     def wrapper(slope):
       return lsq.run(self.pytree_true, slope, self.data).params
@@ -532,7 +527,6 @@ class ScipyBoundedLeastSquaresTest(ScipyLeastSquaresTest):
     lsq = ScipyBoundedLeastSquares(fun=self.fun,
                                    loss=loss,
                                    options={'f_scale': f_scale},
-                                   implicit_diff=True,
                                    **self.solver_kwargs)
     def wrapper(slope):
       return lsq.run(pytree_osp, self.pytree_bounds, slope, self.data).params
@@ -553,7 +547,6 @@ class ScipyBoundedLeastSquaresTest(ScipyLeastSquaresTest):
     lsq = ScipyBoundedLeastSquares(fun=self.fun,
                                    loss=loss,
                                    options={'f_scale': f_scale},
-                                   implicit_diff=True,
                                    **self.solver_kwargs)
     # NOTE: cannot use solution as init since changing box_len might make the
     # init infeasible.
