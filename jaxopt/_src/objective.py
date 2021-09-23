@@ -56,8 +56,8 @@ class CompositeLinearFunction:
     return ret
 
 
-class LeastSquaresFunction(CompositeLinearFunction):
-  """Least squares objective class."""
+class LeastSquares(CompositeLinearFunction):
+  """Least squares."""
 
   def subfun(self, predictions, data):
     y = data[1]
@@ -73,15 +73,36 @@ class LeastSquaresFunction(CompositeLinearFunction):
     linop = self.make_linop(data)
     return linop.column_l2_norms(squared=True) * 1.0
 
+  def __call__(self, W, data):
+    r"""Least squares.
 
-least_squares = LeastSquaresFunction()
+    .. math::
+
+      \frac{1}{2n} ||XW - y||_2^2
+
+    Args:
+      W: parameters.
+      data: a tuple ``(X, y)`` where ``X`` is a matrix of shape ``(n_samples,
+        n_features)`` and ``y`` is a vector of shape ``(n_samples,)``.
+    Returns:
+      objective value.
+
+    Example::
+
+      value = least_squares(W, (X, y))
+    """
+    return super().__call__(W, data)
+
+
+least_squares = LeastSquares()
+least_squares.__doc__ = least_squares.__call__.__doc__
 
 
 _logloss_vmap = jax.vmap(loss.multiclass_logistic_loss)
 
 
-class MulticlassLogregFunction(CompositeLinearFunction):
-  """Multiclass logistic regression objective class."""
+class MulticlassLogreg(CompositeLinearFunction):
+  """Multiclass logistic regression objective."""
 
   def subfun(self, predictions, data):
     y = data[1]
@@ -96,24 +117,112 @@ class MulticlassLogregFunction(CompositeLinearFunction):
     linop = self.make_linop(data)
     return linop.column_l2_norms(squared=True) * 0.5
 
+  def __call__(self, W, data):
+    r"""Multiclass logistic regression.
 
-multiclass_logreg = MulticlassLogregFunction()
+    .. math::
+
+      \frac{1}{n} \sum_{i=1}^n \ell(W^\top x_i, y_i)
+
+    where :math:`\ell` is :func:`multiclass_logistic_loss
+    <jaxopt.loss.multiclass_logistic_loss>` and ``X, y = data``.
+
+    Args:
+      W: a matrix of shape ``(n_features, n_classes)``.
+      data: a tuple ``(X, y)`` where ``X`` is a matrix of shape ``(n_samples,
+        n_features)`` and ``y`` is a vector of shape ``(n_samples,)``.
+    Returns:
+      objective value.
+
+    Example::
+
+      value = multiclass_logreg(W, (X, y))
+    """
+    return super().__call__(W, data)
 
 
-def multiclass_logreg_with_intercept(params, data):
+multiclass_logreg = MulticlassLogreg()
+multiclass_logreg.__doc__ = multiclass_logreg.__call__.__doc__
+
+
+def multiclass_logreg_with_intercept(
+  params: Tuple[jnp.ndarray, jnp.ndarray],
+  data: Tuple[jnp.ndarray, jnp.ndarray]) -> float:
+  r"""
+  Multiclass logistic regression with intercept.
+
+  .. math::
+
+    \frac{1}{n} \sum_{i=1}^n \ell(W^\top x_i + b, y_i)
+
+  where :math:`\ell` is :func:`multiclass_logistic_loss
+  <jaxopt.loss.multiclass_logistic_loss>`, ``W, b = params`` and
+  ``X, y = data``.
+
+  Args:
+    params: a tuple ``(W, b)``, where ``W`` is a matrix of shape ``(n_features,
+      n_classes)`` and ``b`` is a vector of shape ``(n_classes,)``.
+    data: a tuple ``(X, y)`` where ``X`` is a matrix of shape ``(n_samples,
+      n_features)`` and ``y`` is a vector of shape ``(n_samples,)``.
+  Returns:
+    objective value.
+  """
   X, y = data
   W, b = params
   y_pred = jnp.dot(X, W) + b
   return jnp.mean(_logloss_vmap(y, y_pred))
 
 
-def l2_multiclass_logreg(W, l2reg, data):
+def l2_multiclass_logreg(W: jnp.ndarray,
+                         l2reg: float,
+                         data: Tuple[jnp.ndarray, jnp.ndarray]) -> float:
+  r"""
+  L2-regularized multiclass logistic regression.
+
+  .. math::
+
+    \frac{1}{n} \sum_{i=1}^n \ell(W^\top x_i, y_i) +
+    0.5 \cdot \text{l2reg} \cdot ||W||_2^2
+
+  where :math:`\ell` is :func:`multiclass_logistic_loss
+  <jaxopt.loss.multiclass_logistic_loss>` and ``X, y = data``.
+
+  Args:
+    W: a matrix of shape ``(n_features, n_classes)``.
+    data: a tuple ``(X, y)`` where ``X`` is a matrix of shape ``(n_samples,
+      n_features)`` and ``y`` is a vector of shape ``(n_samples,)``.
+  Returns:
+    objective value.
+  """
   X, y = data
   y_pred = jnp.dot(X, W)
   return jnp.mean(_logloss_vmap(y, y_pred)) + 0.5 * l2reg * jnp.sum(W ** 2)
 
 
-def l2_multiclass_logreg_with_intercept(params, l2reg, data):
+def l2_multiclass_logreg_with_intercept(
+  params: Tuple[jnp.ndarray, jnp.ndarray],
+  l2reg: float,
+  data: Tuple[jnp.ndarray, jnp.ndarray]) -> float:
+  r"""
+  L2-regularized multiclass logistic regression with intercept.
+
+  .. math::
+
+    \frac{1}{n} \sum_{i=1}^n \ell(W^\top x_i + b, y_i) +
+    0.5 \cdot \text{l2reg} \cdot ||W||_2^2
+
+  where :math:`\ell` is :func:`multiclass_logistic_loss
+  <jaxopt.loss.multiclass_logistic_loss>`, ``W, b = params`` and
+  ``X, y = data``.
+
+  Args:
+    params: a tuple ``(W, b)``, where ``W`` is a matrix of shape ``(n_features,
+      n_classes)`` and ``b`` is a vector of shape ``(n_classes,)``.
+    data: a tuple ``(X, y)`` where ``X`` is a matrix of shape ``(n_samples,
+      n_features)`` and ``y`` is a vector of shape ``(n_samples,)``.
+  Returns:
+    objective value.
+  """
   X, y = data
   W, b = params
   y_pred = jnp.dot(X, W) + b
@@ -123,8 +232,8 @@ def l2_multiclass_logreg_with_intercept(params, l2reg, data):
 _binary_logloss_vmap = jax.vmap(loss.binary_logistic_loss)
 
 
-class BinaryLogregFunction(CompositeLinearFunction):
-  """Binary logistic regression objective class."""
+class BinaryLogreg(CompositeLinearFunction):
+  """Binary logistic regression objective."""
 
   def subfun(self, predictions, data):
     y = data[1]
@@ -139,8 +248,33 @@ class BinaryLogregFunction(CompositeLinearFunction):
     linop = self.make_linop(data)
     return linop.column_l2_norms(squared=True) * 0.25
 
+  def __call__(self, w, data):
+    r"""Binary logistic regression.
 
-binary_logreg = BinaryLogregFunction()
+    .. math::
+
+      \frac{1}{n} \sum_{i=1}^n \ell(w^\top x_i, y_i)
+
+    where :math:`\ell` is :func:`binary_logistic_loss
+    <jaxopt.loss.binary_logistic_loss>` and ``X, y = data``.
+
+    Args:
+      w: a vector of shape ``(n_features, )``.
+      data: a tuple ``(X, y)`` where ``X`` is a matrix of shape ``(n_samples,
+        n_features)`` and ``y`` is a vector of shape ``(n_samples,)``,
+        containing ``0`` or ``1`` values.
+    Returns:
+      objective value.
+
+    Example::
+
+      value = binary_logreg(w, (X, y))
+    """
+    return super().__call__(w, data)
+
+
+binary_logreg = BinaryLogreg()
+binary_logreg.__doc__ = binary_logreg.__call__.__doc__
 
 
 class MulticlassLinearSvmDual(CompositeLinearFunction):

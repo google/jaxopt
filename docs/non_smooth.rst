@@ -42,9 +42,9 @@ This gives::
   from jaxopt import ProximalGradient
   from jaxopt.prox import prox_lasso
 
-  def least_squares(params, data):
+  def least_squares(w, data):
     X, y = data
-    residuals = jnp.dot(X, params) - y
+    residuals = jnp.dot(X, w) - y
     return jnp.mean(residuals ** 2)
 
   pg = ProximalGradient(fun=least_squares, prox=prox_lasso)
@@ -86,6 +86,8 @@ and autodiff of unrolled iterations if ``implicit_diff=False``.  See the
    * :ref:`sphx_glr_auto_examples_lasso_implicit_diff.py`
    * :ref:`sphx_glr_auto_examples_sparse_coding.py`
 
+.. _block_coordinate_descent:
+
 Block coordinate descent
 ------------------------
 
@@ -94,6 +96,18 @@ Block coordinate descent
 
     jaxopt.BlockCoordinateDescent
 
+Contrary to other solvers, :class:`jaxopt.BlockCoordinateDescent` only works with
+:ref:`composite linear objective functions <composite_linear_functions>`.
+
+Example::
+
+  from jaxopt import objective
+  from jaxopt import prox
+
+  l1reg = 1.0
+  w_init = jnp.zeros(n_features)
+  bcd = BlockCoordinateDescent(fun=objective.least_squares, block_prox=prox.prox_lasso)
+  lasso_sol = bcd.run(w_init, hyperparams_prox=l1reg, data=(X, y)).params
 
 .. topic:: Examples
 
