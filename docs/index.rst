@@ -45,11 +45,14 @@ You may install JAXopt from GitHub with::
 
    auto_examples/index
 
-Contribute
-----------
+.. toctree::
+   :maxdepth: 1
+   :caption: About
 
-- Issue tracker: https://github.com/google/jaxopt/issues
-- Source code: https://github.com/google/jaxopt/tree/master
+   Authors <https://github.com/google/jaxopt/graphs/contributors>
+   changelog
+   Source code <https://github.com/google/jaxopt>
+   Issue tracker <https://github.com/google/jaxopt/issues>
 
 Support
 -------
