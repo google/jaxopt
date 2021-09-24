@@ -44,6 +44,7 @@ def huber_loss(target: float, pred: float, delta: float = 1.0) -> float:
 
 # Binary classification.
 
+
 def binary_logistic_loss(label: int, logit: float) -> float:
   """Binary logistic loss.
 
@@ -58,7 +59,9 @@ def binary_logistic_loss(label: int, logit: float) -> float:
   # where xlogx(proba) = proba * log(proba).
   return softplus(logit) - label * logit
 
+
 # Multiclass classification.
+
 
 def multiclass_logistic_loss(label: int, logits: jnp.ndarray) -> float:
   """Multiclass logistic loss.
