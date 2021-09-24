@@ -27,17 +27,18 @@ Instantiating and running the solver
 
 Proximal gradient is a generalization of :ref:`projected gradient descent
 <constrained_optim>`. The non-smooth term :math:`g` above is specified by
-setting the corresponding ``prox`` argument.
+setting the corresponding proximal operator, which is achieved using the
+``prox`` attribute of :class:`ProximalGradient <jaxopt.ProximalGradient>`.
 
 For instance, suppose we want to solve the following optimization problem
 
 .. math::
 
-    \min_{w} \frac{1}{2n} ||Xw - y||^2 + \lambda ||w||_1
+    \min_{w} \frac{1}{2n} ||Xw - y||^2 + \text{l1reg} \cdot ||w||_1
 
-which corresponds to the choice :math:`g(w, \lambda) = \lambda ||w||_1`.  The
+which corresponds to the choice :math:`g(w, \text{l1reg}) = \text{l1reg} \cdot ||w||_1`.  The
 corresponding ``prox`` operator is :func:`prox_lasso <jaxopt.prox.prox_lasso>`.
-This gives::
+We can therefore write::
 
   from jaxopt import ProximalGradient
   from jaxopt.prox import prox_lasso
@@ -47,22 +48,17 @@ This gives::
     residuals = jnp.dot(X, w) - y
     return jnp.mean(residuals ** 2)
 
+  l1reg = 1.0
   pg = ProximalGradient(fun=least_squares, prox=prox_lasso)
-  pg_sol = pg.run(w_init, data=(X, y)).params
+  pg_sol = pg.run(w_init, hyperparams_prox=l1reg, data=(X, y)).params
+
+Note that :func:`prox_lasso <jaxopt.prox.prox_lasso>` has a hyperparameter
+``l1reg``, which controls the :math:`L_1` regularization strength.  As shown
+above, we can specify it in the ``run`` method using the ``hyperparams_prox``
+argument The remaining arguments are passed to the objective function, here
+``least_squares``.
 
 Numerous proximal operators are available, see below.
-
-Specifying prox parameters
-~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Most proximal operators have a hyperparameter that can be specified.  For
-instance, the hyperparameter of :func:`prox_lasso
-<jaxopt.prox.prox_lasso>` is the :math:`L_1` regularization strength.
-This can be passed using the ``hyperparams_prox`` argument of ``run``::
-
-    l1reg = 1.0
-    pg = ProximalGradient(fun=least_squares, prox=prox_lasso)
-    pg_sol = pg.run(w_init, hyperparams_prox=l1reg, data=(X, y)).params
 
 Differentiation
 ~~~~~~~~~~~~~~~

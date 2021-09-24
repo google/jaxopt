@@ -28,7 +28,8 @@ Instantiating and running the solver
 To solve constrained optimization problems, we can use projected gradient
 descent, which is gradient descent with an additional projection onto the
 constraint set. Constraints are specified by setting the ``projection``
-argument::
+argument. For instance, non-negativity constraints can be specified using
+:func:`projection_non_negative <jaxopt.projection.projection_non_negative>`::
 
   from jaxopt import ProjectedGradient
   from jaxopt.projection import projection_non_negative

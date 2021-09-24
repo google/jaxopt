@@ -1,7 +1,7 @@
 # Where to find the docs
 
 The JAXopt documentation can be found here:
-https://jaxopt.readthedocs.io/en/latest/
+https://jaxopt.github.io
 
 # How to build the docs
 
