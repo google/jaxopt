@@ -52,6 +52,8 @@ from jax import numpy as jnp
 from jaxopt import GradientDescent
 from jaxopt import objective
 
+jax.config.update("jax_platform_name", "cpu")
+
 # load mnist
 mnist_train, ds_info = tfds.load(name="mnist", split="train", with_info=True)
 images_train = jnp.array([ex['image'].ravel() for ex in tfds.as_numpy(mnist_train)]) / 255.0
