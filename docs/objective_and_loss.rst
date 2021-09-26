@@ -70,6 +70,7 @@ Other functions
 .. autosummary::
   :toctree: _autosummary
 
+    jaxopt.objective.ridge_regression
     jaxopt.objective.multiclass_logreg_with_intercept
     jaxopt.objective.l2_multiclass_logreg
     jaxopt.objective.l2_multiclass_logreg_with_intercept

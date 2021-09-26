@@ -31,6 +31,7 @@ You may install JAXopt from GitHub with::
    stochastic
    objective_and_loss
    root_finding
+   fixed_point
    implicit_diff
 
 .. toctree::
