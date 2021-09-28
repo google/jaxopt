@@ -30,6 +30,9 @@ class TreeUtilTest(jtu.JaxTestCase):
     self.tree_A = (rng.randn(20, 10), rng.randn(20))
     self.tree_B = (rng.randn(20, 10), rng.randn(20))
 
+    self.tree_A_dict = (1.0, {"k1": 1.0, "k2": (1.0, 1.0)}, 1.0)
+    self.tree_B_dict = (1.0, {"k1": 2.0, "k2": (3.0, 4.0)}, 5.0)
+
     self.array_A = rng.randn(20)
     self.array_B = rng.randn(20)
 
@@ -85,6 +88,10 @@ class TreeUtilTest(jtu.JaxTestCase):
   def test_tree_vdot(self):
     expected = jnp.vdot(self.array_A, self.array_B)
     got = tree_util.tree_vdot(self.array_A, self.array_B)
+    self.assertAllClose(expected, got)
+
+    expected = 15.0
+    got = tree_util.tree_vdot(self.tree_A_dict, self.tree_B_dict)
     self.assertAllClose(expected, got)
 
     expected = (jnp.vdot(self.tree_A[0], self.tree_B[0]) +
