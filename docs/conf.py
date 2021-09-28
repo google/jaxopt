@@ -65,6 +65,7 @@ extensions = [
 sphinx_gallery_conf = {
      'examples_dirs': '../examples',   # path to your example scripts
      'gallery_dirs': 'auto_examples',  # path to where to save gallery generated output
+     'ignore_pattern': '_test\.py',  # no gallery for test of examples
      "doc_module": "jaxopt",
      "backreferences_dir": os.path.join("modules", "generated"),
 }
