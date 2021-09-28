@@ -48,9 +48,12 @@ def tree_add_scalar_mul(tree_x, scalar, tree_y):
 _vdot = functools.partial(jnp.vdot, precision=jax.lax.Precision.HIGHEST)
 
 
+def _vdot_safe(a, b):
+  return _vdot(jnp.asarray(a), jnp.asarray(b))
+
 def tree_vdot(tree_x, tree_y):
   """Compute the inner product <tree_x, tree_y>."""
-  vdots = tree_multimap(_vdot, tree_x, tree_y)
+  vdots = tree_multimap(_vdot_safe, tree_x, tree_y)
   return tree_reduce(operator.add, vdots)
 
 
