@@ -44,7 +44,7 @@ class PicardState(NamedTuple):
 
 @dataclass
 class PicardIteration(base.IterativeSolver):
-  """Multi-dimensional fixed point solver using Picard iterations.
+  """Fixed point solver using Picard iterations.
 
   fixed_point_fun should fulfil Banach fixed-point theorem assumptions.
   Otherwise convergence is not guaranteed.
@@ -66,7 +66,7 @@ class PicardIteration(base.IterativeSolver):
     jit: whether to JIT-compile the optimization loop (default: "auto").
     unroll: whether to unroll the optimization loop (default: "auto")
   """
-  fixed_point_fun: Callable = None
+  fixed_point_fun: Callable
   maxiter: int = 100
   tol: float = 1e-5
   has_aux: bool = False

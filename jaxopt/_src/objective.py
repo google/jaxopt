@@ -98,6 +98,35 @@ least_squares = LeastSquares()
 least_squares.__doc__ = least_squares.__call__.__doc__
 
 
+def ridge_regression(
+  params: jnp.ndarray,
+  l2reg: float,
+  data: Tuple[jnp.ndarray, jnp.ndarray]) -> float:
+  r"""
+  Ridge regression, i.e L2-regularized least squares.
+
+  .. math::
+
+    \frac{1}{2n} ||XW - y||_2^2 +
+    0.5 \cdot \text{l2reg} \cdot ||W||_2^2
+
+  Args:
+    W: parameters.
+    l2reg: strenght of regularization.
+    data: a tuple ``(X, y)`` where ``X`` is a matrix of shape ``(n_samples,
+      n_features)`` and ``y`` is a vector of shape ``(n_samples,)``.
+  Returns:
+    objective value.
+
+  Example::
+
+    value = ridge_regression(W, l2reg, (X, y))
+  """
+  least_squares = LeastSquares()(params, data)
+  ridge = 0.5 * l2reg * jnp.sum(params ** 2)
+  return least_squares + ridge
+
+
 _logloss_vmap = jax.vmap(loss.multiclass_logistic_loss)
 
 

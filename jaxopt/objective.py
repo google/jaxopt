@@ -15,6 +15,7 @@
 from jaxopt._src.objective import CompositeLinearFunction
 
 from jaxopt._src.objective import least_squares
+from jaxopt._src.objective import ridge_regression
 
 from jaxopt._src.objective import binary_logreg
 

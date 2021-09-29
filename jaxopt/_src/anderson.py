@@ -77,8 +77,9 @@ class AndersonAcceleration(base.IterativeSolver):
     implicit_diff_solve: the linear system solver to use.
     jit: whether to JIT-compile the optimization loop (default: "auto").
     unroll: whether to unroll the optimization loop (default: "auto")
+  
   """
-  fixed_point_fun: Callable = None
+  fixed_point_fun: Callable
   history_size: int = 5
   beta: float = 1.
   maxiter: int = 100
@@ -99,6 +100,7 @@ class AndersonAcceleration(base.IterativeSolver):
            *args,
            **kwargs) -> base.OptStep:
     """Initialize the ``(params, state)`` pair.
+
     Args:
       init_params: initial guess of the fixed point, pytree
       *args: additional positional arguments to be passed to ``fixed_point_fun``.
