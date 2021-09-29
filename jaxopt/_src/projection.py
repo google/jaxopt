@@ -42,6 +42,8 @@ def projection_non_negative(x: Any, hyperparams=None) -> Any:
   del hyperparams  # Not used.
   return tree_util.tree_map(jax.nn.relu, x)
 
+def _clip_safe(x, lower, upper):
+  return jnp.clip(jnp.asarray(x), lower, upper)
 
 def projection_box(x: Any, hyperparams: Tuple) -> Any:
   r"""Projection onto box constraints:
@@ -60,7 +62,7 @@ def projection_box(x: Any, hyperparams: Tuple) -> Any:
     projected pytree, with the same structure as ``x``.
   """
   lower, upper = hyperparams
-  return tree_util.tree_multimap(jnp.clip, x, lower, upper)
+  return tree_util.tree_multimap(_clip_safe, x, lower, upper)
 
 
 @jax.custom_jvp
@@ -219,14 +221,15 @@ def projection_hyperplane(x: jnp.ndarray, hyperparams: Tuple) -> jnp.ndarray:
 
   Args:
     x: pytree to project.
-    hyperparams: tuple ``hyperparams = (a, b)``, where ``a`` is a vector and
-      ``b`` is a scalar.
+    hyperparams: tuple ``hyperparams = (a, b)``, where ``a`` is a pytree with 
+                 the same structure as ``x`` and ``b`` is a scalar.
 
   Returns:
     output array, with the same shape as ``x`.
   """
   a, b = hyperparams
-  return x - (jnp.dot(a, x) - b) / jnp.dot(a, a) * a
+  scale = (tree_util.tree_vdot(a, x) -b) / tree_util.tree_vdot(a, a)
+  return tree_util.tree_add_scalar_mul(x, -scale, a)
 
 
 def projection_halfspace(x: jnp.ndarray, hyperparams: Tuple) -> jnp.ndarray:
@@ -239,14 +242,15 @@ def projection_halfspace(x: jnp.ndarray, hyperparams: Tuple) -> jnp.ndarray:
 
   Args:
     x: pytree to project.
-    hyperparams: tuple ``hyperparams = (a, b)``, where ``a`` is a vector and
-      ``b`` is a scalar.
+    hyperparams: tuple ``hyperparams = (a, b)``, where ``a`` is a pytree with 
+                 the same structure as ``x`` and ``b`` is a scalar.
 
   Returns:
     output array, with same shape as ``x``.
   """
   a, b = hyperparams
-  return x - jax.nn.relu(jnp.dot(a, x) - b) / jnp.dot(a, a) * a
+  scale = jax.nn.relu(tree_util.tree_vdot(a, x) -b) / tree_util.tree_vdot(a, a)
+  return tree_util.tree_add_scalar_mul(x, -scale, a)
 
 
 def projection_affine_set(x: jnp.ndarray, hyperparams: Tuple) -> jnp.ndarray:

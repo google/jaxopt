@@ -32,6 +32,10 @@ class ProjectionTest(jtu.JaxTestCase):
     self.assertArraysEqual(projection.projection_non_negative(x), expected)
     self.assertArraysEqual(projection.projection_non_negative((x, x)),
                            (expected, expected))
+    # test with nested pytree
+    tree_x = (-1.0, {"k1": 1.0, "k2": (1.0, 1.0)}, 1.0)         
+    tree_expected = (0.0, {"k1": 1.0, "k2": (1.0, 1.0)}, 1.0)        
+    self.assertAllClose(projection.projection_non_negative(tree_x), tree_expected)
 
   def test_projection_box(self):
     x = jnp.array([-1.0, 2.0, 3.0])
@@ -44,6 +48,14 @@ class ProjectionTest(jtu.JaxTestCase):
     params = ((L, L), (U, U))
     self.assertArraysEqual(projection.projection_box((x, x), params),
                            (expected, expected))
+
+    # lower and upper are pytrees. Note: Does not work when U and L are scalars!
+    tree_x = (-1.0, {"k1": 2.0, "k2": (2.0, 3.0)}, 3.0)         
+    tree_expected = (0.0, {"k1": 2.0, "k2": (2.0, 2.0)}, 2.0)  
+    U_tree = (2.0, {"k1": 2.0, "k2": (2.0, 2.0)}, 2.0) 
+    L_tree = (0.0, {"k1": 0.0, "k2": (0.0, 0.0)}, 0.0) 
+    self.assertArraysEqual(projection.projection_box(tree_x, [L_tree, U_tree]),
+                           tree_expected)
 
     # lower and upper values are arrays.
     params = (jnp.ones(len(x)) * L, jnp.ones(len(x)) * U)
@@ -221,6 +233,27 @@ class ProjectionTest(jtu.JaxTestCase):
 
     p = projection.projection_hyperplane(x, (a, b))
     self.assertAllClose(jnp.dot(a, p), b)
+
+    tree_x = (1.0, {"k1": 2.0, "k2": (2.0, 1.0)}, 2.0)
+    tree_a = (1.0, {"k1": 1.0, "k2": (1.0, 0.0)}, 1.0)
+    p = projection.projection_hyperplane(tree_x, (tree_a, b))
+    expected_p = (-0.5, {"k1": 0.5, "k2": (0.5, 1.0)}, 0.5)
+    self.assertAllClose(expected_p, p)
+
+  def test_projection_halfspace(self):
+    # For b very large, halfplane projection of x is x.
+    rng = onp.random.RandomState(0)
+    tree_x = (rng.randn(1), {"k1": rng.randn(1), "k2": (rng.randn(1), rng.randn(1))}, rng.randn(1))
+    tree_a = (rng.randn(1), {"k1": rng.randn(1), "k2": (rng.randn(1), rng.randn(1))}, rng.randn(1))
+    b = 10000
+    p = projection.projection_halfspace(tree_x, (tree_a, b))
+    self.assertAllClose(tree_x, p)
+
+    # For b very negative, the halfplane projection of x is on the hyperplane <a,x> =b.
+    b = -10000
+    p = projection.projection_halfspace(tree_x, (tree_a, b))
+    p_hyper = projection.projection_hyperplane(tree_x, (tree_a, b))
+    self.assertAllClose(p_hyper, p)
 
   def test_projection_affine_set(self):
     rng = onp.random.RandomState(0)
