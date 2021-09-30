@@ -68,7 +68,7 @@ Fixed Point resolution
 .. autosummary::
   :toctree: _autosummary
 
-    jaxopt.PicardIteration
+    jaxopt.FixedPointIteration
     jaxopt.AndersonAcceleration
 
 Implicit differentiation

@@ -196,4 +196,4 @@ class AndersonAcceleration(base.IterativeSolver):
 
   def __post_init__(self):
     if self.history_size < 2:
-      raise ValueError("You must set m >= 2. Otherwise you should use ``PicardIterations``.")
+      raise ValueError("You must set m >= 2. Otherwise you should use ``FixedPointIteration``.")
