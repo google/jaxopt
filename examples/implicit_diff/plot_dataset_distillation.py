@@ -13,8 +13,8 @@
 # limitations under the License.
 
 r"""
-Dataset Distillation Example
-============================
+Dataset distillation
+====================
 
 Dataset distillation `[Maclaurin et al. 2015]
 <https://arxiv.org/pdf/1502.03492.pdf>`_, `[Wang et al. 2020]

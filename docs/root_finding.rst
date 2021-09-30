@@ -1,3 +1,5 @@
+.. _root_finding:
+
 Root finding
 ============
 

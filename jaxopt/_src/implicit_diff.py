@@ -258,8 +258,12 @@ def custom_root(optimality_fun: Callable,
     A solver function decorator, i.e.,
     ``custom_root(optimality_fun)(solver_fun)``.
   """
+  if solve is None:
+    solve = linear_solve.solve_normal_cg
+
   def wrapper(solver_fun):
     return _custom_root(solver_fun, optimality_fun, solve, has_aux)
+
   return wrapper
 
 

@@ -17,6 +17,7 @@
 from typing import Any
 from typing import Callable
 from typing import NamedTuple
+from typing import Optional
 
 from dataclasses import dataclass
 
@@ -24,7 +25,6 @@ import jax
 import jax.numpy as jnp
 
 from jaxopt._src import base
-from jaxopt._src import linear_solve
 from jaxopt._src import loop
 from jaxopt._src.prox import prox_none
 from jaxopt._src.tree_util import tree_add_scalar_mul
@@ -96,7 +96,7 @@ class ProximalGradient(base.IterativeSolver):
   stepfactor: float = 0.5
   verbose: int = 0
   implicit_diff: bool = True
-  implicit_diff_solve: Callable = linear_solve.solve_normal_cg
+  implicit_diff_solve: Optional[Callable] = None
   has_aux: bool = False
   jit: base.AutoOrBoolean = "auto"
   unroll: base.AutoOrBoolean = "auto"
@@ -106,15 +106,13 @@ class ProximalGradient(base.IterativeSolver):
            hyperparams_prox: Any,
            *args,
            **kwargs) -> base.OptStep:
-    """Initialize the ``(params, state)`` pair.
+    """Initialize the parameters and state.
 
     Args:
       init_params: pytree containing the initial parameters.
       hyperparams_prox: pytree containing hyperparameters of prox.
       *args: additional positional arguments to be passed to ``fun``.
       **kwargs: additional keyword arguments to be passed to ``fun``.
-    Return type:
-      base.OptStep
     Returns:
       (params, state)
     """
@@ -244,8 +242,6 @@ class ProximalGradient(base.IterativeSolver):
       hyperparams_prox: pytree containing hyperparameters of prox.
       *args: additional positional arguments to be passed to ``fun``.
       **kwargs: additional keyword arguments to be passed to ``fun``.
-    Return type:
-      base.OptStep
     Returns:
       (params, state)
     """

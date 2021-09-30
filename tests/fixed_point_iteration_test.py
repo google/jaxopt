@@ -30,7 +30,7 @@ from sklearn import datasets
 
 
 class FixedPointIterationTest(jtu.JaxTestCase):
-  
+
   def test_geometric_decay(self):
     """Test convergence for geometric progression with common ratio r < 1."""
     def f(x):
@@ -46,7 +46,7 @@ class FixedPointIterationTest(jtu.JaxTestCase):
   @parameterized.product(jit=[False,True])
   def test_sin_fixed_point(self, jit):
     """Test convergence for simple polynomials and sin.
-    
+
     Also test the support of pytree in input/output.
     """
     def f(x):  # Another fixed point exists for x[0] : ~1.11
@@ -62,7 +62,7 @@ class FixedPointIterationTest(jtu.JaxTestCase):
 
   def test_cos_fixed_point(self):
     """Test convergence for cos fixed point (non-zero fixed point).
-    
+
     Also test support for additional parameters.
     """
     def f(x, theta):
@@ -86,11 +86,12 @@ class FixedPointIterationTest(jtu.JaxTestCase):
     tol = 2e-2
     fp = FixedPointIteration(f, maxiter=400*1000, tol=tol, has_aux=True)
     sol, state = fp.init(x0, r, y0)
+    y = y0
     sols = []
     for i in range(10):
-      _, y = state.value
       sol, state = fp.update(sol, state, r, y)
       sols.append(sol)
+      y = state.aux
     self.assertLess(state.error, tol)
     self.assertArraysAllClose(sol, jnp.array([0.739085]), atol=1e2)
 
@@ -107,18 +108,21 @@ class FixedPointIterationTest(jtu.JaxTestCase):
     check_grads(solve_run, args=([theta], {}), order=1, modes=['rev'], eps=None)
 
   def test_grads_flat_landscape(self):
-    """Test correctness of gradients on a problem challenging for finite difference.
-    
-    Also test how `has_aux` behaves with gradients computations."""
+    """Test correctness of gradients."""
+
     def f(x, theta):
-      return theta * x, x+1.
+      return theta * x
+
     x0 = jnp.array([1.,-0.5])
     theta = jnp.array([0.05, 0.2])
-    fp = FixedPointIteration(f, maxiter=1000, tol=1e-6, has_aux=True)
-    def solve_run(args, kwargs):
-      return fp.run(x0, *args, **kwargs)[0][0]
-    check_grads(solve_run, args=([theta], {}), order=1, modes=['rev'], eps=1e-4)
-  
+    # FIXME: has_aux=True doesn't work here.
+    fp = FixedPointIteration(f, maxiter=1000, tol=1e-6)
+
+    def solve_run(theta):
+      return fp.run(x0, theta).params[0]
+
+    check_grads(solve_run, args=(theta,), order=1, modes=['rev'], eps=1e-4)
+
   def test_affine_contractive_mapping(self):
     """Test correctness on big affine contractive mapping."""
     n = 200

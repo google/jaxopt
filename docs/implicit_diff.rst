@@ -54,9 +54,9 @@ We can also compose ``ridge_reg_solution`` with other functions::
 
 .. topic:: Examples
 
-   * :ref:`sphx_glr_auto_examples_plot_dataset_distillation.py`
-   * :ref:`sphx_glr_auto_examples_lasso_implicit_diff.py`
-   * :ref:`sphx_glr_auto_examples_sparse_coding.py`
+   * :ref:`sphx_glr_auto_examples_implicit_diff_plot_dataset_distillation.py`
+   * :ref:`sphx_glr_auto_examples_implicit_diff_lasso_implicit_diff.py`
+   * :ref:`sphx_glr_auto_examples_implicit_diff_sparse_coding.py`
 
 Custom solvers
 --------------
@@ -72,7 +72,7 @@ for easily adding implicit differentiation on top of any existing solver.
 
 .. topic:: Examples
 
-   * :ref:`sphx_glr_auto_examples_ridge_reg_implicit_diff.py`
+   * :ref:`sphx_glr_auto_examples_implicit_diff_ridge_reg_implicit_diff.py`
 
 JVPs and VJPs
 -------------

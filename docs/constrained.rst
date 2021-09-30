@@ -55,7 +55,7 @@ This can be passed using the ``hyperparams_proj`` argument of ``run``::
 
 .. topic:: Examples
 
-  * :ref:`sphx_glr_auto_examples_binary_kernel_svm_with_intercept.py`
+  * :ref:`sphx_glr_auto_examples_constrained_binary_kernel_svm_with_intercept.py`
 
 Differentiation
 ~~~~~~~~~~~~~~~

@@ -17,6 +17,7 @@
 from typing import Any
 from typing import Callable
 from typing import NamedTuple
+from typing import Optional
 from typing import Union
 
 from dataclasses import dataclass
@@ -26,7 +27,6 @@ import jax.numpy as jnp
 
 from jaxopt._src import base
 from jaxopt._src import implicit_diff as idf
-from jaxopt._src import linear_solve
 from jaxopt._src import loop
 from jaxopt._src import objective
 from jaxopt._src import tree_util
@@ -71,7 +71,7 @@ class BlockCoordinateDescent(base.IterativeSolver):
   tol: float = 1e-4
   verbose: int = 0
   implicit_diff: bool = True
-  implicit_diff_solve: Callable = linear_solve.solve_normal_cg
+  implicit_diff_solve: Optional[Callable] = None
   jit: base.AutoOrBoolean = "auto"
   unroll: base.AutoOrBoolean = "auto"
 
@@ -80,15 +80,13 @@ class BlockCoordinateDescent(base.IterativeSolver):
            hyperparams_prox: Any,
            *args,
            **kwargs) -> base.OptStep:
-    """Initialize the ``(params, state)`` pair.
+    """Initialize the parameters and state.
 
     Args:
       init_params: pytree containing the initial parameters.
       hyperparams_prox: pytree containing hyperparameters of block_prox.
       *args: additional positional arguments to be passed to ``fun``.
       **kwargs: additional keyword arguments to be passed to ``fun``.
-    Return type:
-      base.OptStep
     Returns:
       (params, state)
     """
@@ -116,8 +114,6 @@ class BlockCoordinateDescent(base.IterativeSolver):
       hyperparams_prox: pytree containing hyperparameters of block_prox.
       *args: additional positional arguments to be passed to ``fun``.
       **kwargs: additional keyword arguments to be passed to ``fun``.
-    Return type:
-      base.OptStep
     Returns:
       (params, state)
     """

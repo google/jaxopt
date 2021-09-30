@@ -37,7 +37,6 @@ import jax.tree_util as tree_util
 
 from jaxopt._src import base
 from jaxopt._src import implicit_diff as idf
-from jaxopt._src import linear_solve
 from jaxopt._src import projection
 from jaxopt._src.tree_util import tree_sub
 
@@ -108,8 +107,6 @@ def jnp_to_onp(x_jnp: Any,
   Args:
     x_jnp: a PyTree of jnp.ndarray with structure identical to init.
     dtype: if not None, ensure output is a NumPy array of this dtype.
-  Return type:
-    onp.ndarray.
   Returns:
     A single onp.ndarray<dtype>[n] array, consisting of all leaves of x_jnp
     flattened and concatenated. If dtype is None, the output dtype will be
@@ -144,8 +141,6 @@ def make_jac_jnp_to_onp(input_pytree_topology: PyTreeTopology,
     output_pytree_topology: a PyTreeTopology encoding the topology of the output
       PyTree.
     dtype: if not None, ensure output is a NumPy array of this dtype.
-  Return type:
-    Callable.
   Returns:
     A function "flattening" Jacobian for given input and output PyTree
     topologies.
@@ -177,8 +172,6 @@ def make_onp_to_jnp(pytree_topology: PyTreeTopology) -> Callable:
   Args:
     pytree_topology: a PyTreeTopology encoding the topology of the original
       PyTree to be reconstructed.
-  Return type:
-    Callable.
   Returns:
     The inverse of `jnp_to_onp` for a specific PyTree topology.
   """
@@ -219,20 +212,8 @@ class ScipyWrapper(base.Solver):
   method: Optional[str] = None
   dtype: Optional[Any] = onp.float64
   jit: bool = True
-  implicit_diff_solve: Callable = linear_solve.solve_normal_cg
+  implicit_diff_solve: Optional[Callable] = None
   has_aux: bool = False
-
-  def init(self, init_params: Any) -> base.OptStep:
-    raise NotImplementedError(
-        'ScipyWrapper subclasses do not support step by step iteration.')
-
-  def update(self,
-             params: Any,
-             state: NamedTuple,
-             *args,
-             **kwargs) -> base.OptStep:
-    raise NotImplementedError(
-        'ScipyWrapper subclasses do not support step by step iteration.')
 
   def optimality_fun(self, sol, *args, **kwargs):
     raise NotImplementedError(
@@ -308,14 +289,12 @@ class ScipyMinimize(ScipyWrapper):
           init_params: Any,
           *args,
           **kwargs) -> base.OptStep:
-    """Runs `scipy.optimize.minimize` until convergence or max number of iters.
+    """Runs the solver.
 
     Args:
       init_params: pytree containing the initial parameters.
       *args: additional positional arguments to be passed to `fun`.
       **kwargs: additional keyword arguments to be passed to `fun`.
-    Return type:
-      base.OptStep.
     Returns:
       (params, info).
     """
@@ -370,7 +349,7 @@ class ScipyBoundedMinimize(ScipyMinimize):
           bounds: Optional[Any],
           *args,
           **kwargs) -> base.OptStep:
-    """Runs `scipy.optimize.minimize` until convergence or max number of iters.
+    """Runs the solver.
 
     Args:
       init_params: pytree containing the initial parameters.
@@ -378,8 +357,6 @@ class ScipyBoundedMinimize(ScipyMinimize):
         to `init_params`, representing box constraints.
       *args: additional positional arguments to be passed to `fun`.
       **kwargs: additional keyword arguments to be passed to `fun`.
-    Return type:
-      base.OptStep.
     Returns:
       (params, info).
     """
@@ -419,14 +396,12 @@ class ScipyRootFinding(ScipyWrapper):
           init_params: Any,
           *args,
           **kwargs) -> base.OptStep:
-    """Runs `scipy.optimize.root` until convergence or max number of iters.
+    """Runs the solver.
 
     Args:
       init_params: pytree containing the initial parameters.
       *args: additional positional arguments to be passed to `fun`.
       **kwargs: additional keyword arguments to be passed to `fun`.
-    Return type:
-      base.OptStep.
     Returns:
       (params, info).
     """
@@ -583,14 +558,12 @@ class ScipyLeastSquares(ScipyWrapper):
           init_params: Any,
           *args,
           **kwargs) -> base.OptStep:
-    """Runs `scipy.optimize.least_squares`.
+    """Runs the solver.
 
     Args:
       init_params: pytree containing the initial parameters.
       *args: additional positional arguments to be passed to `fun`.
       **kwargs: additional keyword arguments to be passed to `fun`.
-    Return type:
-      base.OptStep.
     Returns:
       (params, info).
     """
@@ -670,7 +643,7 @@ class ScipyBoundedLeastSquares(ScipyLeastSquares):
           bounds: Optional[Any],
           *args,
           **kwargs) -> base.OptStep:
-    """Runs `scipy.optimize.least_squares`.
+    """Runs the solver.
 
     Args:
       init_params: pytree containing the initial parameters.
@@ -678,8 +651,6 @@ class ScipyBoundedLeastSquares(ScipyLeastSquares):
         to `init_params`, representing box constraints.
       *args: additional positional arguments to be passed to `fun`.
       **kwargs: additional keyword arguments to be passed to `fun`.
-    Return type:
-      base.OptStep.
     Returns:
       (params, info).
     """

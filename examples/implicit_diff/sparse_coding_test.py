@@ -11,17 +11,21 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 from absl.testing import absltest
 from absl.testing import parameterized
+
 import jax
 from jax import test_util as jtu
 from jax.nn import softplus
 import jax.numpy as jnp
 from jaxopt import loss
 import optax
+
 from sklearn import datasets
+
 try:
-  from jaxopt.examples import sparse_coding
+  from jaxopt.examples.implicit_diff import sparse_coding
 except ImportError:
   import sparse_coding
 

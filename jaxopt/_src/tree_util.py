@@ -81,12 +81,10 @@ def tree_zeros_like(tree_x):
 def tree_collapse(tree):
   """Takes a pytree of arrays in input and return 1D vector of flattened leaves.
 
-  Reciprocal function of ``tree_uncollapse``. 
-  
+  Reciprocal function of ``tree_uncollapse``.
+
   Args:
     tree: tree of arrays
-  Return type:
-    array
   Returns:
     a 1D vector
   """
@@ -100,12 +98,10 @@ def tree_uncollapse(tree, vec):
 
   Reciprocal function of ``tree_collapse``. Transform the 1D vector into a pytree
   compatible with ``tree`` structure, with same shapes.
-  
+
   Args:
     tree: tree of arrays
     vec: 1D vector
-  Return type:
-    pytree of arrays
   Returns:
     a pytree with same structure as ``tree``
   """
