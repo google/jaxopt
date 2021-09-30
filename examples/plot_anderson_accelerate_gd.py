@@ -32,7 +32,7 @@ import jax
 import jax.numpy as jnp
 
 from jaxopt import AndersonAcceleration
-from jaxopt import PicardIteration
+from jaxopt import FixedPointIteration
 
 from jaxopt import objective
 from jaxopt.tree_util import tree_scalar_mul, tree_sub
@@ -70,11 +70,11 @@ w_init = jnp.zeros(X.shape[1])  # null vector
 eta = 1e-1  # small step size
 l2reg = 0.  # no regularization
 aa = AndersonAcceleration(T, history_size=5, maxiter=150, ridge=1e-5, tol=1e-6)
-picard = PicardIteration(T, maxiter=150, tol=1e-6)
+fpi = FixedPointIteration(T, maxiter=150, tol=1e-6)
 
 aa_sols, aa_errors = run_all(aa, w_init, eta, l2reg, (X, y))
-pi_sols, pi_errors = run_all(picard, w_init, eta, l2reg, (X, y))
-pi_sols = pi_sols[aa.history_size-1:]
+fp_sols, fp_errors = run_all(fpi, w_init, eta, l2reg, (X, y))
+fp_sols = fp_sols[aa.history_size-1:]
 
 sol = aa_sols[-1]
 print(f'Error={aa_errors[-1]:.6f} at parameters {sol}')
@@ -87,7 +87,7 @@ spec = fig.add_gridspec(ncols=2, nrows=3, hspace=0.3)
 # Plot trajectory in parameter space (8 dimensions)
 for i in range(4):
   ax = fig.add_subplot(spec[i//2, i%2])
-  ax.plot(pi_sols[:,i], pi_sols[:,2*i+1], '-o', label="Gradient Descent")
+  ax.plot(fp_sols[:,i], fp_sols[:,2*i+1], '-o', label="Gradient Descent")
   ax.plot(aa_sols[:,i], aa_sols[:,2*i+1], '-o', label="Anderson Accelerated GD")
   ax.set_xlabel(f'$x_{{{2*i+1}}}$')
   ax.set_ylabel(f'$x_{{{2*i+2}}}$')
@@ -100,7 +100,7 @@ for i in range(4):
 ax = fig.add_subplot(spec[2, :])
 iters = jnp.arange(len(aa_errors))
 ax.plot(iters, aa_errors, label='Anderson Accelerated GD Error')
-ax.plot(iters, pi_errors, label='Gradient Descent Error')
+ax.plot(iters, fp_errors, label='Gradient Descent Error')
 ax.set_xlabel('Iteration num')
 ax.set_ylabel('Error')
 ax.set_yscale('log')

@@ -7,10 +7,10 @@ Version 0.1 (initial release)
 - :class:`jaxopt.AndersonAcceleration`
 - :class:`jaxopt.Bisection`
 - :class:`jaxopt.BlockCoordinateDescent`
+- :class:`jaxopt.FixedPointIteration`
 - :class:`jaxopt.GradientDescent`
 - :class:`jaxopt.MirrorDescent`
 - :class:`jaxopt.OptaxSolver`
-- :class:`jaxopt.PicardIteration`
 - :class:`jaxopt.PolyakSGD`
 - :class:`jaxopt.ProjectedGradient`
 - :class:`jaxopt.ProximalGradient`

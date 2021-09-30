@@ -4,48 +4,48 @@ Fixed Point resolution
 This section is concerned with fixed-point resolution, that is finding :math:`x` such
 that :math:`T(x, \theta) = x`. 
 
-Picard Iteration
-----------------
+Simple Fixed Point Iteration
+----------------------------
 
 .. autosummary::
   :toctree: _autosummary
 
-    jaxopt.PicardIteration
+    jaxopt.FixedPointIteration
 
-Picard iteration is the simplest algorithms for fixed-point finding. It computes the limit of the sequence :math:`x_{n+1}=T(x_n, \theta)` 
+This is the simplest algorithms for fixed-point resolution. It computes the limit of the sequence :math:`x_{n+1}=T(x_n, \theta)` 
 which is guaranteed to exist if :math:`x\mapsto T(x,\theta)` is a **contractive map**. See `Banach fixed-point theorem <https://en.wikipedia.org/wiki/Banach_fixed-point_theorem>`_
 for more details.
 
-Usage of Picard Iterations::
+Usage of FixedPointIteration::
 
-  from jaxopt import PicardIteration
+  from jaxopt import FixedPointIteration
 
   def T(x, theta):  # contractive map
     return 0.5 * x + theta
 
-  picard = PicardIteration(fixed_point_fun=T)
+  fpi = FixedPointIteration(fixed_point_fun=T)
   x_init = jnp.array(0.)
   theta = jnp.array(0.5)
-  print(picard.run(x_init, theta).params)
+  print(fpi.run(x_init, theta).params)
 
-``PicardIteration`` successfully finds the root ``x = 1``.  
+``FixedPointIteration`` successfully finds the root ``x = 1``.  
 
 Differentiation
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Fixed point computations are efficiently differentiable::
 
-  from jaxopt import PicardIteration
+  from jaxopt import FixedPointIteration
 
   def T(x, theta):  # contractive map
     return 0.5 * x + theta
 
-  picard = PicardIteration(fixed_point_fun=T, implicit_diff=True)
+  fpi = FixedPointIteration(fixed_point_fun=T, implicit_diff=True)
   x_init = jnp.array(0.)
   theta = jnp.array(0.5)
 
   def fixed_point(x, theta):
-    return picard.run(x, theta).params
+    return fpi.run(x, theta).params
 
   print(jax.grad(fixed_point, argnums=1)(x_init, theta))  # only gradient
   print(jax.value_and_grad(fixed_point, argnums=1)(x_init, theta))  # both value and gradient  
@@ -66,14 +66,14 @@ Anderson Acceleration
 Anderson acceleration is an iterative method that aims to compute the next iterate :math:`x_{n}` as
 a linear combination of the :math:`m` last iterates :math:`[x_{n-m},x_{n-m+1},\ldots x_{n-1}]`. The optimal coefficients
 of the linear combination are computed 'on the fly' at each iteration. As a result, not only the convergence is faster
-but the convergence conditions are weakened, allowing to tackle problems PicardIterations could not.
+but the convergence conditions are weakened, allowing to tackle problems FixedPointIteration could not.
 See `this paper <https://arxiv.org/abs/1909.04638>`_ for more details.
   
 The size of the history :math:`m` (denoted ``history_size`` below) plays a crucial role in method performance. 
 An higher :math:`m` could speed up the convergence at the cost of higher memory consumption, and more numerical instabilities.
 Those numerical instabilities can be mitigated by increasing the ``ridge`` regularization hyper-parameter.
 
-Anderson's acceleration usage is similar to Picard::
+Anderson's acceleration usage is similar to FixedPointIteration::
 
   from jaxopt import AndersonAcceleration
 
@@ -97,7 +97,7 @@ For implicit differentiation::
   theta = jnp.array(0.5)
 
   def fixed_point(x, theta):
-    return picard.run(x, theta).params
+    return aa.run(x, theta).params
 
   print(jax.grad(fixed_point, argnums=1)(x_init, theta))  # only gradient
   print(jax.value_and_grad(fixed_point, argnums=1)(x_init, theta))  # both value and gradient

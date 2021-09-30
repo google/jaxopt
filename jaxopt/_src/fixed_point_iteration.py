@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Picard Iteration for finding a fixed point in JAX."""
+"""Fixed Point Iteration in JAX."""
 
 from typing import Any
 from typing import Callable
@@ -28,7 +28,7 @@ from jaxopt._src import linear_solve
 from jaxopt._src.tree_util import tree_l2_norm, tree_sub
 
 
-class PicardState(NamedTuple):
+class FixedPointState(NamedTuple):
   """Named tuple containing state information.
   
   Attributes:
@@ -43,8 +43,8 @@ class PicardState(NamedTuple):
 
 
 @dataclass
-class PicardIteration(base.IterativeSolver):
-  """Fixed point solver using Picard iterations.
+class FixedPointIteration(base.IterativeSolver):
+  """Fixed point resolution by iterating.
 
   fixed_point_fun should fulfil Banach fixed-point theorem assumptions.
   Otherwise convergence is not guaranteed.
@@ -95,9 +95,9 @@ class PicardIteration(base.IterativeSolver):
     """
     fpf_return = self.fixed_point_fun(init_params, *args, **kwargs)
     params = self._params(fpf_return)
-    state = PicardState(iter_num=0,
-                        value=fpf_return,
-                        error=jnp.inf)
+    state = FixedPointState(iter_num=0,
+                            value=fpf_return,
+                            error=jnp.inf)
     return base.OptStep(params=params, state=state)
 
   def update(self,
@@ -120,9 +120,9 @@ class PicardIteration(base.IterativeSolver):
     fpf_return = self.fixed_point_fun(params, *args, **kwargs)
     next_params = self._params(fpf_return)
     error = tree_l2_norm(tree_sub(next_params, params))
-    next_state = PicardState(iter_num=state.iter_num+1,
-                             value=fpf_return,
-                             error=error)
+    next_state = FixedPointState(iter_num=state.iter_num+1,
+                                 value=fpf_return,
+                                 error=error)
     return base.OptStep(params=next_params, state=next_state)
 
   def optimality_fun(self, params, *args, **kwargs):

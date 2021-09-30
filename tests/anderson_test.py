@@ -44,8 +44,9 @@ class AndersonAccelerationTest(jtu.JaxTestCase):
     sol_norm = tree_l2_norm(sol)
     big_tol = 1e-2  # we are forced to take high tol since convergence is very slow for 0.999
     self.assertLess(sol_norm, big_tol)
-  
-  def test_sin_fixed_point(self):
+
+  @parameterized.product(jit=[False,True])
+  def test_sin_fixed_point(self, jit):
     """Test convergence for simple polynomials and sin.
     
     Also test the support of pytree in input/output.
@@ -119,20 +120,16 @@ class AndersonAccelerationTest(jtu.JaxTestCase):
     self.assertLess(state.error, tol)
     self.assertArraysAllClose(sol, jnp.array([0.739085]))
 
-  def test_simple_grads(self):
+  @parameterized.product(implicit_diff=[False, True])
+  def test_simple_grads(self, implicit_diff):
     """Test correctness of gradients on a simple function."""
     def f(x, theta):
       return jnp.cos(x) + theta
     x0 = jnp.array([0., jnp.pi / 2])
     theta = jnp.array([0., jnp.pi / 2])
-    aa = AndersonAcceleration(f, history_size=5, maxiter=100, ridge=1e-6, tol=1e-6)
+    aa = AndersonAcceleration(f, history_size=5, maxiter=100, ridge=1e-6, tol=1e-6, implicit_diff=implicit_diff)
     def solve_run(args, kwargs):
       return aa.run(x0, *args, **kwargs)[0]
-    check_grads(solve_run, args=([theta], {}), order=1, modes=['rev'], eps=None)
-    # check with unrolling
-    aa_unrolled = AndersonAcceleration(f, history_size=5, maxiter=100, ridge=1e-6, tol=1e-6, implicit_diff=False)
-    def solve_run(args, kwargs):
-      return aa_unrolled.run(x0, *args, **kwargs)[0]
     check_grads(solve_run, args=([theta], {}), order=1, modes=['rev'], eps=None)
 
   def test_grads_flat_landscape(self):
