@@ -139,7 +139,7 @@ class BlockCoordinateDescent(base.IterativeSolver):
       diff_i = x_i_new - x_i_old
       # A cheap-to-compute lower-bound of self.l2_optimality_error.
       sqerror_sum += jnp.sum(diff_i ** 2)
-      x = jax.ops.index_update(x, i, x_i_new)
+      x = x.at[i].set(x_i_new)
       predictions = linop.update_matvec(predictions, diff_i, i)
       subfun_g = self._grad_subfun(predictions, *args, **kwargs)
       return x, subfun_g, predictions, sqerror_sum
