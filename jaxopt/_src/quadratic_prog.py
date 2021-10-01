@@ -71,7 +71,7 @@ def _solve_eq_constrained_qp(init_params,
                              b,
                              maxiter,
                              tol=1e-5,
-                             solve=linear_solve.solve_gmres): 
+                             solve=linear_solve.solve_gmres):
   """Solves 0.5 * x^T Q x + c^T x subject to Ax = b.
 
   This solver returns both the primal solution (x) and the dual solution.
@@ -173,7 +173,7 @@ class QuadraticProgramming(base.Solver):
   matvec_A: Optional[Callable] = None
   maxiter: int = 1000
   tol: float = 1e-5
-  implicit_diff_solve: Callable = linear_solve.solve_normal_cg
+  implicit_diff_solve: Optional[Callable] = None
 
   def run(self,
           init_params: Optional[Tuple] = None,
@@ -189,8 +189,6 @@ class QuadraticProgramming(base.Solver):
       params_obj: (Q, c) or (params_Q, c) if matvec_Q is provided.
       params_eq: (A, b) or (params_A, b) if matvec_A is provided.
       params_ineq: = (G, h) or None if no inequality constraints.
-    Return type:
-      base.OptStep
     Returns:
       (params, state), ``params = (primal_var, dual_var_eq, dual_var_ineq)``
     """

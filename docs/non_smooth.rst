@@ -79,8 +79,8 @@ and autodiff of unrolled iterations if ``implicit_diff=False``.  See the
 
 .. topic:: Examples
 
-   * :ref:`sphx_glr_auto_examples_lasso_implicit_diff.py`
-   * :ref:`sphx_glr_auto_examples_sparse_coding.py`
+   * :ref:`sphx_glr_auto_examples_implicit_diff_lasso_implicit_diff.py`
+   * :ref:`sphx_glr_auto_examples_implicit_diff_sparse_coding.py`
 
 .. _block_coordinate_descent:
 
@@ -107,8 +107,8 @@ Example::
 
 .. topic:: Examples
 
-   * :ref:`sphx_glr_auto_examples_multiclass_linear_svm.py`
-   * :ref:`sphx_glr_auto_examples_nmf.py`
+   * :ref:`sphx_glr_auto_examples_constrained_multiclass_linear_svm.py`
+   * :ref:`sphx_glr_auto_examples_constrained_nmf.py`
 
 Proximal operators
 ------------------

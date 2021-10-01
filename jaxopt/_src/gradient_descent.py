@@ -50,14 +50,12 @@ class GradientDescent(ProximalGradient):
            init_params: Any,
            *args,
            **kwargs) -> base.OptStep:
-    """Initialize the ``(params, state)`` pair.
+    """Initialize the parameters and state.
 
     Args:
       init_params: pytree containing the initial parameters.
       *args: additional positional arguments to be passed to ``fun``.
       **kwargs: additional keyword arguments to be passed to ``fun``.
-    Return type:
-      base.OptStep
     Returns:
       (params, state)
     """
@@ -68,15 +66,13 @@ class GradientDescent(ProximalGradient):
              state: NamedTuple,
              *args,
              **kwargs) -> base.OptStep:
-    """Performs one iteration of proximal gradient.
+    """Performs one iteration of gradient descent.
 
     Args:
       params: pytree containing the parameters.
       state: named tuple containing the solver state.
       *args: additional positional arguments to be passed to ``fun``.
       **kwargs: additional keyword arguments to be passed to ``fun``.
-    Return type:
-      base.OptStep
     Returns:
       (params, state)
     """

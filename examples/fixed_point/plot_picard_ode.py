@@ -31,16 +31,22 @@ Then :math:`y` is the fixed point of the following map:
 
   y(t)=T(y)(t)\mathrel{\mathop:}=y_0+\int_0^t f(s,y(s))\mathrm{d}s
 
-Then we can define the sequence of functions :math:`(\phi_k)` with :math:`\phi_0=0` recursively as follow:
+Then we can define the sequence of functions :math:`(\phi_k)` with
+:math:`\phi_0=0` recursively as follows:
 
 .. math::
 
-  \phi_{k+1}(t)=T(\phi_k)(t)\mathrel{\mathop:}=y_0+\int_0^t f(s,\phi_k(s))\mathrm{d}s
+  \phi_{k+1}(t)=T(\phi_k)(t)\mathrel{\mathop:} =
+  y_0+\int_0^t f(s,\phi_k(s))\mathrm{d}s
 
-Such sequence converges to the solution of the ODE, i.e., :math:`\lim_{k\rightarrow\infty}\phi_k=y`.  
-  
-In this example we take :math:`f(t,y(t))=1+y(t)^2` with solution :math:`y(t)=\tan{t}`. 
-We used `scipy.integrate.cumtrapz` to perform integration, but any other numerical scheme could have worked.
+Such sequence converges to the solution of the ODE, i.e.,
+:math:`\lim_{k\rightarrow\infty}\phi_k=y`.
+
+In this example we choose :math:`f(t,y(t))=1+y(t)^2`. We know that the
+analytical solution is :math:`y(t)=\tan{t}` , which we use as a ground truth to
+evaluate our numerical scheme.
+We used ``scipy.integrate.cumtrapz`` to perform
+integration, but any other integration method can be used.
 """
 
 
@@ -61,13 +67,13 @@ import scipy.integrate
 jax.config.update("jax_platform_name", "cpu")
 
 
-#Solve y'(t)=1+t^2 differential equation, with solution y(t)=tan(t)
+# Solve the differential equation y'(t)=1+t^2, with solution y(t) = tan(t)
 def f(ti, phi):
   return 1 + phi ** 2
 
-"""Fixed point iteration in the Picard method.
-See: https://en.wikipedia.org/wiki/Picard%E2%80%93Lindel%C3%B6f_theorem"""
 def T(phi_cur, ti, y0, dx):
+  """Fixed point iteration in the Picard method.
+  See: https://en.wikipedia.org/wiki/Picard%E2%80%93Lindel%C3%B6f_theorem"""
   f_phi = f(ti, phi_cur)
   phi_next = scipy.integrate.cumtrapz(f_phi, initial=y0, dx=dx)
   return phi_next

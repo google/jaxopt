@@ -17,6 +17,7 @@
 from typing import Any
 from typing import Callable
 from typing import NamedTuple
+from typing import Optional
 
 from dataclasses import dataclass
 
@@ -24,7 +25,6 @@ import jax.numpy as jnp
 
 from jaxopt._src import base
 from jaxopt._src import implicit_diff as idf
-from jaxopt._src import linear_solve
 from jaxopt._src import loop
 
 
@@ -65,7 +65,7 @@ class Bisection(base.IterativeSolver):
   maxiter: int = 30
   tol: float = 1e-5
   check_bracket: bool = True
-  implicit_diff_solve: Callable = linear_solve.solve_lu
+  implicit_diff_solve: Optional[Callable] = None
   verbose: bool = False
   jit: base.AutoOrBoolean = "auto"
   unroll: base.AutoOrBoolean = "auto"
@@ -74,7 +74,7 @@ class Bisection(base.IterativeSolver):
            init_params=None,
            *args,
            **kwargs) -> base.OptStep:
-    """Initialize the ``(params, state)`` pair.
+    """Initialize the parameters and state.
 
     Args:
       init_params: initial scalar value. If None (default), we use
@@ -83,8 +83,6 @@ class Bisection(base.IterativeSolver):
         bracketed interval.
       *args: additional positional arguments to be passed to ``optimality_fun``.
       **kwargs: additional keyword arguments to be passed to ``optimality_fun``.
-    Return type:
-      base.OptStep
     Returns:
       (params, state)
     """
@@ -127,8 +125,6 @@ class Bisection(base.IterativeSolver):
     Args:
       params: pytree containing the parameters.
       state: named tuple containing the solver state.
-    Return type:
-      base.OptStep
     Returns:
       (params, state)
     """

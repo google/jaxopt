@@ -41,7 +41,7 @@ You may install JAXopt from GitHub with::
    api
 
 .. toctree::
-   :maxdepth: 1
+   :maxdepth: 2
    :caption: Examples
 
    auto_examples/index

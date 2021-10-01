@@ -1,8 +1,9 @@
 # JAXopt
 
 [**Installation**](#installation)
+| [**Documentation**](https://jaxopt.github.io)
 | [**Examples**](https://github.com/google/jaxopt/tree/main/examples)
-| [**References**](#ref)
+| [**Cite us**](#citeus)
 
 Hardware accelerated, batchable and differentiable optimizers in JAX.
 
@@ -29,7 +30,7 @@ Alternatively, it can be be installed from sources with the following command:
 $ python setup.py install
 ```
 
-## References<a id="ref"></a>
+## Cite us<a id="citeus"></a>
 
 Our implicit differentiation framework is described in this
 [paper](https://arxiv.org/abs/2105.15183). To cite it:
