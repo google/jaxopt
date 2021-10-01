@@ -12,11 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Fixed Point Iteration in JAX."""
+"""Implementation of the fixed point iteration method in JAX."""
 
 from typing import Any
 from typing import Callable
 from typing import NamedTuple
+from typing import Optional
 
 from dataclasses import dataclass
 
@@ -24,40 +25,39 @@ import jax.numpy as jnp
 from jax.tree_util import tree_leaves, tree_structure
 
 from jaxopt._src import base
-from jaxopt._src import linear_solve
 from jaxopt._src.tree_util import tree_l2_norm, tree_sub
 
 
 class FixedPointState(NamedTuple):
   """Named tuple containing state information.
-  
+
   Attributes:
     iter_num: iteration number
     value: pytree of current estimate of fixed point
     error: residuals of current estimate
+    aux: auxiliary output of fixed_point_fun when has_aux=True
   """
   iter_num: int
   value: Any
   error: float
-
+  aux: Any
 
 
 @dataclass
 class FixedPointIteration(base.IterativeSolver):
-  """Fixed point resolution by iterating.
-
-  fixed_point_fun should fulfil Banach fixed-point theorem assumptions.
-  Otherwise convergence is not guaranteed.
+  """Fixed point iteration method.
 
   Attributes:
     fixed_point_fun: a function ``fixed_point_fun(x, *args, **kwargs)``
       returning a pytree with the same structure and type as x
-      each leaf must be an array (not a scalar)
+      each leaf must be an array (not a scalar). The function
+      should fulfill the Banach fixed-point theorem's assumptions.
+      Otherwise convergence is not guaranteed.
     maxiter: maximum number of iterations.
     tol: tolerance (stopping criterion)
     has_aux: wether fixed_point_fun returns additional data. (default: False)
-      if True, the fixed is computed only with respect to first element of the sequence
-      returned. Other elements are carried during computation.
+      if True, the fixed is computed only with respect to first element of the
+      sequence returned. Other elements are carried during computation.
     verbose: whether to print error on every iteration or not.
       Warning: verbose=True will automatically disable jit.
     implicit_diff: whether to enable implicit diff or autodiff of unrolled
@@ -65,6 +65,9 @@ class FixedPointIteration(base.IterativeSolver):
     implicit_diff_solve: the linear system solver to use.
     jit: whether to JIT-compile the optimization loop (default: "auto").
     unroll: whether to unroll the optimization loop (default: "auto")
+
+  References:
+    https://en.wikipedia.org/wiki/Fixed-point_iteration
   """
   fixed_point_fun: Callable
   maxiter: int = 100
@@ -72,61 +75,61 @@ class FixedPointIteration(base.IterativeSolver):
   has_aux: bool = False
   verbose: bool = False
   implicit_diff: bool = True
-  implicit_diff_solve: Callable = linear_solve.solve_normal_cg
+  implicit_diff_solve: Optional[Callable] = None
   jit: base.AutoOrBoolean = "auto"
   unroll: base.AutoOrBoolean = "auto"
-
-  def _params(self, fpf_return):
-    return fpf_return[0] if self.has_aux else fpf_return
 
   def init(self,
            init_params,
            *args,
            **kwargs) -> base.OptStep:
-    """Initialize the ``(params, state)`` pair.
+    """Initialize the parameters and state.
+
     Args:
       init_params: initial guess of the fixed point, pytree
       *args: additional positional arguments to be passed to ``optimality_fun``.
       **kwargs: additional keyword arguments to be passed to ``optimality_fun``.
-    Return type:
-      base.OptStep
     Returns:
       (params, state)
     """
-    fpf_return = self.fixed_point_fun(init_params, *args, **kwargs)
-    params = self._params(fpf_return)
     state = FixedPointState(iter_num=0,
-                            value=fpf_return,
-                            error=jnp.inf)
-    return base.OptStep(params=params, state=state)
+                            value=init_params,
+                            error=jnp.inf,
+                            aux=None)
+    return base.OptStep(params=init_params, state=state)
 
   def update(self,
              params: Any,
              state: NamedTuple,
              *args,
              **kwargs) -> base.OptStep:
-    """Performs one iteration of fixed point iterations.
+    """Performs one iteration of the fixed point iteration method.
 
     Args:
       params: pytree containing the parameters.
       state: named tuple containing the solver state.
-      *args: additional positional arguments to be passed to ``fixed_point_fun``.
-      **kwargs: additional keyword arguments to be passed to ``fixed_point_fun``.
-    Return type:
-      base.OptStep
+      *args: additional positional arguments to be passed to
+        ``fixed_point_fun``.
+      **kwargs: additional keyword arguments to be passed to
+        ``fixed_point_fun``.
     Returns:
       (params, state)
     """
-    fpf_return = self.fixed_point_fun(params, *args, **kwargs)
-    next_params = self._params(fpf_return)
+    next_params, aux = self._fun(params, *args, **kwargs)
     error = tree_l2_norm(tree_sub(next_params, params))
-    next_state = FixedPointState(iter_num=state.iter_num+1,
-                                 value=fpf_return,
-                                 error=error)
+    next_state = FixedPointState(iter_num=state.iter_num + 1,
+                                 value=next_params,
+                                 error=error,
+                                 aux=aux)
     return base.OptStep(params=next_params, state=next_state)
 
   def optimality_fun(self, params, *args, **kwargs):
     """Optimality function mapping compatible with ``@custom_root``."""
-    fpf_return = self.fixed_point_fun(params, *args, **kwargs)
-    f_params = self._params(fpf_return)
-    return tree_sub(f_params, params)
+    new_params, _ = self._fun(params, *args, **kwargs)
+    return tree_sub(new_params, params)
+
+  def __post_init__(self):
+    if self.has_aux:
+      self._fun = self.fixed_point_fun
+    else:
+      self._fun = lambda p, *a, **kw: (self.fixed_point_fun(p, *a, **kw), None)

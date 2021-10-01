@@ -129,14 +129,12 @@ class IterativeSolver(Solver):
           init_params: Any,
           *args,
           **kwargs) -> OptStep:
-    """Runs the solver until convergence or `maxiter` is reached.
+    """Runs the optimization loop.
 
     Args:
       init_params: pytree containing the initial parameters.
       *args: additional positional arguments to be passed to the update method.
       **kwargs: additional keyword arguments to be passed to the update method.
-    Return type:
-      OptStep
     Returns:
       (params, state)
     """
@@ -170,15 +168,13 @@ class StochasticSolver(IterativeSolver):
                    iterator,
                    *args,
                    **kwargs) -> OptStep:
-    """Runs the solver on a dataset iterator until `maxiter` is reached.
+    """Runs the optimization loop over an iterator.
 
     Args:
       init_params: pytree containing the initial parameters.
       iterator: iterator generating data batches.
       *args: additional positional arguments to be passed to ``fun``.
       **kwargs: additional keyword arguments to be passed to ``fun``.
-    Return type:
-      OptStep
     Returns:
       (params, state)
     """

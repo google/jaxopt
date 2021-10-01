@@ -13,8 +13,8 @@
 # limitations under the License.
 
 """
-Robust Training in JAXOpt.
-==========================
+Robust training.
+================
 
 The following code trains a convolutional neural network (CNN) to be robust
 with respect to the fast sign gradient (FGSM) method.
@@ -110,11 +110,11 @@ for it in range(200):
 
   def fsgm_attack(image, label, epsilon=0.1):
     """Fast sign-gradient attack on the L-infinity ball with radius epsilon.
-    
+
     Parameters:
       image: array-like, input data for the CNN
       label: integer, class label corresponding to image
-      epsilon: float, radius of the L-infinity ball. 
+      epsilon: float, radius of the L-infinity ball.
 
     Returns:
       perturbed_image: Adversarial image on the boundary of the L-infinity ball of radius
@@ -131,7 +131,7 @@ for it in range(200):
   # run adversarial training
   params, state = solver.update(params=params, state=state,
                              l2_regul=l2_regul, images=images_adv, labels=labels)
-  
+
   if it % 10 == 0:
     data_test = next(test_ds)
     images_test = data_test['image'].astype(jnp.float32) / 255

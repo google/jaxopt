@@ -25,7 +25,6 @@ import jax
 import jax.numpy as jnp
 
 from jaxopt._src import base
-from jaxopt._src import linear_solve
 from jaxopt._src import tree_util
 
 
@@ -72,7 +71,7 @@ class OptaxSolver(base.StochasticSolver):
   tol: float = 1e-3
   verbose: int = 0
   implicit_diff: bool = False
-  implicit_diff_solve: Callable = linear_solve.solve_normal_cg
+  implicit_diff_solve: Optional[Callable] = None
   has_aux: bool = False
   jit: base.AutoOrBoolean = "auto"
   unroll: base.AutoOrBoolean = "auto"
@@ -81,14 +80,12 @@ class OptaxSolver(base.StochasticSolver):
            init_params: Any,
            *args,
            **kwargs) -> base.OptStep:
-    """Initialize the ``(params, state)`` pair.
+    """Initialize the parameters and state.
 
     Args:
       init_params: pytree containing the initial parameters.
       *args: additional positional arguments to be passed to ``fun``.
       **kwargs: additional keyword arguments to be passed to ``fun``.
-    Return type:
-      base.OptStep
     Returns:
       (params, state)
     """
@@ -117,8 +114,6 @@ class OptaxSolver(base.StochasticSolver):
       state: named tuple containing the solver state.
       *args: additional positional arguments to be passed to ``fun``.
       **kwargs: additional keyword arguments to be passed to ``fun``.
-    Return type:
-      base.OptStep
     Returns:
       (params, state)
     """

@@ -17,6 +17,7 @@
 from typing import Any
 from typing import Callable
 from typing import NamedTuple
+from typing import Optional
 
 from dataclasses import dataclass
 
@@ -24,13 +25,12 @@ import jax.numpy as jnp
 from jax.tree_util import tree_leaves, tree_structure
 
 from jaxopt._src import base
-from jaxopt._src import linear_solve
 from jaxopt._src.tree_util import tree_collapse, tree_uncollapse, tree_l2_norm, tree_sub
 
 
 class AndersonState(NamedTuple):
   """Named tuple containing state information.
-  
+
   Attributes:
     iter_num: iteration number
     value: pytree of current estimate of fixed point
@@ -47,20 +47,16 @@ class AndersonState(NamedTuple):
 
 @dataclass
 class AndersonAcceleration(base.IterativeSolver):
-  """Multi-dimensional fixed point solver using Anderson.
-
-  Read [1] to see the hypothesis ``fixed_point_fun`` must fulfil
-  to ensure convergence. In particular, if Banach fixed point theorem
-  hypothesis hold, Anderson acceleration will converge.
-  
-  [1] Pollock, Sara, and Leo Rebholz.
-  "Anderson acceleration for contractive and noncontractive operators."
-  arXiv preprint arXiv:1909.04638 (2019).
+  """Anderson acceleration.
 
   Attributes:
     fixed_point_fun: a function ``fixed_point_fun(x, *args, **kwargs)``
       returning a pytree with the same structure and type as x
-      each leaf must be an array (not a scalar)
+      each leaf must be an array (not a scalar).
+      See the reference below for conditions that the function must fulfill
+      in order to guarantee convergence.
+      In particular, if the Banach fixed point theorem
+      conditions hold, Anderson acceleration will converge.
     history_size: size of history. Affect memory cost.
     beta: momentum in Anderson updates. Default = 1.
     maxiter: maximum number of iterations.
@@ -77,7 +73,11 @@ class AndersonAcceleration(base.IterativeSolver):
     implicit_diff_solve: the linear system solver to use.
     jit: whether to JIT-compile the optimization loop (default: "auto").
     unroll: whether to unroll the optimization loop (default: "auto")
-  
+
+  References:
+    Pollock, Sara, and Leo Rebholz.
+    "Anderson acceleration for contractive and noncontractive operators."
+    arXiv preprint arXiv:1909.04638 (2019).
   """
   fixed_point_fun: Callable
   history_size: int = 5
@@ -88,7 +88,7 @@ class AndersonAcceleration(base.IterativeSolver):
   has_aux: bool = False
   verbose: bool = False
   implicit_diff: bool = True
-  implicit_diff_solve: Callable = linear_solve.solve_normal_cg
+  implicit_diff_solve: Optional[Callable] = None
   jit: base.AutoOrBoolean = "auto"
   unroll: base.AutoOrBoolean = "auto"
 
@@ -99,14 +99,12 @@ class AndersonAcceleration(base.IterativeSolver):
            init_params,
            *args,
            **kwargs) -> base.OptStep:
-    """Initialize the ``(params, state)`` pair.
+    """Initialize the parameters and state.
 
     Args:
       init_params: initial guess of the fixed point, pytree
       *args: additional positional arguments to be passed to ``fixed_point_fun``.
       **kwargs: additional keyword arguments to be passed to ``fixed_point_fun``.
-    Return type:
-      base.OptStep
     Returns:
       (params, state)
     """
@@ -149,8 +147,6 @@ class AndersonAcceleration(base.IterativeSolver):
       state: named tuple containing the solver state.
       *args: additional positional arguments to be passed to ``fixed_point_fun``.
       **kwargs: additional keyword arguments to be passed to ``fixed_point_fun``.
-    Return type:
-      base.OptStep
     Returns:
       (params, state)
     """
@@ -158,11 +154,11 @@ class AndersonAcceleration(base.IterativeSolver):
     v_h = state.v_history
     f_h = state.f_history
     pos = jnp.mod(state.iter_num, self.history_size)
-    
+
     G = f_h - v_h  # residuals
     alpha = self._minimize_residuals(m, G)
     alpha = alpha[1:]  # drop dummy variable (constraint satisfaction)
-    
+
     # get next iterate from linear combination
     old = jnp.dot(v_h, alpha)
     new = jnp.dot(f_h, alpha)
@@ -182,7 +178,7 @@ class AndersonAcceleration(base.IterativeSolver):
 
     next_state = AndersonState(iter_num=state.iter_num+1,
                                value=fpf_return,
-                               error=error,  
+                               error=error,
                                v_history=v_history,
                                f_history=f_history)
 

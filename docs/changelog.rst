@@ -24,14 +24,14 @@ Version 0.1 (initial release)
 
 Examples:
 
-- :ref:`sphx_glr_auto_examples_binary_kernel_svm_with_intercept.py`
-- :ref:`sphx_glr_auto_examples_flax_mnist.py`
-- :ref:`sphx_glr_auto_examples_haiku_mnist.py`
-- :ref:`sphx_glr_auto_examples_haiku_vae.py`
-- :ref:`sphx_glr_auto_examples_lasso_implicit_diff.py`
-- :ref:`sphx_glr_auto_examples_multiclass_linear_svm.py`
-- :ref:`sphx_glr_auto_examples_nmf.py`
-- :ref:`sphx_glr_auto_examples_plot_dataset_distillation.py`
-- :ref:`sphx_glr_auto_examples_ridge_reg_implicit_diff.py`
-- :ref:`sphx_glr_auto_examples_robust_training.py`
-- :ref:`sphx_glr_auto_examples_sparse_coding.py`
+- :ref:`sphx_glr_auto_examples_constrained_binary_kernel_svm_with_intercept.py`
+- :ref:`sphx_glr_auto_examples_deep_learning_flax_mnist.py`
+- :ref:`sphx_glr_auto_examples_deep_learning_haiku_mnist.py`
+- :ref:`sphx_glr_auto_examples_deep_learning_haiku_vae.py`
+- :ref:`sphx_glr_auto_examples_implicit_diff_lasso_implicit_diff.py`
+- :ref:`sphx_glr_auto_examples_constrained_multiclass_linear_svm.py`
+- :ref:`sphx_glr_auto_examples_constrained_nmf.py`
+- :ref:`sphx_glr_auto_examples_implicit_diff_plot_dataset_distillation.py`
+- :ref:`sphx_glr_auto_examples_implicit_diff_ridge_reg_implicit_diff.py`
+- :ref:`sphx_glr_auto_examples_deep_learning_robust_training.py`
+- :ref:`sphx_glr_auto_examples_implicit_diff_sparse_coding.py`

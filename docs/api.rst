@@ -62,7 +62,7 @@ Root finding
     jaxopt.Bisection
     jaxopt.ScipyRootFinding
 
-Fixed Point resolution
+Fixed point resolution
 ----------------------
 
 .. autosummary::

@@ -26,7 +26,6 @@ import jax
 import jax.numpy as jnp
 
 from jaxopt._src import base
-from jaxopt._src import linear_solve
 from jaxopt._src.tree_util import tree_add_scalar_mul
 from jaxopt._src.tree_util import tree_l2_norm
 from jaxopt._src.tree_util import tree_sub
@@ -83,7 +82,7 @@ class MirrorDescent(base.IterativeSolver):
   tol: float = 1e-2
   verbose: int = 0
   implicit_diff: bool = True
-  implicit_diff_solve: Callable = linear_solve.solve_normal_cg
+  implicit_diff_solve: Optional[Callable] = None
   has_aux: bool = False
   jit: base.AutoOrBoolean = "auto"
   unroll: base.AutoOrBoolean = "auto"
@@ -100,8 +99,6 @@ class MirrorDescent(base.IterativeSolver):
       mapping_fun: the mirror map, typically of the form
         ``mapping_fun = grad(gen_fun)``, where `gen_fun` is the generating
         function of the Bregman divergence.
-    Return type:
-      Callable
     Returns:
       A function `projection_grad(x, g, stepsize, hyperparams_proj)`
       representing the mirror descent update for iterate x and gradient g.
@@ -116,12 +113,10 @@ class MirrorDescent(base.IterativeSolver):
            hyperparams_proj: Any,
            *args,
            **kwargs) -> base.OptStep:
-    """Initialize the ``(params, state)`` pair.
+    """Initialize the parameters and state.
 
     Args:
       init_params: pytree containing the initial parameters.
-    Return type:
-      base.OptStep
     Returns:
       (params, state)
     """
@@ -158,8 +153,6 @@ class MirrorDescent(base.IterativeSolver):
       hyperparams_proj: pytree containing hyperparameters of projection.
       *args: additional positional arguments to be passed to ``fun``.
       **kwargs: additional keyword arguments to be passed to ``fun``.
-    Return type:
-      base.OptStep
     Returns:
       (params, state)
     """

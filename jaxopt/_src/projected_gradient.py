@@ -22,7 +22,6 @@ from typing import Optional
 from dataclasses import dataclass
 
 from jaxopt._src import base
-from jaxopt._src import linear_solve
 from jaxopt._src import prox
 from jaxopt._src.proximal_gradient import ProximalGradient
 
@@ -31,7 +30,7 @@ from jaxopt._src.proximal_gradient import ProximalGradient
 class ProjectedGradient(base.IterativeSolver):
   """Projected gradient solver.
 
-  This solver is a convenience wrapper around ``ProximalGradient``.
+  This solver is a convenience wrapper around :class:`jaxopt.ProximalGradient`.
 
   Attributes:
     fun: a smooth function of the form ``fun(parameters, *args, **kwargs)``,
@@ -65,7 +64,7 @@ class ProjectedGradient(base.IterativeSolver):
   stepfactor: float = 0.5
   verbose: int = 0
   implicit_diff: bool = True
-  implicit_diff_solve: Callable = linear_solve.solve_normal_cg
+  implicit_diff_solve: Optional[Callable] = None
   has_aux: bool = False
   jit: base.AutoOrBoolean = "auto"
   unroll: base.AutoOrBoolean = "auto"
@@ -75,15 +74,13 @@ class ProjectedGradient(base.IterativeSolver):
            hyperparams_proj: Optional[Any] = None,
            *args,
            **kwargs) -> base.OptStep:
-    """Initialize the ``(params, state)`` pair.
+    """Initialize the parameters and state.
 
     Args:
       init_params: pytree containing the initial parameters.
       hyperparams_proj: pytree containing hyperparameters of projection.
       *args: additional positional arguments to be passed to ``fun``.
       **kwargs: additional keyword arguments to be passed to ``fun``.
-    Return type:
-      base.OptStep
     Returns:
       (params, state)
     """
@@ -103,8 +100,6 @@ class ProjectedGradient(base.IterativeSolver):
       hyperparams_proj: pytree containing hyperparameters of projection.
       *args: additional positional arguments to be passed to ``fun``.
       **kwargs: additional keyword arguments to be passed to ``fun``.
-    Return type:
-      base.OptStep
     Returns:
       (params, state)
     """

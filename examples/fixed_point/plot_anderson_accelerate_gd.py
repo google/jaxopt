@@ -16,17 +16,20 @@ r"""
 Anderson acceleration of gradient descent.
 ==========================================
 
-For a strictly convex function f, :math:`\nabla f(x)=0` implies that :math:`x` is the global optimum :math:`f`.
+For a strictly convex function f, :math:`\nabla f(x)=0` implies that :math:`x`
+is the global optimum :math:`f`.
 
-Consequently the fixed point of :math:`T(x)=x-\eta\nabla f(x)` is the optimum of :math:`f`.
+Consequently the fixed point of :math:`T(x)=x-\eta\nabla f(x)` is the optimum of
+:math:`f`.
 
-Note that repeated application of the operator :math:`T` coincides exactlty with gradient descent with constant step size :math:`\eta`.
+Note that repeated application of the operator :math:`T` coincides exactlty with
+gradient descent with constant step size :math:`\eta`.
 
-Hence, as any other fixed point iteration, gradient descent can benefit from Anderson acceleration.
-Here, we chose chose :math:`f` as the objective function of ridge regression on some dummy dataset.
-Anderson acceleration reaches the optimal parameters within few iterations, whereas Gradient Descent is slower.
+Hence, as any other fixed point iteration, gradient descent can benefit from
+Anderson acceleration. Here, we choose :math:`f` as the objective function
+of ridge regression on some dummy dataset.  Anderson acceleration reaches the
+optimal parameters within few iterations, whereas gradient descent is slower.
 """
-
 
 import jax
 import jax.numpy as jnp
@@ -60,7 +63,7 @@ ridge_regression_grad = jax.grad(objective.ridge_regression)
 
 # gradient step: x - grad_x f(x) with f the cost of learning task
 # the fixed point of this mapping verifies grad_x f(x) = 0
-# i.e the fixed point is an optimum 
+# i.e the fixed point is an optimum
 def T(params, eta, l2reg, data):
   g = ridge_regression_grad(params, l2reg, data)
   step = tree_scalar_mul(eta, g)
@@ -96,7 +99,7 @@ for i in range(4):
               ncol=1, fancybox=True, shadow=True)
   ax.axis('equal')
 
-# Plot error as function of iteration num 
+# Plot error as function of iteration num
 ax = fig.add_subplot(spec[2, :])
 iters = jnp.arange(len(aa_errors))
 ax.plot(iters, aa_errors, label='Anderson Accelerated GD Error')
