@@ -1,6 +1,12 @@
 Changelog
 =========
 
+Version 0.1.1 (development version)
+-----------------------------------
+  
+- :class:`jaxopt.ArmijoSGD`
+  
+  
 Version 0.1 (initial release)
 -----------------------------
 

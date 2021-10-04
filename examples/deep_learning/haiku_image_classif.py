@@ -28,6 +28,7 @@ import jax
 import jax.numpy as jnp
 
 from jaxopt import loss
+from jaxopt import ArmijoSGD
 from jaxopt import OptaxSolver
 from jaxopt import PolyakSGD
 from jaxopt import tree_util
@@ -46,11 +47,12 @@ flags.DEFINE_float("l2reg", 1e-4, "L2 regularization.")
 flags.DEFINE_float("learning_rate", 0.001, "Learning rate (used in adam).")
 flags.DEFINE_bool("manual_loop", False, "Whether to use a manual training loop.")
 flags.DEFINE_integer("maxiter", 100, "Maximum number of iterations.")
-flags.DEFINE_float("max_stepsize", 0.1, "Maximum step size (used in polyak-sgd).")
-flags.DEFINE_float("momentum", 0.9, "Momentum strength (used in adam, polyak-sgd).")
-flags.DEFINE_enum("solver", "adam", ["adam", "sgd", "polyak-sgd"], "Solver to use.")
+flags.DEFINE_float("max_stepsize", 0.1, "Maximum step size (used in polyak-sgd, armijo-sgd).")
+flags.DEFINE_float("aggressiveness", 0.5, "Aggressiveness of line search in armijo-sgd.")
+flags.DEFINE_float("momentum", 0.9, "Momentum strength (used in adam, polyak-sgd, armijo-sgd).")
 flags.DEFINE_enum("dataset", "mnist", dataset_names, "Dataset to train on.")
 flags.DEFINE_enum("model", "cnn", ["cnn", "mlp"], "Model architecture.")
+flags.DEFINE_enum("solver", "adam", ["adam", "sgd", "polyak-sgd", "armijo-sgd"], "Solver to use.")
 FLAGS = flags.FLAGS
 
 
@@ -154,6 +156,14 @@ def main(argv):
                        momentum=FLAGS.momentum,
                        max_stepsize=FLAGS.max_stepsize,
                        pre_update=print_accuracy)
+
+
+  elif FLAGS.solver == "armijo-sgd":
+    solver = ArmijoSGD(fun=loss_fun, maxiter=FLAGS.maxiter,
+                       aggressiveness=FLAGS.aggressiveness,
+                       momentum=FLAGS.momentum,
+                       max_stepsize=FLAGS.max_stepsize,
+                       pre_update=pre_update)
 
   else:
     raise ValueError("Unknown solver: %s" % FLAGS.solver)
