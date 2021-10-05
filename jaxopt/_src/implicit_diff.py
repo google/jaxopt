@@ -211,10 +211,11 @@ def _custom_root(solver_fun, optimality_fun, solve, has_aux):
       if ba_kwargs:
         raise TypeError(
             "keyword arguments to solver_fun could not be resolved to "
-            f"positional arguments based on the signature {signature}. This "
-            "can happen under custom_root if optimality_fun takes catch-all "
-            "**kwargs, or under custom_fixed_point if fixed_point_fun takes "
-            "catch-all **kwargs, both of which are currently unsupported.")
+            "positional arguments based on the signature "
+            f"{optimality_signature}. This can happen under custom_root if "
+            "optimality_fun takes catch-all **kwargs, or under "
+            "custom_fixed_point if fixed_point_fun takes catch-all **kwargs, "
+            "both of which are currently unsupported.")
 
       # Compute VJPs w.r.t. args.
       vjps = root_vjp(optimality_fun=optimality_fun, sol=sol,
