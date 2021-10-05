@@ -15,6 +15,7 @@
 """Implementation of gradient descent in JAX."""
 
 from typing import Any
+from typing import Callable
 from typing import NamedTuple
 
 from dataclasses import dataclass
@@ -81,3 +82,7 @@ class GradientDescent(ProximalGradient):
   def optimality_fun(self, params, *args, **kwargs):
     """Optimality function mapping compatible with ``@custom_root``."""
     return self._grad_fun(params, *args, **kwargs)
+
+  def __post_init__(self):
+    super().__post_init__()
+    self.reference_signature_fun = self.fun

@@ -141,9 +141,12 @@ class IterativeSolver(Solver):
     run = self._run
 
     if getattr(self, "implicit_diff", True):
-      decorator = idf.custom_root(self.optimality_fun,
-                                  has_aux=True,
-                                  solve=self.implicit_diff_solve)
+      reference_signature_fun = getattr(self, "reference_signature_fun", None)
+      decorator = idf.custom_root(
+          self.optimality_fun,
+          has_aux=True,
+          solve=self.implicit_diff_solve,
+          reference_signature_fun=reference_signature_fun)
       run = decorator(run)
 
     return run(init_params, *args, **kwargs)

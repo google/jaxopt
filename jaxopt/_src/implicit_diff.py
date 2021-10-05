@@ -17,6 +17,7 @@
 import inspect
 from typing import Any
 from typing import Callable
+from typing import Optional
 from typing import Tuple
 
 import jax
@@ -167,7 +168,8 @@ def _signature_bind_and_match(signature, *args, **kwargs):
   return out_args, out_kwargs, map_back
 
 
-def _custom_root(solver_fun, optimality_fun, solve, has_aux):
+def _custom_root(solver_fun, optimality_fun, solve, has_aux,
+                 reference_signature_fun=None):
   # When caling through `jax.custom_vjp`, jax attempts to resolve all
   # arguments passed by keyword to positions (this is in order to
   # match against a `nondiff_argnums` parameter that we do not use
@@ -184,10 +186,14 @@ def _custom_root(solver_fun, optimality_fun, solve, has_aux):
   # flattening and unflattening around the `custom_vjp` boundary.
   #
   # Once we make it past the `custom_vjp` boundary, we do some more
-  # work to align arguments with the signature of `optimality_fun`.
+  # work to align arguments with the reference signature (which is, by
+  # default, the signature of `optimality_fun`).
 
   solver_fun_signature = inspect.signature(solver_fun)
-  optimality_signature = inspect.signature(optimality_fun)
+  if reference_signature_fun is None:
+    reference_signature = inspect.signature(optimality_fun)
+  else:
+    reference_signature = inspect.signature(reference_signature_fun)
 
   def make_custom_vjp_solver_fun(solver_fun, kwarg_keys):
     def solver_fun_fwd(*flat_args):
@@ -207,12 +213,12 @@ def _custom_root(solver_fun, optimality_fun, solve, has_aux):
         sol = res
 
       ba_args, ba_kwargs, map_back = _signature_bind_and_match(
-          optimality_signature, *args, **kwargs)
+          reference_signature, *args, **kwargs)
       if ba_kwargs:
         raise TypeError(
             "keyword arguments to solver_fun could not be resolved to "
             "positional arguments based on the signature "
-            f"{optimality_signature}. This can happen under custom_root if "
+            f"{reference_signature}. This can happen under custom_root if "
             "optimality_fun takes catch-all **kwargs, or under "
             "custom_fixed_point if fixed_point_fun takes catch-all **kwargs, "
             "both of which are currently unsupported.")
@@ -245,7 +251,8 @@ def _custom_root(solver_fun, optimality_fun, solve, has_aux):
 
 def custom_root(optimality_fun: Callable,
                 has_aux: bool = False,
-                solve: Callable = linear_solve.solve_normal_cg):
+                solve: Callable = linear_solve.solve_normal_cg,
+                reference_signature_fun: Optional[Callable] = None):
   """Decorator for adding implicit differentiation to a root solver.
 
   Args:
@@ -254,6 +261,15 @@ def custom_root(optimality_fun: Callable,
       solution / root ``sol``.
     has_aux: whether the decorated solver function returns auxiliary data.
     solve: a linear solver of the form ``solve(matvec, b)``.
+    reference_signature_fun: optional function whose signature
+      (i.e. arguments and keyword arguments) is one with which the
+      solver and optimality functions are expected to agree. Defaults
+      to ``optimality_fun``. It is required that solver and optimality
+      functions share the same input signature, but both might be
+      defined in such a way that the signature correspondence is
+      ambiguous (e.g. if both accept catch-all ``**kwargs``). To
+      satisfy custom_root's requirement, any function with an
+      unambiguous signature can be provided here.
 
   Returns:
     A solver function decorator, i.e.,
@@ -263,14 +279,16 @@ def custom_root(optimality_fun: Callable,
     solve = linear_solve.solve_normal_cg
 
   def wrapper(solver_fun):
-    return _custom_root(solver_fun, optimality_fun, solve, has_aux)
+    return _custom_root(solver_fun, optimality_fun, solve, has_aux,
+                        reference_signature_fun)
 
   return wrapper
 
 
 def custom_fixed_point(fixed_point_fun: Callable,
                        has_aux: bool = False,
-                       solve: Callable = linear_solve.solve_normal_cg):
+                       solve: Callable = linear_solve.solve_normal_cg,
+                       reference_signature_fun: Optional[Callable] = None):
   """Decorator for adding implicit differentiation to a fixed point solver.
 
   Args:
@@ -279,6 +297,15 @@ def custom_fixed_point(fixed_point_fun: Callable,
       solution ``sol``.
     has_aux: whether the decorated solver function returns auxiliary data.
     solve: a linear solver of the form ``solve(matvec, b)``.
+    reference_signature_fun: optional function whose signature
+      (i.e. arguments and keyword arguments) is one with which the
+      solver and fixed-point functions are expected to agree. Defaults
+      to ``fixed_point_fun``. It is required that solver and
+      fixed-point functions share the same input signature, but both
+      might be defined in such a way that the signature correspondence
+      is ambiguous (e.g. if both accept catch-all ``**kwargs``). To
+      satisfy custom_fixed_points's requirement, any function with an
+      unambiguous signature can be provided here.
 
   Returns:
     A solver function decorator, i.e.,
@@ -292,7 +319,8 @@ def custom_fixed_point(fixed_point_fun: Callable,
 
   return custom_root(optimality_fun=optimality_fun,
                      has_aux=has_aux,
-                     solve=solve)
+                     solve=solve,
+                     reference_signature_fun=reference_signature_fun)
 
 
 def make_kkt_optimality_fun(obj_fun, eq_fun, ineq_fun=None):
