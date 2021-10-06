@@ -67,6 +67,23 @@ class GradientDescentTest(jtu.JaxTestCase):
     jac_custom = jax.jacrev(wrapper)(l2reg)
     self.assertArraysAllClose(jac_num, jac_custom, atol=1e-2)
 
+  def test_logreg_implicit_diff_kwargs(self):
+    # cf. https://github.com/google/jaxopt/issues/51
+    X, y = datasets.load_digits(return_X_y=True)
+    data = (X, y)
+    l2reg = float(X.shape[0])
+    fun = objective.l2_multiclass_logreg
+
+    jac_num = test_util.logreg_skl_jac(X, y, l2reg)
+    W_skl = test_util.logreg_skl(X, y, l2reg)
+
+    # Make sure the decorator works.
+    gd = GradientDescent(fun=fun, tol=1e-3, maxiter=10, implicit_diff=True)
+    def wrapper(l2reg):
+      return gd.run(W_skl, l2reg=l2reg, data=data).params
+    jac_custom = jax.jacrev(wrapper)(l2reg)
+    self.assertArraysAllClose(jac_num, jac_custom, atol=1e-2)
+
   @parameterized.product(acceleration=[True, False])
   def test_logreg_unrolled_autodiff(self, acceleration):
     X, y = datasets.load_digits(return_X_y=True)
