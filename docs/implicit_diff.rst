@@ -30,7 +30,7 @@ Using the ridge regression example from the :ref:`unconstrained optimization
 
   def ridge_reg_objective(params, l2reg, X, y):
     residuals = jnp.dot(X, params) - y
-    return jnp.mean(residuals ** 2) + 0.5 * l2reg * jnp.dot(w ** 2)
+    return jnp.mean(residuals ** 2) + 0.5 * l2reg * jnp.dot(params ** 2)
 
   def ridge_reg_solution(l2reg, X, y):
     gd = jaxopt.GradientDescent(fun=ridge_reg_objective, maxiter=500, implicit_diff=True)
