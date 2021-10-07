@@ -35,6 +35,7 @@ class MirrorDescentState(NamedTuple):
   """Named tuple containing state information."""
   iter_num: int
   error: float
+  aux: Optional[Any] = None
 
 
 @dataclass
@@ -130,13 +131,13 @@ class MirrorDescent(base.IterativeSolver):
     return tree_l2_norm(diff_x)
 
   def _update(self, x, state, hyperparams_proj, args, kwargs):
-    iter_num, _ = state
+    iter_num = state.iter_num
     stepsize = (self.stepsize(iter_num) if isinstance(self.stepsize, Callable)
                 else self.stepsize)
-    x_fun_grad = self._grad_fun(x, *args, **kwargs)
+    x_fun_grad, aux = self._grad_with_aux(x, *args, **kwargs)
     next_x = self.projection_grad(x, x_fun_grad, stepsize, hyperparams_proj)
     error = self._error(x, x_fun_grad, hyperparams_proj)
-    next_state = MirrorDescentState(iter_num=iter_num + 1, error=error)
+    next_state = MirrorDescentState(iter_num=iter_num + 1, error=error, aux=aux)
     return base.OptStep(params=next_x, state=next_state)
 
   def update(self,
@@ -159,7 +160,7 @@ class MirrorDescent(base.IterativeSolver):
     return self._update(params, state, hyperparams_proj, args, kwargs)
 
   def _fixed_point_fun(self, sol, hyperparams_proj, args, kwargs):
-    sol_fun_grad = self._grad_fun(sol, *args, **kwargs)
+    sol_fun_grad, _ = self._grad_with_aux(sol, *args, **kwargs)
     return self.projection_grad(sol, sol_fun_grad, 1.0, hyperparams_proj)
 
   def optimality_fun(self, sol, hyperparams_proj, *args, **kwargs):
@@ -169,9 +170,8 @@ class MirrorDescent(base.IterativeSolver):
 
   def __post_init__(self):
     if self.has_aux:
-      fun = lambda x, par: self.fun(x, par)[0]
+      fun_with_aux = self.fun
     else:
-      fun = self.fun
+      fun_with_aux = lambda *a, **kw: (self.fun(*a, **kw), None)
 
-    # Pre-compile useful functions.
-    self._grad_fun = jax.grad(fun)
+    self._grad_with_aux = jax.grad(fun_with_aux, has_aux=True)

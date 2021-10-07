@@ -36,6 +36,7 @@ class BisectionState(NamedTuple):
   low: float
   high: float
   sign: int
+  aux: Optional[Any] = None
 
 
 @dataclass
@@ -65,8 +66,9 @@ class Bisection(base.IterativeSolver):
   maxiter: int = 30
   tol: float = 1e-5
   check_bracket: bool = True
-  implicit_diff_solve: Optional[Callable] = None
   verbose: bool = False
+  implicit_diff_solve: Optional[Callable] = None
+  has_aux: bool = False
   jit: base.AutoOrBoolean = "auto"
   unroll: base.AutoOrBoolean = "auto"
 
@@ -128,7 +130,7 @@ class Bisection(base.IterativeSolver):
     Returns:
       (params, state)
     """
-    value = self.optimality_fun(params, *args, **kwargs)
+    value, aux = self._fun_with_aux(params, *args, **kwargs)
     too_large = state.sign * value > 0
 
     # When `value` is too large, `params` becomes the next `high`,
@@ -141,11 +143,13 @@ class Bisection(base.IterativeSolver):
                            error=jnp.sqrt(value ** 2),
                            low=low,
                            high=high,
-                           sign=state.sign)
+                           sign=state.sign,
+                           aux=aux)
 
     # We return `midpoint` as the next guess.
     # Users can also inspect state.low and state.high.
     midpoint = 0.5 * (low + high)
+
     return base.OptStep(params=midpoint, state=state)
 
   def run(self, init_params=None, *args, **kwargs):
@@ -156,3 +160,9 @@ class Bisection(base.IterativeSolver):
     # Make sure integers are converted to floats.
     self.lower = jnp.array(self.lower, float)
     self.upper = jnp.array(self.upper, float)
+
+    if self.has_aux:
+      self._fun_with_aux = self.optimality_fun
+    else:
+      self._fun_with_aux = lambda *a, **kw: (self.optimality_fun(*a, **kw),
+                                             None)

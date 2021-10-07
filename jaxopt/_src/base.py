@@ -121,9 +121,19 @@ class IterativeSolver(Solver):
     else:
       unroll = self.unroll
 
+    params, state = self.init(init_params, *args, **kwargs)
+
+    if self.maxiter == 0:
+      return OptStep(params=params, state=state)
+
+    # We unroll the very first iteration. This allows `init_val` and `body_fun`
+    # below to have the same output type, which is a requirement of
+    # lax.while_loop and lax.scan.
+    opt_step = self.update(params, state, *args, **kwargs)
+
     return loop.while_loop(cond_fun=cond_fun, body_fun=body_fun,
-                           init_val=self.init(init_params, *args, **kwargs),
-                           maxiter=self.maxiter, jit=jit, unroll=unroll)
+                           init_val=opt_step, maxiter=self.maxiter - 1, jit=jit,
+                           unroll=unroll)
 
   def run(self,
           init_params: Any,

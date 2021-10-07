@@ -221,7 +221,7 @@ def projection_hyperplane(x: jnp.ndarray, hyperparams: Tuple) -> jnp.ndarray:
 
   Args:
     x: pytree to project.
-    hyperparams: tuple ``hyperparams = (a, b)``, where ``a`` is a pytree with 
+    hyperparams: tuple ``hyperparams = (a, b)``, where ``a`` is a pytree with
                  the same structure as ``x`` and ``b`` is a scalar.
 
   Returns:
@@ -242,7 +242,7 @@ def projection_halfspace(x: jnp.ndarray, hyperparams: Tuple) -> jnp.ndarray:
 
   Args:
     x: pytree to project.
-    hyperparams: tuple ``hyperparams = (a, b)``, where ``a`` is a pytree with 
+    hyperparams: tuple ``hyperparams = (a, b)``, where ``a`` is a pytree with
                  the same structure as ``x`` and ``b`` is a scalar.
 
   Returns:
@@ -318,7 +318,7 @@ def _root_proj_box_sec(x, hyperparams):
                      lower=lower,
                      upper=upper,
                      check_bracket=False)
-  return bisect.run(None, x, hyperparams).params
+  return bisect.run(x=x, hyperparams=hyperparams).params
 
 
 def projection_box_section(x: jnp.ndarray,

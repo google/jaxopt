@@ -132,4 +132,4 @@ class FixedPointIteration(base.IterativeSolver):
     if self.has_aux:
       self._fun = self.fixed_point_fun
     else:
-      self._fun = lambda p, *a, **kw: (self.fixed_point_fun(p, *a, **kw), None)
+      self._fun = lambda *a, **kw: (self.fixed_point_fun(*a, **kw), None)
