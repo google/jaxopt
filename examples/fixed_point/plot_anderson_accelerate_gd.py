@@ -29,6 +29,8 @@ Hence, as any other fixed point iteration, gradient descent can benefit from
 Anderson acceleration. Here, we choose :math:`f` as the objective function
 of ridge regression on some dummy dataset.  Anderson acceleration reaches the
 optimal parameters within few iterations, whereas gradient descent is slower.
+
+Here `m` denotes the history size, and `K` the frequency of Anderson updates.
 """
 
 import jax
@@ -49,9 +51,12 @@ jax.config.update("jax_platform_name", "cpu")
 # retrieve intermediate iterates.
 def run_all(solver, w_init, *args, **kwargs):
   sol, state = solver.init(w_init, *args, **kwargs)
-  sols, errors = [sol], [state.error]
+  sols, errors = [], []
+  @jax.jit
+  def jitted_update(sol, state):
+    return solver.update(sol, state, *args, **kwargs)
   for _ in range(solver.maxiter):
-    sol, state = solver.update(sol, state, *args, **kwargs)
+    sol, state = jitted_update(sol, state)
     sols.append(sol)
     errors.append(state.error)
   return jnp.stack(sols, axis=0), errors
@@ -73,13 +78,14 @@ w_init = jnp.zeros(X.shape[1])  # null vector
 eta = 1e-1  # small step size
 l2reg = 0.  # no regularization
 tol = 1e-5
-maxiter = 150
-aa = AndersonAcceleration(T, history_size=5, maxiter=maxiter, ridge=5e-5, tol=tol)
+maxiter = 80
+aa = AndersonAcceleration(T, history_size=5, mixing_frequency=1, maxiter=maxiter, ridge=5e-5, tol=tol)
+aam = AndersonAcceleration(T, history_size=5, mixing_frequency=5, maxiter=maxiter, ridge=5e-5, tol=tol)
 fpi = FixedPointIteration(T, maxiter=maxiter, tol=tol)
 
 aa_sols, aa_errors = run_all(aa, w_init, eta, l2reg, (X, y))
+aam_sols, aam_errors = run_all(aam, w_init, eta, l2reg, (X, y))
 fp_sols, fp_errors = run_all(fpi, w_init, eta, l2reg, (X, y))
-fp_sols = fp_sols[aa.history_size-1:]
 
 sol = aa_sols[-1]
 print(f'Error={aa_errors[-1]:.6f} at parameters {sol}')
@@ -92,8 +98,9 @@ spec = fig.add_gridspec(ncols=2, nrows=3, hspace=0.3)
 # Plot trajectory in parameter space (8 dimensions)
 for i in range(4):
   ax = fig.add_subplot(spec[i//2, i%2])
-  ax.plot(fp_sols[:,i], fp_sols[:,2*i+1], '-o', label="Gradient Descent")
-  ax.plot(aa_sols[:,i], aa_sols[:,2*i+1], '-o', label="Anderson Accelerated GD")
+  ax.plot(fp_sols[:,i], fp_sols[:,2*i+1], '-', linewidth=4., label="Gradient Descent")
+  ax.plot(aa_sols[:,i], aa_sols[:,2*i+1], 'v', markersize=12, label="Anderson Accelerated GD (m=5, K=1)")
+  ax.plot(aam_sols[:,i], aam_sols[:,2*i+1], '*', markersize=8, label="Anderson Accelerated GD (m=5, K=5)")
   ax.set_xlabel(f'$x_{{{2*i+1}}}$')
   ax.set_ylabel(f'$x_{{{2*i+2}}}$')
   if i == 0:
@@ -104,8 +111,9 @@ for i in range(4):
 # Plot error as function of iteration num
 ax = fig.add_subplot(spec[2, :])
 iters = jnp.arange(len(aa_errors))
-ax.plot(iters, fp_errors, label='Gradient Descent Error')
-ax.plot(iters, aa_errors, label='Anderson Accelerated GD Error')
+ax.plot(iters, fp_errors, linewidth=4., label='Gradient Descent Error')
+ax.plot(iters, aa_errors, linewidth=4., label='Anderson Accelerated GD Error (m=5, K=1)')
+ax.plot(iters, aam_errors, linewidth=4., label='Anderson Accelerated GD Error (m=5, K=5)')
 ax.set_xlabel('Iteration num')
 ax.set_ylabel('Error')
 ax.set_yscale('log')

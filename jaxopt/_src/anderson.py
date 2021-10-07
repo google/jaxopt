@@ -34,15 +34,6 @@ from jaxopt._src.tree_util import tree_average, tree_add_scalar_mul
 from jaxopt._src.tree_util import tree_map, tree_gram
 
 
-def build_history(params_history_list):
-  tree_stacker = lambda *trees: jnp.stack(trees)
-  params_history = tree_map(tree_stacker, *params_history_list[:-1])
-  f_params_history = tree_map(tree_stacker, *params_history_list[1:])
-  residuals_history = tree_sub(f_params_history, params_history)
-  residual_gram = tree_gram(residuals_history)
-  return params_history, residuals_history, residual_gram
-
-
 def minimize_residuals(residual_gram, ridge):
   """Return the solution to the linear system with slack variable."""
   m = residual_gram.shape[0]
@@ -102,7 +93,6 @@ class AndersonState(NamedTuple):
 
   Attributes:
     iter_num: iteration number
-    aux: auxiliary data
     error: residuals of current estimate
     params_history: history of previous anderson iterates
     residuals_history: residuals of previous iterates
@@ -111,7 +101,6 @@ class AndersonState(NamedTuple):
       each column of G is a flattened pytree of residuals_history
   """
   iter_num: int
-  aux: Any
   error: float
   params_history: Any
   residuals_history: Any
@@ -130,6 +119,9 @@ class AndersonAcceleration(base.IterativeSolver):
       In particular, if the Banach fixed point theorem
       conditions hold, Anderson acceleration will converge.
     history_size: size of history. Affect memory cost.
+    mixing_frequency: frequency of Anderson updates. (default: 1).
+      Only one every `mixing_frequency` updates uses Anderson, while the other updates use
+      regular fixed point iterations.
     beta: momentum in Anderson updates. Default = 1.
     maxiter: maximum number of iterations.
     tol: tolerance (stoping criterion).
@@ -151,21 +143,16 @@ class AndersonAcceleration(base.IterativeSolver):
   """
   fixed_point_fun: Callable
   history_size: int = 5
+  mixing_frequency: int = 1
   beta: float = 1.
   maxiter: int = 100
   tol: float = 1e-5
   ridge: float = 1e-5
-  has_aux: bool = False
   verbose: bool = False
   implicit_diff: bool = True
   implicit_diff_solve: Optional[Callable] = None
   jit: base.AutoOrBoolean = "auto"
   unroll: base.AutoOrBoolean = "auto"
-
-  def _pop_aux(self, v):
-    if self.has_aux:
-      return v  # already a tuple (params, aux)
-    return v, None  # not a tuple
 
   def init(self,
            init_params,
@@ -180,23 +167,17 @@ class AndersonAcceleration(base.IterativeSolver):
     Returns:
       (params, state)
     """
-    history = [init_params]
-    for _ in range(self.history_size):
-      params = self.fixed_point_fun(history[-1], *args, **kwargs)
-      params, aux = self._pop_aux(params)
-      history.append(params)
-
-    params_history, residuals_history, residual_gram = build_history(history)
-
-    error = tree_l2_norm(tree_sub(history[-1], history[-2]))
+    m = self.history_size
+    params_history = tree_map(lambda x: jnp.tile(x, [m]+[1]*x.ndim), init_params)
+    residuals_history = tree_map(jnp.zeros_like, params_history)
+    residual_gram = jnp.zeros((m,m))
 
     state = AndersonState(iter_num=0,
-                          aux=aux,
-                          error=error,
+                          error=jnp.inf,
                           params_history=params_history,
                           residuals_history=residuals_history,
                           residual_gram=residual_gram)
-    return base.OptStep(params=params, state=state)
+    return base.OptStep(params=init_params, state=state)
 
   def update(self,
              params: Any,
@@ -213,16 +194,34 @@ class AndersonAcceleration(base.IterativeSolver):
     Returns:
       (params, state)
     """
-    del params
+
+    iter_num = state.iter_num
+    anderson_freq = jnp.equal(jnp.mod(iter_num, self.mixing_frequency), 0)
+    is_not_init = jnp.greater_equal(iter_num, self.history_size)
+    
+    def perform_anderson_step(t):
+      _, state = t
+      extrapolated = anderson_step(state.params_history, state.residuals_history,
+                                   state.residual_gram,
+                                   self.ridge, self.beta)
+      return extrapolated
+
+    def use_param(t):
+      return t[0]
+    
+    extrapolated = jax.lax.cond(
+      jnp.logical_and(anderson_freq, is_not_init),
+      perform_anderson_step,  # extrapolation
+      use_param,  # re-use previous iterate instead
+      operand=(params, state)
+    )
+
     params_history = state.params_history
     residuals_history = state.residuals_history
     residual_gram = state.residual_gram
     pos = jnp.mod(state.iter_num, self.history_size)
 
-    extrapolated = anderson_step(params_history, residuals_history,
-                                 residual_gram, self.ridge, self.beta)
     next_params = self.fixed_point_fun(extrapolated, *args, **kwargs)
-    next_params, aux = self._pop_aux(next_params)
 
     residual = tree_sub(next_params, extrapolated)
     ret = update_history(pos, params_history, residuals_history,
@@ -230,7 +229,6 @@ class AndersonAcceleration(base.IterativeSolver):
     params_history, residuals_history, residual_gram, error = ret
 
     next_state = AndersonState(iter_num=state.iter_num+1,
-                               aux=aux,
                                error=error,  
                                params_history=params_history,
                                residuals_history=residuals_history,
@@ -241,7 +239,6 @@ class AndersonAcceleration(base.IterativeSolver):
   def optimality_fun(self, params, *args, **kwargs):
     """Optimality function mapping compatible with ``@custom_root``."""
     next_params = self.fixed_point_fun(params, *args, **kwargs)
-    next_params, _ = self._pop_aux(next_params)
     return tree_sub(next_params, params)
 
   def __post_init__(self):

@@ -34,6 +34,19 @@ from sklearn import datasets
 
 
 class AndersonAccelerationTest(jtu.JaxTestCase):
+
+  def _make_random_affine_contractive_mapping(self, n):
+    """Return a pair (M,b) where M is a contractive mapping"""
+    key, subkey = jax.random.split(jax.random.PRNGKey(0))
+    M = jax.random.uniform(subkey, shape=(n,n), minval=-1., maxval=1.)
+    M = M + M.T  # random symmetric matrix
+    eigv = jnp.linalg.eigvalsh(M)
+    spectral_radius = jnp.abs(eigv[-1])
+    eps = 1e-4
+    M = M / (2*spectral_radius + eps)  # contractive mapping: lbda_max < 0.5
+    key, subkey = jax.random.split(key)
+    b = jax.random.uniform(subkey, shape=(n,))
+    return M, b
   
   def test_geometric_decay(self):
     """Test convergence for geometric progression with common ratio r < 1."""
@@ -111,25 +124,6 @@ class AndersonAccelerationTest(jtu.JaxTestCase):
     self.assertLess(state.error, tol)
     self.assertArraysAllClose(sol, c.astype(dtype=jnp.float32), atol=1e-3)
 
-  def test_has_aux(self):
-    """Test support of ``has_aux`` functionnality."""
-    def f(x, r):
-      fx = jnp.cos(x)  # fixed point 0.739085
-      fy = fx + r
-      return fx, fy
-    x0 = jnp.array([1.])
-    r = jnp.array([2.])
-    tol = 1e-5
-    aa = AndersonAcceleration(f, history_size=15, maxiter=300, ridge=1e-6, tol=tol, has_aux=True)
-    sol, state = aa.init(x0, r)
-    sols = []
-    for i in range(10):
-      sol, state = aa.update(sol, state, r)
-      sols.append(sol)
-    self.assertLess(state.error, tol)
-    self.assertArraysAllClose(sol, jnp.array([0.739085]))
-    self.assertArraysAllClose(state.aux, jnp.array(r+0.739085))
-
   @parameterized.product(implicit_diff=[False, True])
   def test_simple_grads(self, implicit_diff):
     """Test correctness of gradients on a simple function."""
@@ -137,20 +131,20 @@ class AndersonAccelerationTest(jtu.JaxTestCase):
       return jnp.cos(x) + theta
     x0 = jnp.array([0., jnp.pi / 2])
     theta = jnp.array([0., jnp.pi / 2])
-    aa = AndersonAcceleration(f, history_size=5, maxiter=100, ridge=1e-6, tol=1e-6, implicit_diff=implicit_diff)
+    tol = 1e-6
+    ridge = 1e-5
+    aa = AndersonAcceleration(f, history_size=5, maxiter=100, ridge=ridge, tol=tol, implicit_diff=implicit_diff)
     def solve_run(args, kwargs):
       return aa.run(x0, *args, **kwargs)[0]
-    check_grads(solve_run, args=([theta], {}), order=1, modes=['rev'], eps=None)
+    check_grads(solve_run, args=([theta], {}), order=1, modes=['rev'], eps=1e-4)
 
   def test_grads_flat_landscape(self):
-    """Test correctness of gradients on a problem challenging for finite difference.
-    
-    Also test how `has_aux` behaves with gradients computations."""
+    """Test correctness of gradients on a problem challenging for finite difference"""
     def f(x, theta):
-      return theta * x, x+1.
+      return theta * x
     x0 = jnp.array([1.,-0.5])
     theta = jnp.array([0.05, 0.2])
-    aa = AndersonAcceleration(f, history_size=5, maxiter=10*1000, ridge=1e-6, tol=1e-6, has_aux=True)
+    aa = AndersonAcceleration(f, history_size=5, maxiter=10*1000, ridge=1e-6, tol=1e-6)
     def solve_run(args, kwargs):
       return aa.run(x0, *args, **kwargs)[0]
     check_grads(solve_run, args=([theta], {}), order=1, modes=['rev'], eps=1e-4)
@@ -158,15 +152,7 @@ class AndersonAccelerationTest(jtu.JaxTestCase):
   def test_affine_contractive_mapping(self):
     """Test correctness on big affine contractive mapping."""
     n = 200
-    key, subkey = jax.random.split(jax.random.PRNGKey(0))
-    M = jax.random.uniform(subkey, shape=(n,n), minval=-1., maxval=1.)
-    M = M + M.T  # random symmetric matrix
-    eigv = jnp.linalg.eigvalsh(M)
-    spectral_radius = jnp.abs(eigv[-1])
-    eps = 1e-4
-    M = M / (2*spectral_radius + eps)  # contractive mapping: lbda_max < 0.5
-    key, subkey = jax.random.split(key)
-    b = jax.random.uniform(subkey, shape=(n,))
+    M, b = self._make_random_affine_contractive_mapping(n)
     def f(x, M, b):
       return M @ x + b
     tol = 1e-6
@@ -177,6 +163,20 @@ class AndersonAccelerationTest(jtu.JaxTestCase):
     def solve_run(args, kwargs):
       return aa.run(x0, *args, **kwargs)[0]
     check_grads(solve_run, args=([M, b], {}), order=1, modes=['rev'], eps=1e-4)
+
+  @parameterized.product(mixing_frequency=[1, 5, 10])
+  def test_mixing_frequency(self, mixing_frequency):
+    """Test mixing_frequency on affine contractive mapping."""
+    n = 10
+    M, b = self._make_random_affine_contractive_mapping(n)
+    def f(x, M, b):
+      return M @ x + b
+    tol = 1e-6
+    aa = AndersonAcceleration(f, history_size=5, mixing_frequency=mixing_frequency,
+                              maxiter=100, ridge=1e-6, tol=tol)
+    x0 = jnp.zeros_like(b)
+    sol, state = aa.run(x0, M, b)
+    self.assertLess(state.error, tol)
 
   @parameterized.product(ridge=[1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1.])
   def test_residuals_minimizer(self, ridge):
