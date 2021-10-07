@@ -38,6 +38,7 @@ class ProxGradState(NamedTuple):
   iter_num: int
   stepsize: float
   error: float
+  aux: Optional[Any] = None
 
 
 class AccelProxGradState(NamedTuple):
@@ -47,6 +48,7 @@ class AccelProxGradState(NamedTuple):
   t: float
   stepsize: float
   error: float
+  aux: Optional[Any] = None
 
 
 @dataclass
@@ -204,28 +206,30 @@ class ProximalGradient(base.IterativeSolver):
       return next_x, self.stepsize
 
   def _update(self, x, state, hyperparams_prox, args, kwargs):
-    iter_num, stepsize, _ = state
-    x_fun_val, x_fun_grad = self._value_and_grad_fun(x, *args, **kwargs)
+    iter_num, stepsize, _, _ = state
+    (x_fun_val, aux), x_fun_grad = self._value_and_grad_with_aux(x, *args,
+                                                                 **kwargs)
     next_x, next_stepsize = self._iter(x, x_fun_val, x_fun_grad, stepsize,
                                        hyperparams_prox, args, kwargs)
     error = self._error(x, x_fun_grad, hyperparams_prox)
     next_state = ProxGradState(iter_num=iter_num + 1,
                                stepsize=next_stepsize,
-                               error=error)
+                               error=error, aux=aux)
     return base.OptStep(params=next_x, state=next_state)
 
   def _update_accel(self, x, state, hyperparams_prox, args, kwargs):
-    iter_num, y, t, stepsize, _ = state
+    iter_num, y, t, stepsize, _, _ = state
     y_fun_val, y_fun_grad = self._value_and_grad_fun(y, *args, **kwargs)
     next_x, next_stepsize = self._iter(y, y_fun_val, y_fun_grad, stepsize,
                                        hyperparams_prox, args, kwargs)
     next_t = 0.5 * (1 + jnp.sqrt(1 + 4 * t ** 2))
     diff_x = tree_sub(next_x, x)
     next_y = tree_add_scalar_mul(next_x, (t - 1) / next_t, diff_x)
-    next_x_fun_grad = self._grad_fun(next_x, *args, **kwargs)
+    next_x_fun_grad, aux = self._grad_with_aux(next_x, *args, **kwargs)
     next_error = self._error(next_x, next_x_fun_grad, hyperparams_prox)
     next_state = AccelProxGradState(iter_num=iter_num + 1, y=next_y, t=next_t,
-                                    stepsize=next_stepsize, error=next_error)
+                                    stepsize=next_stepsize, error=next_error,
+                                    aux=aux)
     return base.OptStep(params=next_x, state=next_state)
 
   def update(self,
@@ -257,12 +261,24 @@ class ProximalGradient(base.IterativeSolver):
     fp = self._fixed_point_fun(sol, hyperparams_prox, args, kwargs)
     return tree_sub(fp, sol)
 
+  def _value_and_grad_fun(self, params, *args, **kwargs):
+    (value, aux), grad = self._value_and_grad_with_aux(params, *args, **kwargs)
+    return value, grad
+
+  def _grad_fun(self, params, *args, **kwargs):
+    return self._value_and_grad_fun(params, *args, **kwargs)[1]
+
+  def _grad_with_aux(self, params, *args, **kwargs):
+    (value, aux), grad = self._value_and_grad_with_aux(params, *args, **kwargs)
+    return grad, aux
+
   def __post_init__(self):
     if self.has_aux:
-      self._fun = lambda x, par: self.fun(x, par)[0]
+      self._fun = lambda *a, **kw: self.fun(*a, **kw)[0]
+      fun_with_aux = self.fun
     else:
       self._fun = self.fun
+      fun_with_aux = lambda *a, **kw: (self.fun(*a, **kw), None)
 
-    # Pre-compile useful functions.
-    self._value_and_grad_fun = jax.value_and_grad(self._fun)
-    self._grad_fun = jax.grad(self._fun)
+    self._value_and_grad_with_aux = jax.value_and_grad(fun_with_aux,
+                                                       has_aux=True)

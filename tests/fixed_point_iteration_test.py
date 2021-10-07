@@ -111,12 +111,11 @@ class FixedPointIterationTest(jtu.JaxTestCase):
     """Test correctness of gradients."""
 
     def f(x, theta):
-      return theta * x
+      return theta * x, x
 
     x0 = jnp.array([1.,-0.5])
     theta = jnp.array([0.05, 0.2])
-    # FIXME: has_aux=True doesn't work here.
-    fp = FixedPointIteration(f, maxiter=1000, tol=1e-6)
+    fp = FixedPointIteration(f, maxiter=1000, tol=1e-6, has_aux=True)
 
     def solve_run(theta):
       return fp.run(x0, theta).params[0]
