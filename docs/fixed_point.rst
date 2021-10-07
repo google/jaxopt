@@ -125,4 +125,30 @@ of :math:`F(x, \theta) = T(x, \theta) - x`.  Reciprocally, if :math:`x` is the
 root of some :math:`F(x, \theta)` then it is also the fixed point of
 :math:`T(x, \theta) = F(x, \theta) + x`.  Hence, root finding and fixed-point
 resolution are two different views of the same problem.
-See the :ref:`root finding eroot_finding>` section for more details.
+See the :ref:`root finding <root_finding>` section for more details.
+
+Accelerating JAXopt optimizers
+------------------------------
+
+Many optimizers can benefit from Anderson acceleration.  
+Indeed, the root :math:`x` of a function :math:`F` is the fixed point of iterative root finding algorithms. 
+Similarly the optimum :math:`x` of a function :math:`f` is the fixed point of iterative optimization algorithms.
+
+To spare the user the burden of implementing Anderson acceleration for every solver, we propose the ``AndersonWrapper`` class.  
+It takes an optimizer as input and applies Anderson acceleration to its iterates.
+
+.. autosummary::
+  :toctree: _autosummary
+
+    jaxopt.AndersonWrapper
+
+Its usage is transparent::
+
+  gd = jaxopt.GradientDescent(fun=ridge_reg_objective, maxiter=500, tol=1e-3)
+  aa = jaxopt.AndersonWrapper(solver=gd, history_size=5)
+  sol, aa_state = aa.run(init_params, l2reg=l2reg, X=X, y=y)
+  print(sol)
+
+.. topic:: Examples
+
+  * :ref:`sphx_glr_auto_examples_fixed_point_plot_anderson_wrapper_cd.py`

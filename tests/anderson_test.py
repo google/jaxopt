@@ -22,7 +22,9 @@ from jax import test_util as jtu
 from jax.tree_util import tree_map, tree_all
 from jax.test_util import check_grads
 
-from jaxopt.tree_util import tree_l2_norm, tree_scalar_mul, tree_sub
+import jaxopt
+from jaxopt.tree_util import tree_l2_norm, tree_scalar_mul
+from jaxopt._src.tree_util import tree_average, tree_sub
 from jaxopt import objective
 from jaxopt import AndersonAcceleration
 
@@ -44,6 +46,14 @@ class AndersonAccelerationTest(jtu.JaxTestCase):
     sol_norm = tree_l2_norm(sol)
     big_tol = 1e-2  # we are forced to take high tol since convergence is very slow for 0.999
     self.assertLess(sol_norm, big_tol)
+
+  def test_support_for_scalars(self):
+    def f(x):
+      return 0.5 * x + 0.5
+    x0 = jnp.array(0.)
+    tol = 1e-4
+    sol, state = AndersonAcceleration(f, history_size=5, maxiter=10*1000, ridge=1e-6, tol=tol).run(x0)
+    self.assertLess(state.error, tol)
 
   @parameterized.product(jit=[False,True])
   def test_sin_fixed_point(self, jit):
@@ -103,22 +113,22 @@ class AndersonAccelerationTest(jtu.JaxTestCase):
 
   def test_has_aux(self):
     """Test support of ``has_aux`` functionnality."""
-    def f(x, r, y):
+    def f(x, r):
       fx = jnp.cos(x)  # fixed point 0.739085
-      fy = r * y * (1 - y)  # logistic map: chaotic behavior
+      fy = fx + r
       return fx, fy
-    r = jnp.array([3.95])  # for this value there is chaotic behavior
-    x0, y0 = jnp.array([1.]), jnp.array([0.6])
+    x0 = jnp.array([1.])
+    r = jnp.array([2.])
     tol = 1e-5
     aa = AndersonAcceleration(f, history_size=15, maxiter=300, ridge=1e-6, tol=tol, has_aux=True)
-    sol, state = aa.init(x0, r, y0)
+    sol, state = aa.init(x0, r)
     sols = []
     for i in range(10):
-      _, y = state.value
-      sol, state = aa.update(sol, state, r, y)
+      sol, state = aa.update(sol, state, r)
       sols.append(sol)
     self.assertLess(state.error, tol)
     self.assertArraysAllClose(sol, jnp.array([0.739085]))
+    self.assertArraysAllClose(state.aux, jnp.array(r+0.739085))
 
   @parameterized.product(implicit_diff=[False, True])
   def test_simple_grads(self, implicit_diff):
@@ -168,26 +178,27 @@ class AndersonAccelerationTest(jtu.JaxTestCase):
       return aa.run(x0, *args, **kwargs)[0]
     check_grads(solve_run, args=([M, b], {}), order=1, modes=['rev'], eps=1e-4)
 
-  def test_residuals_minimizer(self):
-    return True
+  @parameterized.product(ridge=[1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1.])
+  def test_residuals_minimizer(self, ridge):
     m, n = 10, 20
-    key, subkey = jax.random.split(jax.random.PRNGKey(0))
+    key = jax.random.PRNGKey(0)
+    key, subkey = jax.random.split(key)
     G = jax.random.normal(subkey, shape=(n,m))
-    places = 5
-    f = lambda x: 3*x + 5
-    for ridge in [1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1.]:
-      aa = AndersonAcceleration(f, history_size=m, ridge=ridge)
-      sol = aa._minimize_residuals(m, G)
-      mu, alpha = sol[0], sol[1:]
-      # constyraint satisfaction
-      self.assertAlmostEqual(jnp.sum(alpha), 1., places=places)
-      # optimality conditions
-      opt_alpha = lambda x: jnp.sum((G @ x) ** 2)
-      opt_constraint = lambda x: (jnp.sum(x) - 1)**2
-      opt_alpha_grad = jax.grad(opt_alpha)(alpha)
-      opt_constraint_grad = jax.grad(opt_constraint)(alpha)
-      dot = jnp.dot(opt_alpha_grad, opt_constraint_grad)
-      self.assertAlmostEqual(dot, 0., places=places)
+    GTG = G.T @ G
+    places = 4
+    sol = jaxopt._src.anderson.minimize_residuals(GTG, ridge)
+    mu, alpha = sol[0], sol[1:]
+    # constyraint satisfaction
+    self.assertAlmostEqual(jnp.sum(alpha), 1., places=places)
+    # optimality conditions
+    def opt_alpha(x):
+      res = G @ x
+      return jnp.sum(res ** 2)
+    opt_constraint = lambda x: (jnp.sum(x) - 1)**2
+    opt_alpha_grad = jax.grad(opt_alpha)(alpha)
+    opt_constraint_grad = jax.grad(opt_constraint)(alpha)
+    dot = jnp.dot(opt_alpha_grad, opt_constraint_grad)
+    self.assertAlmostEqual(dot, 0., places=places)
 
 if __name__ == '__main__':
   # Uncomment the line below in order to run in float64.

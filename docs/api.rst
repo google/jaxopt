@@ -70,6 +70,7 @@ Fixed point resolution
 
     jaxopt.FixedPointIteration
     jaxopt.AndersonAcceleration
+    jaxopt.AndersonWrapper
 
 Implicit differentiation
 ------------------------

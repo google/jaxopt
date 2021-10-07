@@ -5,6 +5,7 @@ Version 0.1 (initial release)
 -----------------------------
 
 - :class:`jaxopt.AndersonAcceleration`
+- :class:`jaxopt.AndersonWrapper`
 - :class:`jaxopt.Bisection`
 - :class:`jaxopt.BlockCoordinateDescent`
 - :class:`jaxopt.FixedPointIteration`

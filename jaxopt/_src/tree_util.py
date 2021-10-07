@@ -78,38 +78,28 @@ def tree_zeros_like(tree_x):
   return tree_map(jnp.zeros_like, tree_x)
 
 
-def tree_collapse(tree):
-  """Takes a pytree of arrays in input and return 1D vector of flattened leaves.
-
-  Reciprocal function of ``tree_uncollapse``.
+def tree_average(trees, weights):
+  """Return the linear combination of a list of trees.
 
   Args:
-    tree: tree of arrays
+    trees: tree of arrays with shape (m,...)
+    weights: array of shape (m,)
+
   Returns:
-    a 1D vector
+    a single tree that is the linear combination of all trees
   """
-  leaves = tree_leaves(tree)
-  leaves = list(map(lambda params: params.flatten(), leaves))
-  return jnp.concatenate(leaves, axis=0)
+  return tree_map(lambda x: jnp.tensordot(weights, x, axes=1), trees)
 
 
-def tree_uncollapse(tree, vec):
-  """Returns a pytree with same elements as 1D vector ``vec`` and with same structure as ``tree``.
-
-  Reciprocal function of ``tree_collapse``. Transform the 1D vector into a pytree
-  compatible with ``tree`` structure, with same shapes.
+def tree_gram(a):
+  """Compute Gramn matrix from the pytree of batchs of vectors.
 
   Args:
-    tree: tree of arrays
-    vec: 1D vector
-  Returns:
-    a pytree with same structure as ``tree``
-  """
-  leaves, tree_def = tree_flatten(tree)
-  sizes =  list(map(lambda params: params.size, leaves))
-  shapes = list(map(lambda params: params.shape, leaves))
-  indices = onp.cumsum(onp.array(sizes, dtype=onp.int32))
-  vecs = jnp.split(vec, indices)
-  vecs = list(map(lambda v,shape: v.reshape(shape), vecs, shapes))
-  return tree_unflatten(tree_def, vecs)
+    a: pytree of arrays of shape (m,...)
 
+  Returns:
+    arrays of shape (m,m) of all dot products
+  """
+  vmap_left = jax.vmap(tree_vdot, in_axes=(0,None))
+  vmap_right = jax.vmap(vmap_left, in_axes=(None,0))
+  return vmap_right(a, a)

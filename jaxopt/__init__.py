@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from jaxopt._src.anderson import AndersonAcceleration
+from jaxopt._src.anderson_wrapper import AndersonWrapper
 from jaxopt._src.bisection import Bisection
 from jaxopt._src.block_cd import BlockCoordinateDescent
 from jaxopt._src.fixed_point_iteration import FixedPointIteration
