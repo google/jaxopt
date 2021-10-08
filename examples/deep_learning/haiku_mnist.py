@@ -40,7 +40,7 @@ flags.DEFINE_float("l2reg", 1e-4, "L2 regularization.")
 flags.DEFINE_float("learning_rate", 0.001, "Learning rate (used in adam).")
 flags.DEFINE_bool("manual_loop", False, "Whether to use a manual training loop.")
 flags.DEFINE_integer("maxiter", 100, "Maximum number of iterations.")
-flags.DEFINE_float("max_step_size", 0.1, "Maximum step size (used in polyak-sgd).")
+flags.DEFINE_float("max_stepsize", 0.1, "Maximum step size (used in polyak-sgd).")
 flags.DEFINE_float("momentum", 0.9, "Momentum strength (used in adam, polyak-sgd).")
 flags.DEFINE_enum("solver", "adam", ["adam", "sgd", "polyak-sgd"], "Solver to use.")
 FLAGS = flags.FLAGS
@@ -121,7 +121,7 @@ def main(argv):
   elif FLAGS.solver == "polyak-sgd":
     solver = PolyakSGD(fun=loss_fun, maxiter=FLAGS.maxiter,
                        momentum=FLAGS.momentum,
-                       max_step_size=FLAGS.max_step_size, pre_update=pre_update)
+                       max_stepsize=FLAGS.max_stepsize, pre_update=pre_update)
 
   else:
     raise ValueError("Unknown solver: %s" % FLAGS.solver)
