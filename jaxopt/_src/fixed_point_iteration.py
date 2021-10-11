@@ -123,3 +123,5 @@ class FixedPointIteration(base.IterativeSolver):
       self._fun = self.fixed_point_fun
     else:
       self._fun = lambda *a, **kw: (self.fixed_point_fun(*a, **kw), None)
+
+    self.reference_signature = self.fixed_point_fun

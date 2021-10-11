@@ -63,6 +63,43 @@ class ProjectedGradientTest(jtu.JaxTestCase):
     pg_sol = pg.run(w_init, hyperparams_proj=1.0, data=(X, y)).params
     self.assertLess(jnp.sqrt(jnp.sum(pg_sol ** 2)), 1.0)
 
+  def test_projected_gradient_l2_ball_manual_loop(self):
+    rng = onp.random.RandomState(0)
+    X = rng.randn(10, 5)
+    w = rng.rand(5)
+    y = jnp.dot(X, w)
+    fun = objective.least_squares
+    params = jnp.zeros_like(w)
+
+    pg = ProjectedGradient(fun=fun,
+                           projection=projection.projection_l2_ball)
+
+    params, state = pg.init(params)
+
+    for _ in range(10):
+      params, state = pg.update(params, state, hyperparams_proj=1.0, data=(X, y))
+
+    self.assertLess(jnp.sqrt(jnp.sum(params ** 2)), 1.0)
+
+  def test_projected_gradient_implicit_diff(self):
+    rng = onp.random.RandomState(0)
+    X = rng.randn(10, 5)
+    w = rng.rand(5)
+    y = jnp.dot(X, w)
+    fun = objective.least_squares
+    w_init = jnp.zeros_like(w)
+
+    def solution(radius):
+      pg = ProjectedGradient(fun=fun,
+                             projection=projection.projection_l2_ball)
+      return pg.run(w_init, hyperparams_proj=radius, data=(X, y)).params
+
+    eps = 1e-4
+    J = jax.jacobian(solution)(0.1)
+    J2 = (solution(0.1 + eps) - solution(0.1 - eps)) / (2 * eps)
+    self.assertArraysAllClose(J, J2, atol=1e-2)
+
+
 if __name__ == '__main__':
   # Uncomment the line below in order to run in float64.
   # jax.config.update("jax_enable_x64", True)

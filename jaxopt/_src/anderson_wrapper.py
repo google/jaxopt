@@ -119,7 +119,7 @@ class AndersonWrapper(base.IterativeSolver):
     iter_num = state.iter_num
     anderson_freq = jnp.equal(jnp.mod(iter_num, self.mixing_frequency), 0)
     is_not_init = jnp.greater_equal(iter_num, self.history_size)
-    
+
     def perform_anderson_step(t):
       _, state = t
       extrapolated = anderson_step(state.params_history, state.residuals_history,
@@ -131,7 +131,7 @@ class AndersonWrapper(base.IterativeSolver):
     def use_param(t):
       params, state = t
       return params, state.solver_state
-    
+
     extrapolated, solver_state = jax.lax.cond(
       jnp.logical_and(anderson_freq, is_not_init),
       perform_anderson_step,  # extrapolation
@@ -153,7 +153,7 @@ class AndersonWrapper(base.IterativeSolver):
 
     next_state = AndersonWrapperState(iter_num=state.iter_num+1,
                                       solver_state=solver_state,
-                                      error=solver_state.error,  
+                                      error=solver_state.error,
                                       params_history=params_history,
                                       residuals_history=residuals_history,
                                       residual_gram=residual_gram)
@@ -166,6 +166,8 @@ class AndersonWrapper(base.IterativeSolver):
   def __post_init__(self):
     self.maxiter = self.solver.maxiter
     self.tol = self.solver.tol
+
     if self.mixing_frequency is None:
       self.mixing_frequency = self.history_size
 
+    self.reference_signature = self.solver.reference_signature

@@ -87,6 +87,25 @@ class ProximalGradientTest(jtu.JaxTestCase):
     jac_prox = jax.jacrev(wrapper)(lam)
     self.assertArraysAllClose(jac_num, jac_prox, atol=1e-3)
 
+  def test_lasso_implicit_diff_with_kwargs(self):
+    """Same as above but with kwargs."""
+    X, y = datasets.make_regression(n_samples=10, n_features=3, random_state=0)
+    lam = 10.0
+    data = (X, y)
+
+    fun = objective.least_squares
+    jac_num = test_util.lasso_skl_jac(X, y, lam)
+    w_skl = test_util.lasso_skl(X, y, lam)
+
+    pg = ProximalGradient(fun=fun, prox=prox.prox_lasso, tol=1e-3, maxiter=200,
+                          acceleration=True, implicit_diff=True)
+
+    def wrapper(hyperparams_prox):
+      return pg.run(w_skl, hyperparams_prox=hyperparams_prox, data=data).params
+
+    jac_prox = jax.jacrev(wrapper)(lam)
+    self.assertArraysAllClose(jac_num, jac_prox, atol=1e-3)
+
 if __name__ == '__main__':
   # Uncomment the line below in order to run in float64.
   # jax.config.update("jax_enable_x64", True)

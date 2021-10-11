@@ -193,6 +193,14 @@ class BlockCoordinateDescentTest(jtu.JaxTestCase):
                                    maxiter=3500, tol=1e-5, implicit_diff=True)
       def wrapper(hyperparams_prox):
         return bcd.run(W_skl, hyperparams_prox, data).params
+
+      jac = jax.jacrev(wrapper)(l2reg)
+      self.assertAllClose(jac_num, jac, atol=1e-1)
+
+      # Test again with kwargs.
+      def wrapper(hyperparams_prox):
+        return bcd.run(W_skl, hyperparams_prox=hyperparams_prox, data=data).params
+
       jac = jax.jacrev(wrapper)(l2reg)
       self.assertAllClose(jac_num, jac, atol=1e-1)
 

@@ -14,6 +14,8 @@
 
 """Implementation of block coordinate descent in JAX."""
 
+import inspect
+
 from typing import Any
 from typing import Callable
 from typing import NamedTuple
@@ -196,3 +198,11 @@ class BlockCoordinateDescent(base.IterativeSolver):
     self._grad_fun = jax.grad(self.fun)
     self._grad_subfun = jax.grad(self.fun.subfun)
     self._prox = jax.vmap(self.block_prox, in_axes=(0, None))
+
+    # Sets up reference signature.
+    signature = inspect.signature(self.fun.subfun)
+    parameters = list(signature.parameters.values())
+    new_param = inspect.Parameter(name="hyperparams_prox",
+                                  kind=inspect.Parameter.POSITIONAL_OR_KEYWORD)
+    parameters.insert(1, new_param)
+    self.reference_signature = inspect.Signature(parameters)

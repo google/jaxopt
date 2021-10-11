@@ -106,7 +106,7 @@ class AndersonWrapperTest(jtu.JaxTestCase):
   def test_block_cd_restart(self):
     """Accelerate Block CD."""
     X, y = datasets.make_regression(n_samples=10, n_features=3, random_state=0)
-    
+
     # Setup parameters.
     fun = objective.least_squares  # fun(params, data)
     l1reg = 10.0
@@ -119,7 +119,7 @@ class AndersonWrapperTest(jtu.JaxTestCase):
     bcd = BlockCoordinateDescent(fun=fun, block_prox=prox.prox_lasso, tol=tol, maxiter=maxiter)
     aw = AndersonWrapper(bcd, history_size=3, ridge=1e-5)
     params, state = aw.run(init_params=w_init, hyperparams_prox=l1reg, data=data)
-    
+
     # Check optimality conditions.
     self.assertLess(state.error, tol)
 
@@ -135,10 +135,19 @@ class AndersonWrapperTest(jtu.JaxTestCase):
                           acceleration=False)
     aw = AndersonWrapper(pg, history_size=5)
     data_val = datasets.make_regression(n_samples=100, n_features=3, random_state=0)
+
     def solve_run(lam):
       aw_params = aw.run(w_init, lam, data_train).params
       loss = fun(aw_params, data=data_val)
       return loss
+
+    check_grads(solve_run, args=(lam,), order=1, modes=['rev'], eps=2e-2)
+
+    def solve_run(lam):
+      aw_params = aw.run(w_init, hyperparams_prox=lam, data=data_train).params
+      loss = fun(aw_params, data=data_val)
+      return loss
+
     check_grads(solve_run, args=(lam,), order=1, modes=['rev'], eps=2e-2)
 
 if __name__ == '__main__':

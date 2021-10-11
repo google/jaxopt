@@ -14,6 +14,8 @@
 
 """Implementation of mirror descent in JAX."""
 
+import inspect
+
 from typing import Any
 from typing import Callable
 from typing import NamedTuple
@@ -159,6 +161,13 @@ class MirrorDescent(base.IterativeSolver):
     """
     return self._update(params, state, hyperparams_proj, args, kwargs)
 
+  def run(self,
+          init_params: Any,
+          hyperparams_proj: Optional[Any] = None,
+          *args,
+          **kwargs) -> base.OptStep:
+    return super().run(init_params, hyperparams_proj, *args, **kwargs)
+
   def _fixed_point_fun(self, sol, hyperparams_proj, args, kwargs):
     sol_fun_grad, _ = self._grad_with_aux(sol, *args, **kwargs)
     return self.projection_grad(sol, sol_fun_grad, 1.0, hyperparams_proj)
@@ -175,3 +184,12 @@ class MirrorDescent(base.IterativeSolver):
       fun_with_aux = lambda *a, **kw: (self.fun(*a, **kw), None)
 
     self._grad_with_aux = jax.grad(fun_with_aux, has_aux=True)
+
+    # Sets up reference signature.
+    fun = getattr(self.fun, "subfun", self.fun)
+    signature = inspect.signature(fun)
+    parameters = list(signature.parameters.values())
+    new_param = inspect.Parameter(name="hyperparams_proj",
+                                  kind=inspect.Parameter.POSITIONAL_OR_KEYWORD)
+    parameters.insert(1, new_param)
+    self.reference_signature = inspect.Signature(parameters)
