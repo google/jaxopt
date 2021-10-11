@@ -111,21 +111,20 @@ class MirrorDescent(base.IterativeSolver):
       return projection(update, hyperparams_proj)
     return projection_grad
 
-  def init(self,
-           init_params: Any,
-           hyperparams_proj: Any,
-           *args,
-           **kwargs) -> base.OptStep:
-    """Initialize the parameters and state.
+  def init_state(self,
+                 init_params: Any,
+                 hyperparams_proj: Any,
+                 *args,
+                 **kwargs) -> base.OptStep:
+    """Initialize the solver state.
 
     Args:
       init_params: pytree containing the initial parameters.
     Returns:
-      (params, state)
+      state
     """
     del hyperparams_proj, args, kwargs  # Not used.
-    state = MirrorDescentState(iter_num=0, error=jnp.inf)
-    return base.OptStep(params=init_params, state=state)
+    return MirrorDescentState(iter_num=0, error=jnp.inf)
 
   def _error(self, x, x_fun_grad, hyperparams_proj):
     next_x = self.projection_grad(x, x_fun_grad, 1.0, hyperparams_proj)

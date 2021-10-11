@@ -19,12 +19,12 @@ Robust training.
 The following code trains a convolutional neural network (CNN) to be robust
 with respect to the fast sign gradient (FGSM) method.
 
-The Fast Gradient Sign Method (FGSM) is a simple yet effective method to generate
-adversarial images. It constructs an adversarial by adding a small perturbation in
-the direction of the sign of the gradient with respect to the input. The gradient
-ensures this perturbation locally maximizes the objective, while the sign ensures
-that the update is on the boundary of the L-infinity ball.
-
+The Fast Gradient Sign Method (FGSM) is a simple yet effective method to
+generate adversarial images. It constructs an adversarial by adding a small
+perturbation in the direction of the sign of the gradient with respect to the
+input. The gradient ensures this perturbation locally maximizes the objective,
+while the sign ensures that the update is on the boundary of the L-infinity
+ball.
 
 References
 ----------
@@ -99,10 +99,11 @@ test_ds = load_dataset("test", is_training=False, batch_size=1000)
 # Initialize solver and parameters.
 solver = OptaxSolver(opt=optax.adam(1e-3), fun=loss_fun)
 rng = jax.random.PRNGKey(0)
-init_params = CNN().init(rng, jnp.ones([1, 28, 28, 1]))["params"]
+params = CNN().init(rng, jnp.ones([1, 28, 28, 1]))["params"]
 l2_regul = 1e-4
 
-params, state = solver.init(init_params)
+state = solver.init_state(params)
+
 for it in range(200):
   data = next(train_ds)
   images = data['image'].astype(jnp.float32) / 255

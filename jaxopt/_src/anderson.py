@@ -154,30 +154,30 @@ class AndersonAcceleration(base.IterativeSolver):
   jit: base.AutoOrBoolean = "auto"
   unroll: base.AutoOrBoolean = "auto"
 
-  def init(self,
-           init_params,
-           *args,
-           **kwargs) -> base.OptStep:
-    """Initialize the parameters and state.
+  def init_state(self,
+                 init_params,
+                 *args,
+                 **kwargs) -> AndersonState:
+    """Initialize the solver state.
 
     Args:
       init_params: initial guess of the fixed point, pytree
       *args: additional positional arguments to be passed to ``fixed_point_fun``.
       **kwargs: additional keyword arguments to be passed to ``fixed_point_fun``.
     Returns:
-      (params, state)
+      state
     """
     m = self.history_size
-    params_history = tree_map(lambda x: jnp.tile(x, [m]+[1]*x.ndim), init_params)
+    params_history = tree_map(lambda x: jnp.tile(x, [m]+[1]*x.ndim),
+                              init_params)
     residuals_history = tree_map(jnp.zeros_like, params_history)
     residual_gram = jnp.zeros((m,m))
 
-    state = AndersonState(iter_num=0,
-                          error=jnp.inf,
-                          params_history=params_history,
-                          residuals_history=residuals_history,
-                          residual_gram=residual_gram)
-    return base.OptStep(params=init_params, state=state)
+    return AndersonState(iter_num=0,
+                         error=jnp.inf,
+                         params_history=params_history,
+                         residuals_history=residuals_history,
+                         residual_gram=residual_gram)
 
   def update(self,
              params: Any,

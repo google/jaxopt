@@ -42,11 +42,11 @@ class BlockCoordinateDescentTest(jtu.JaxTestCase):
     data = (X, y)
 
     # Initialize.
-    w_init = jnp.zeros(X.shape[1])
+    params = jnp.zeros(X.shape[1])
     bcd = BlockCoordinateDescent(fun=fun, block_prox=prox.prox_lasso)
-    params, state = bcd.init(init_params=w_init,
-                             hyperparams_prox=l2reg,
-                             data=data)
+    state = bcd.init_state(init_params=params,
+                           hyperparams_prox=l2reg,
+                           data=data)
     # Optimization loop.
     for _ in range(30):
       params, state = bcd.update(params=params, state=state,

@@ -22,7 +22,7 @@ from dataclasses import dataclass
 
 from jaxopt._src import base
 from jaxopt._src import loop
-from jaxopt._src.proximal_gradient import ProximalGradient
+from jaxopt._src.proximal_gradient import ProximalGradient, ProxGradState
 
 
 @dataclass
@@ -47,20 +47,20 @@ class GradientDescent(ProximalGradient):
       When True it will be assumed by default that fun(...)[0] is the objective.
   """
 
-  def init(self,
-           init_params: Any,
-           *args,
-           **kwargs) -> base.OptStep:
-    """Initialize the parameters and state.
+  def init_state(self,
+                 init_params: Any,
+                 *args,
+                 **kwargs) -> ProxGradState:
+    """Initialize the solver state.
 
     Args:
       init_params: pytree containing the initial parameters.
       *args: additional positional arguments to be passed to ``fun``.
       **kwargs: additional keyword arguments to be passed to ``fun``.
     Returns:
-      (params, state)
+      state
     """
-    return super().init(init_params, None, *args, **kwargs)
+    return super().init_state(init_params, None, *args, **kwargs)
 
   def update(self,
              params: Any,

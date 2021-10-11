@@ -76,27 +76,26 @@ class OptaxSolver(base.StochasticSolver):
   jit: base.AutoOrBoolean = "auto"
   unroll: base.AutoOrBoolean = "auto"
 
-  def init(self,
-           init_params: Any,
-           *args,
-           **kwargs) -> base.OptStep:
-    """Initialize the parameters and state.
+  def init_state(self,
+                 init_params: Any,
+                 *args,
+                 **kwargs) -> OptaxState:
+    """Initialize the solver state.
 
     Args:
       init_params: pytree containing the initial parameters.
       *args: additional positional arguments to be passed to ``fun``.
       **kwargs: additional keyword arguments to be passed to ``fun``.
     Returns:
-      (params, state)
+      state
     """
     del args, kwargs  # Not used.
     opt_state = self.opt.init(init_params)
-    state = OptaxState(iter_num=0,
-                       value=jnp.inf,
-                       error=jnp.inf,
-                       aux=None,
-                       internal_state=opt_state)
-    return base.OptStep(params=init_params, state=state)
+    return OptaxState(iter_num=0,
+                      value=jnp.inf,
+                      error=jnp.inf,
+                      aux=None,
+                      internal_state=opt_state)
 
   def _apply_updates(self, params, updates):
     update_fun = lambda p, u: jnp.asarray(p + u).astype(jnp.asarray(p).dtype)

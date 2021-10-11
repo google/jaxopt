@@ -16,12 +16,14 @@ r"""
 Anderson acceleration of Block coordinate descent.
 ==================================================
 
-Block coordinate descent converges to a fixed point. It can therefore be accelerated with Anderson acceleration.
+Block coordinate descent converges to a fixed point. It can therefore be
+accelerated with Anderson acceleration.
 
 Here `m` denotes the history size, and `K` the frequency of Anderson updates.
 
-Bertrand, Q. and Massias, M., 2021, March. Anderson acceleration of coordinate descent.
-In International Conference on Artificial Intelligence and Statistics (pp. 1288-1296). PMLR.
+Bertrand, Q. and Massias, M.
+Anderson acceleration of coordinate descent.
+AISTATS, 2021.
 """
 
 import jax
@@ -43,7 +45,8 @@ jax.config.update("jax_enable_x64", True)
 
 # retrieve intermediate iterates.
 def run_all(solver, w_init, *args, **kwargs):
-  sol, state = solver.init(w_init, *args, **kwargs)
+  state = solver.init_state(w_init, *args, **kwargs)
+  sol = w_init
   sols, errors = [sol], [state.error]
   update = lambda sol,state: solver.update(sol, state, *args, **kwargs)
   jitted_update = jax.jit(update)

@@ -46,7 +46,7 @@ def _threshold_proj_simplex(x, s):
   lower = jax.lax.stop_gradient(jnp.min(x)) - s / len(x)
 
   bisect = Bisection(optimality_fun=_optimality_fun_proj_simplex,
-                     lower=lower, upper=upper)
+                     lower=lower, upper=upper, check_bracket=False)
   return bisect.run(None, x, s).params
 
 
@@ -65,15 +65,21 @@ class BisectionTest(jtu.JaxTestCase):
   def test_bisect(self):
     rng = onp.random.RandomState(0)
 
+    jitted_fun = jax.jit(_projection_simplex_bisect)
+
     for _ in range(10):
       x = jnp.array(rng.randn(50).astype(onp.float32))
       p = projection.projection_simplex(x)
       p2 = _projection_simplex_bisect(x)
+      p3 = jitted_fun(x)
       self.assertArraysAllClose(p, p2, atol=1e-4)
+      self.assertArraysAllClose(p, p3, atol=1e-4)
 
       J = jax.jacrev(projection.projection_simplex)(x)
       J2 = jax.jacrev(_projection_simplex_bisect)(x)
+      J3 = jax.jacrev(jitted_fun)(x)
       self.assertArraysAllClose(J, J2, atol=1e-5)
+      self.assertArraysAllClose(J, J3, atol=1e-5)
 
   def test_bisect_wrong_lower_bracket(self):
     rng = onp.random.RandomState(0)

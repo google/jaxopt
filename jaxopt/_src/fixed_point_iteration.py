@@ -73,22 +73,22 @@ class FixedPointIteration(base.IterativeSolver):
   jit: base.AutoOrBoolean = "auto"
   unroll: base.AutoOrBoolean = "auto"
 
-  def init(self,
-           init_params,
-           *args,
-           **kwargs) -> base.OptStep:
-    """Initialize the parameters and state.
+  def init_state(self,
+                 init_params,
+                 *args,
+                 **kwargs) -> FixedPointState:
+    """Initialize the solver state.
+
     Args:
       init_params: initial guess of the fixed point, pytree
       *args: additional positional arguments to be passed to ``optimality_fun``.
       **kwargs: additional keyword arguments to be passed to ``optimality_fun``.
     Returns:
-      (params, state)
+      state
     """
-    state = FixedPointState(iter_num=0,
-                            error=jnp.inf,
-                            aux=None)
-    return base.OptStep(params=init_params, state=state)
+    return FixedPointState(iter_num=0,
+                           error=jnp.inf,
+                           aux=None)
 
   def update(self,
              params: Any,

@@ -23,7 +23,7 @@ from dataclasses import dataclass
 
 from jaxopt._src import base
 from jaxopt._src import prox
-from jaxopt._src.proximal_gradient import ProximalGradient
+from jaxopt._src.proximal_gradient import ProximalGradient, ProxGradState
 
 
 @dataclass
@@ -69,11 +69,11 @@ class ProjectedGradient(base.IterativeSolver):
   jit: base.AutoOrBoolean = "auto"
   unroll: base.AutoOrBoolean = "auto"
 
-  def init(self,
-           init_params: Any,
-           hyperparams_proj: Optional[Any] = None,
-           *args,
-           **kwargs) -> base.OptStep:
+  def init_state(self,
+                 init_params: Any,
+                 hyperparams_proj: Optional[Any] = None,
+                 *args,
+                 **kwargs) -> ProxGradState:
     """Initialize the parameters and state.
 
     Args:
@@ -82,9 +82,9 @@ class ProjectedGradient(base.IterativeSolver):
       *args: additional positional arguments to be passed to ``fun``.
       **kwargs: additional keyword arguments to be passed to ``fun``.
     Returns:
-      (params, state)
+      state
     """
-    return self._pg.init(init_params, hyperparams_proj, *args, **kwargs)
+    return self._pg.init_state(init_params, hyperparams_proj, *args, **kwargs)
 
   def update(self,
              params: Any,
