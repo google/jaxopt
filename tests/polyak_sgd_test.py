@@ -43,7 +43,7 @@ class PolyakSgdTest(jtu.JaxTestCase):
     b_init = jnp.zeros(n_classes)
     pytree_init = (W_init, b_init)
 
-    opt = PolyakSGD(fun=fun, max_step_size=0.01, momentum=momentum)
+    opt = PolyakSGD(fun=fun, max_stepsize=0.01, momentum=momentum)
 
     params, state = opt.init(pytree_init)
     for _ in range(200):
@@ -72,7 +72,7 @@ class PolyakSgdTest(jtu.JaxTestCase):
     b_init = jnp.zeros(n_classes)
     pytree_init = (W_init, b_init)
 
-    opt = PolyakSGD(fun=fun, max_step_size=0.01, maxiter=300, has_aux=has_aux)
+    opt = PolyakSGD(fun=fun, max_stepsize=0.01, maxiter=300, has_aux=has_aux)
     # Test positional, keyword and mixed arguments.
     for params, _ in (opt.run(pytree_init, l2reg, data),
                       opt.run(pytree_init, l2reg=l2reg, data=data),
@@ -100,7 +100,7 @@ class PolyakSgdTest(jtu.JaxTestCase):
     b_init = jnp.zeros(n_classes)
     pytree_init = (W_init, b_init)
 
-    opt = PolyakSGD(fun=fun, max_step_size=0.01, maxiter=1000)
+    opt = PolyakSGD(fun=fun, max_stepsize=0.01, maxiter=1000)
     iterable = dataset_loader(X, y, n_iter=200)
     params, _ = opt.run_iterator(pytree_init, iterable, l2reg=l2reg)
 
@@ -118,7 +118,7 @@ class PolyakSgdTest(jtu.JaxTestCase):
     W_skl = test_util.logreg_skl(X, y, l2reg)
 
     # Make sure the decorator works.
-    opt = PolyakSGD(fun=fun, max_step_size=1e-3, maxiter=5)
+    opt = PolyakSGD(fun=fun, max_stepsize=1e-3, maxiter=5)
     def wrapper(hyperparams):
       return opt.run(W_skl, l2reg=l2reg, data=data).params
     jac_custom = jax.jacrev(wrapper)(l2reg)
@@ -134,7 +134,7 @@ class PolyakSgdTest(jtu.JaxTestCase):
     W_skl = test_util.logreg_skl(X, y, l2reg)
 
     # Make sure the decorator works.
-    opt = PolyakSGD(fun=fun, max_step_size=1e-3, maxiter=5, implicit_diff=True)
+    opt = PolyakSGD(fun=fun, max_stepsize=1e-3, maxiter=5, implicit_diff=True)
     def wrapper(hyperparams):
       # Unfortunately positional arguments are required when implicit_diff=True.
       return opt.run(W_skl, l2reg, data).params

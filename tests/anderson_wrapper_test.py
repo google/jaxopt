@@ -74,7 +74,7 @@ class AndersonWrapperTest(jtu.JaxTestCase):
     b_init = jnp.zeros(n_classes)
     pytree_init = (W_init, b_init)
 
-    opt = PolyakSGD(fun=fun, max_step_size=0.01, momentum=False)
+    opt = PolyakSGD(fun=fun, max_stepsize=0.01, momentum=False)
     history_size = 8
     aw = AndersonWrapper(opt, history_size=history_size)
 

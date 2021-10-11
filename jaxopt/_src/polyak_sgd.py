@@ -39,6 +39,7 @@ class PolyakSGDState(NamedTuple):
   error: float
   value: float
   aux: Any
+  stepsize: float
   velocity: Optional[Any]
 
 
@@ -47,9 +48,9 @@ class PolyakSGD(base.StochasticSolver):
   """SGD with Polyak step size.
 
   This solver computes step sizes in an adaptive manner. If the computed step
-  size at a given iteration is smaller than ``max_step_size``, it is accepted.
-  Otherwise, ``max_step_size`` is used. This ensures that the solver does not
-  take over-confident steps. This is why ``max_step_size`` is the most important
+  size at a given iteration is smaller than ``max_stepsize``, it is accepted.
+  Otherwise, ``max_stepsize`` is used. This ensures that the solver does not
+  take over-confident steps. This is why ``max_stepsize`` is the most important
   hyper-parameter.
 
   This implementation assumes that the interpolation property holds.
@@ -58,7 +59,7 @@ class PolyakSGD(base.StochasticSolver):
     fun: a function of the form ``fun(params, *args, **kwargs)``, where
       ``params`` are parameters of the model,
       ``*args`` and ``**kwargs`` are additional arguments.
-    max_step_size: a maximum step size to use.
+    max_stepsize: a maximum step size to use.
     delta: a value to add in the denominator of the update (default: 0).
     momentum: momentum parameter, 0 corresponding to no momentum.
     pre_update: a function to execute before the solver's update.
@@ -92,7 +93,7 @@ class PolyakSGD(base.StochasticSolver):
     https://arxiv.org/abs/2002.10542
   """
   fun: Callable
-  max_step_size: float = 1.0
+  max_stepsize: float = 1.0
   delta: float = 0.0
   momentum: float = 0.0
   pre_update: Optional[Callable] = None
@@ -126,7 +127,7 @@ class PolyakSGD(base.StochasticSolver):
       velocity = tree_zeros_like(init_params)
 
     state = PolyakSGDState(iter_num=0, error=jnp.inf, value=jnp.inf,
-                           aux=None, velocity=velocity)
+                           aux=None, stepsize=self.max_stepsize, velocity=velocity)
     return base.OptStep(params=init_params, state=state)
 
   def update(self,
@@ -150,23 +151,24 @@ class PolyakSGD(base.StochasticSolver):
     (value, aux), grad = self._value_and_grad_fun(params, *args, **kwargs)
 
     grad_sqnorm = tree_l2_norm(grad, squared=True)
-    step_size = jax.lax.min(value / (grad_sqnorm + self.delta),
-                            self.max_step_size)
+    stepsize = jax.lax.min(value / (grad_sqnorm + self.delta),
+                           self.max_stepsize)
 
     if self.momentum == 0:
-      new_params = tree_add_scalar_mul(params, -step_size, grad)
+      new_params = tree_add_scalar_mul(params, -stepsize, grad)
       new_velocity = None
     else:
       # new_v = momentum * v - step_size * grad
       # new_params = params + new_v
       new_velocity = tree_sub(tree_scalar_mul(self.momentum, state.velocity),
-                              tree_scalar_mul(step_size, grad))
+                              tree_scalar_mul(stepsize, grad))
       new_params = tree_add(params, new_velocity)
 
     new_state = PolyakSGDState(iter_num=state.iter_num + 1,
                                error=jnp.sqrt(grad_sqnorm),
                                velocity=new_velocity,
                                value=value,
+                               stepsize=stepsize,
                                aux=aux)
     return base.OptStep(params=new_params, state=new_state)
 
