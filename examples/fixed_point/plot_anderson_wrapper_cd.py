@@ -13,10 +13,12 @@
 # limitations under the License.
 
 r"""
-Anderson acceleration of Block coordinate descent
-=================================================
+Anderson acceleration of Block coordinate descent.
+==================================================
 
 Block coordinate descent converges to a fixed point. It can therefore be accelerated with Anderson acceleration.
+
+Here `m` denotes the history size, and `K` the frequency of Anderson updates.
 
 Bertrand, Q. and Massias, M., 2021, March. Anderson acceleration of coordinate descent.
 In International Conference on Artificial Intelligence and Statistics (pp. 1288-1296). PMLR.
@@ -52,7 +54,7 @@ def run_all(solver, w_init, *args, **kwargs):
   return jnp.stack(sols, axis=0), errors
 
 
-X, y = datasets.make_regression(n_samples=10, n_features=8, random_state=0)
+X, y = datasets.make_regression(n_samples=10, n_features=8, random_state=1)
 fun = objective.least_squares  # fun(params, data)
 l1reg = 10.0
 data = (X, y)
@@ -61,16 +63,16 @@ w_init = jnp.zeros(X.shape[1])
 maxiter = 80
 
 bcd = BlockCoordinateDescent(fun, block_prox=prox.prox_lasso, maxiter=maxiter, tol=1e-6)
-history_size = 3
-aa = AndersonWrapper(bcd, history_size=history_size, ridge=1e-4)
+history_size = 5
+aa = AndersonWrapper(bcd, history_size=history_size, mixing_frequency=1, ridge=1e-4)
+aam = AndersonWrapper(bcd, history_size=history_size, mixing_frequency=history_size, ridge=1e-4)
 
 aa_sols, aa_errors = run_all(aa, w_init, hyperparams_prox=l1reg, data=data)
+aam_sols, aam_errors = run_all(aam, w_init, hyperparams_prox=l1reg, data=data)
 bcd_sols, bcd_errors = run_all(bcd, w_init, hyperparams_prox=l1reg, data=data)
 
-bcd_errors = bcd_errors[:-history_size]
-bcd_sols = bcd_sols[:-history_size]
-
-print(f'Error={aa_errors[-1]:.6f} at parameters {aa_sols[-1]} for Anderson')
+print(f'Error={aa_errors[-1]:.6f} at parameters {aa_sols[-1]} for Anderson (m=5, K=1)')
+print(f'Error={aam_errors[-1]:.6f} at parameters {aam_sols[-1]} for Anderson (m=5, K=5)')
 print(f'Error={bcd_errors[-1]:.6f} at parameters {bcd_sols[-1]} for Block CD')
 
 fig = plt.figure(figsize=(10, 12))
@@ -80,8 +82,9 @@ spec = fig.add_gridspec(ncols=2, nrows=3, hspace=0.3)
 # Plot trajectory in parameter space (8 dimensions)
 for i in range(4):
   ax = fig.add_subplot(spec[i//2, i%2])
-  ax.plot(bcd_sols[:,i], bcd_sols[:,2*i+1], '-', label="Coordinate Descent")
-  ax.plot(aa_sols[:,i], aa_sols[:,2*i+1], '-', label="Anderson Accelerated CD")
+  ax.plot(bcd_sols[:,i], bcd_sols[:,2*i+1], '--', label="Coordinate Descent")
+  ax.plot(aa_sols[:,i], aa_sols[:,2*i+1], '--', label="Anderson Accelerated CD (m=5, K=1)")
+  ax.plot(aam_sols[:,i], aam_sols[:,2*i+1], '--', label="Anderson Accelerated CD (m=5, K=5)")
   ax.set_xlabel(f'$x_{{{2*i+1}}}$')
   ax.set_ylabel(f'$x_{{{2*i+2}}}$')
   if i == 0:
@@ -93,7 +96,8 @@ for i in range(4):
 ax = fig.add_subplot(spec[2, :])
 iters = jnp.arange(len(aa_errors))
 ax.plot(iters, bcd_errors, '-o', label='Coordinate Descent Error')
-ax.plot(iters, aa_errors, '-o', label='Anderson Accelerated CD Error')
+ax.plot(iters, aa_errors, '-o', label='Anderson Accelerated CD Error (m=5, K=1)')
+ax.plot(iters, aam_errors, '-o', label='Anderson Accelerated CD Error (m=5, K=5)')
 ax.set_xlabel('Iteration num')
 ax.set_ylabel('Error')
 ax.set_yscale('log')

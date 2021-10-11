@@ -60,8 +60,8 @@ class AndersonWrapperTest(jtu.JaxTestCase):
     aw_params, awpg_info = aw.run(w_init, hyperparams_prox=lam, data=data)
     self.assertLess(awpg_info.error, tol)
 
-  def test_agree_on_init_polyak(self):
-    """Test that initialization is compatible with internal solver."""
+  def test_mixing_frequency_polyak(self):
+    """Test mixing_frequency by accelerating PolyakSGD."""
     X, y = datasets.make_classification(n_samples=10, n_features=5, n_classes=3,
                                         n_informative=3, random_state=0)
     data = (X, y)
@@ -74,19 +74,11 @@ class AndersonWrapperTest(jtu.JaxTestCase):
     b_init = jnp.zeros(n_classes)
     pytree_init = (W_init, b_init)
 
-    opt = PolyakSGD(fun=fun, max_stepsize=0.01, momentum=False)
-    history_size = 8
-    aw = AndersonWrapper(opt, history_size=history_size)
-
-    opt_params, opt_state = opt.init(pytree_init, l2reg=l2reg, data=data)
-    for _ in range(history_size):
-      opt_params, opt_state = opt.update(opt_params, opt_state, l2reg=l2reg, data=data)
-
-    aw_params, aw_state = aw.init(pytree_init, l2reg=l2reg, data=data)
-    self.assertArraysEqual(opt_params[0], aw_params[0])
-    self.assertArraysEqual(opt_params[1], aw_params[1])
-    self.assertEqual(opt_state.iter_num, aw_state.solver_state.iter_num)
-    self.assertEqual(opt_state.error, aw_state.error)
+    opt = PolyakSGD(fun=fun, max_stepsize=0.01, tol=0.05, momentum=False)
+    history_size = 5
+    aw = AndersonWrapper(opt, history_size=history_size, mixing_frequency=1)
+    aw_params, aw_state = aw.run(pytree_init, l2reg=l2reg, data=data)
+    self.assertLess(aw_state.error, 0.05)
 
   def test_optax_restart(self):
     """Test Optax optimizer."""

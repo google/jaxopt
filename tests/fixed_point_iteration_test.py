@@ -46,7 +46,6 @@ class FixedPointIterationTest(jtu.JaxTestCase):
   @parameterized.product(jit=[False,True])
   def test_sin_fixed_point(self, jit):
     """Test convergence for simple polynomials and sin.
-
     Also test the support of pytree in input/output.
     """
     def f(x):  # Another fixed point exists for x[0] : ~1.11
@@ -62,7 +61,6 @@ class FixedPointIterationTest(jtu.JaxTestCase):
 
   def test_cos_fixed_point(self):
     """Test convergence for cos fixed point (non-zero fixed point).
-
     Also test support for additional parameters.
     """
     def f(x, theta):
@@ -150,4 +148,3 @@ if __name__ == '__main__':
   # Uncomment the line below in order to run in float64.
   # jax.config.update("jax_enable_x64", True)
   absltest.main(testLoader=jtu.JaxTestLoader())
-

@@ -30,15 +30,12 @@ from jaxopt._src.tree_util import tree_l2_norm, tree_sub
 
 class FixedPointState(NamedTuple):
   """Named tuple containing state information.
-
   Attributes:
     iter_num: iteration number
-    value: pytree of current estimate of fixed point
     error: residuals of current estimate
     aux: auxiliary output of fixed_point_fun when has_aux=True
   """
   iter_num: int
-  value: Any
   error: float
   aux: Any
 
@@ -46,12 +43,10 @@ class FixedPointState(NamedTuple):
 @dataclass
 class FixedPointIteration(base.IterativeSolver):
   """Fixed point iteration method.
-
   Attributes:
     fixed_point_fun: a function ``fixed_point_fun(x, *args, **kwargs)``
       returning a pytree with the same structure and type as x
-      each leaf must be an array (not a scalar). The function
-      should fulfill the Banach fixed-point theorem's assumptions.
+      The function should fulfill the Banach fixed-point theorem's assumptions.
       Otherwise convergence is not guaranteed.
     maxiter: maximum number of iterations.
     tol: tolerance (stopping criterion)
@@ -65,7 +60,6 @@ class FixedPointIteration(base.IterativeSolver):
     implicit_diff_solve: the linear system solver to use.
     jit: whether to JIT-compile the optimization loop (default: "auto").
     unroll: whether to unroll the optimization loop (default: "auto")
-
   References:
     https://en.wikipedia.org/wiki/Fixed-point_iteration
   """
@@ -84,7 +78,6 @@ class FixedPointIteration(base.IterativeSolver):
            *args,
            **kwargs) -> base.OptStep:
     """Initialize the parameters and state.
-
     Args:
       init_params: initial guess of the fixed point, pytree
       *args: additional positional arguments to be passed to ``optimality_fun``.
@@ -93,7 +86,6 @@ class FixedPointIteration(base.IterativeSolver):
       (params, state)
     """
     state = FixedPointState(iter_num=0,
-                            value=init_params,
                             error=jnp.inf,
                             aux=None)
     return base.OptStep(params=init_params, state=state)
@@ -104,7 +96,6 @@ class FixedPointIteration(base.IterativeSolver):
              *args,
              **kwargs) -> base.OptStep:
     """Performs one iteration of the fixed point iteration method.
-
     Args:
       params: pytree containing the parameters.
       state: named tuple containing the solver state.
@@ -118,7 +109,6 @@ class FixedPointIteration(base.IterativeSolver):
     next_params, aux = self._fun(params, *args, **kwargs)
     error = tree_l2_norm(tree_sub(next_params, params))
     next_state = FixedPointState(iter_num=state.iter_num + 1,
-                                 value=next_params,
                                  error=error,
                                  aux=aux)
     return base.OptStep(params=next_params, state=next_state)
