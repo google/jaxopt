@@ -15,8 +15,8 @@ variable (typically a mini-batch).
 
 .. topic:: Examples
 
-   * :ref:`sphx_glr_auto_examples_deep_learning_haiku_mnist.py`
-   * :ref:`sphx_glr_auto_examples_deep_learning_flax_mnist.py`
+   * :ref:`sphx_glr_auto_examples_deep_learning_haiku_image_classif.py`
+   * :ref:`sphx_glr_auto_examples_deep_learning_flax_image_classif.py`
    * :ref:`sphx_glr_auto_examples_deep_learning_haiku_vae.py`
 
 
