@@ -43,11 +43,11 @@ class OptaxWrapperTest(jtu.JaxTestCase):
 
     W_init = jnp.zeros((X.shape[1], n_classes))
     b_init = jnp.zeros(n_classes)
-    pytree_init = (W_init, b_init)
+    params = (W_init, b_init)
 
     opt = OptaxSolver(opt=optax.adam(1e-3), fun=fun)
 
-    params, state = opt.init(pytree_init)
+    state = opt.init_state(params)
     for _ in range(200):
       params, state = opt.update(params, state, l2reg=l2reg, data=data)
 

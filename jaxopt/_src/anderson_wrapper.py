@@ -54,17 +54,17 @@ class AndersonWrapperState(NamedTuple):
 
 @dataclass
 class AndersonWrapper(base.IterativeSolver):
-  """Wrapper of AndersonAcceleration to accelerate other solvers with jaxopt-compatible interface.
+  """Wrapper for accelerating JAXopt solvers.
 
-  Note that the internal solver state can be accessed via the ``aux`` attribute of AndersonState.
+  Note that the internal solver state can be accessed via the ``aux`` attribute
+  of AndersonState.
 
   Attributes:
     solver: solver object to accelerate. Must exhibit init() and update() methods.
     history_size: size of history. Affect memory cost. (default: 5).
     mixing_frequency: frequency of Anderson updates. (default: ``history_size``).
-      Only one every ``mixing_frequency`` updates uses Anderson, while the other updates use
-      regular fixed point iterations.
-      WARNING: default to ``history_size`` to avoid frequent re-initializations of solver state.
+      Only one every ``mixing_frequency`` updates uses Anderson, while the other
+      updates use regular fixed point iterations.
     beta: momentum in Anderson updates. (default: 1).
     ridge: ridge regularization in solver.
       Consider increasing this value if the solver returns ``NaN``.
@@ -87,19 +87,19 @@ class AndersonWrapper(base.IterativeSolver):
   jit: base.AutoOrBoolean = "auto"
   unroll: base.AutoOrBoolean = "auto"
 
-  def init(self, init_params, *args, **kwargs) -> base.OptStep:
-    init_params, solver_state = self.solver.init(init_params, *args, **kwargs)
+  def init_state(self, init_params, *args, **kwargs) -> AndersonWrapperState:
+    solver_state = self.solver.init_state(init_params, *args, **kwargs)
     m = self.history_size
-    params_history = tree_map(lambda x: jnp.tile(x, [m]+[1]*x.ndim), init_params)
+    params_history = tree_map(lambda x: jnp.tile(x, [m]+[1]*x.ndim),
+                              init_params)
     residuals_history = tree_map(jnp.zeros_like, params_history)
     residual_gram = jnp.zeros((m,m))
-    state = AndersonWrapperState(iter_num=0,
-                                 solver_state=solver_state,
-                                 error=solver_state.error,
-                                 params_history=params_history,
-                                 residuals_history=residuals_history,
-                                 residual_gram=residual_gram)
-    return base.OptStep(params=init_params, state=state)
+    return AndersonWrapperState(iter_num=0,
+                                solver_state=solver_state,
+                                error=solver_state.error,
+                                params_history=params_history,
+                                residuals_history=residuals_history,
+                                residual_gram=residual_gram)
 
   def update(self, params, state, *args, **kwargs) -> base.OptStep:
     """Perform one step of Anderson acceleration over the internal solver update.
@@ -108,13 +108,16 @@ class AndersonWrapper(base.IterativeSolver):
     the Anderson step.
 
     Args:
-      params: parameters optimized by solver. Only its pytree structure matters (content unused).
+      params: parameters optimized by solver.
+        Only its pytree structure matters (content unused).
       state: AndersonWrapperState
-        Crucially, state.params_history and state.residuals_history are the sequences used to generate next iterate.
-        Note: state.solver_state is the internal solver state.
-      args,kwargs: additional parameters passed to ``update`` method of internal solver
-        Note: sometimes those are hyper-parameters of the solver, but if the solver is a Jaxopt solver
-        they will be forwarded to the underlying function being optimized
+        Crucially, state.params_history and state.residuals_history are the
+        sequences used to generate next iterate.  Note: state.solver_state is
+        the internal solver state.
+      args,kwargs: additional parameters passed to ``update`` method of internal
+        solver Note: sometimes those are hyper-parameters of the solver, but if
+        the solver is a Jaxopt solver they will be forwarded to the underlying
+        function being optimized
     """
     iter_num = state.iter_num
     anderson_freq = jnp.equal(jnp.mod(iter_num, self.mixing_frequency), 0)
@@ -122,10 +125,11 @@ class AndersonWrapper(base.IterativeSolver):
 
     def perform_anderson_step(t):
       _, state = t
-      extrapolated = anderson_step(state.params_history, state.residuals_history,
+      extrapolated = anderson_step(state.params_history,
+                                   state.residuals_history,
                                    state.residual_gram,
                                    self.ridge, self.beta)
-      extrapolated, solver_state = self.solver.init(extrapolated, *args, **kwargs)
+      solver_state = self.solver.init_state(extrapolated, *args, **kwargs)
       return extrapolated, solver_state
 
     def use_param(t):

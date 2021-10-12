@@ -86,7 +86,8 @@ The following::
 is equivalent to::
 
   iterator = data_iterator()
-  params, state = solver.init(init_params, l2reg=l2reg)
+  state = solver.init_state(init_params, l2reg=l2reg)
+  params = init_params
   for _ in range(maxiter):
     data = next(iterator)
     params, state = solver.update(params, state, l2reg=l2reg, data=data)

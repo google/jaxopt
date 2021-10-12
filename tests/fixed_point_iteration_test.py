@@ -80,18 +80,17 @@ class FixedPointIterationTest(jtu.JaxTestCase):
       fy = r * y * (1 - y)  # logistic map: chaotic behavior
       return fx, fy
     r = jnp.array([3.95])  # for this value there is chaotic behavior
-    x0, y0 = jnp.array([1.]), jnp.array([0.6])
+    x, y = jnp.array([1.]), jnp.array([0.6])
     tol = 2e-2
-    fp = FixedPointIteration(f, maxiter=400*1000, tol=tol, has_aux=True)
-    sol, state = fp.init(x0, r, y0)
-    y = y0
+    fp = FixedPointIteration(f, has_aux=True)
+    state = fp.init_state(x, r, y)
     sols = []
     for i in range(10):
-      sol, state = fp.update(sol, state, r, y)
-      sols.append(sol)
+      x, state = fp.update(x, state, r, y)
+      sols.append(x)
       y = state.aux
     self.assertLess(state.error, tol)
-    self.assertArraysAllClose(sol, jnp.array([0.739085]), atol=1e2)
+    self.assertArraysAllClose(x, jnp.array([0.739085]), atol=1e2)
 
   @parameterized.product(implicit_diff=[False, True])
   def test_simple_grads(self, implicit_diff):

@@ -77,12 +77,12 @@ class BlockCoordinateDescent(base.IterativeSolver):
   jit: base.AutoOrBoolean = "auto"
   unroll: base.AutoOrBoolean = "auto"
 
-  def init(self,
-           init_params: Any,
-           hyperparams_prox: Any,
-           *args,
-           **kwargs) -> base.OptStep:
-    """Initialize the parameters and state.
+  def init_state(self,
+                 init_params: Any,
+                 hyperparams_prox: Any,
+                 *args,
+                 **kwargs) -> BlockCDState:
+    """Initialize the solver state.
 
     Args:
       init_params: pytree containing the initial parameters.
@@ -90,17 +90,16 @@ class BlockCoordinateDescent(base.IterativeSolver):
       *args: additional positional arguments to be passed to ``fun``.
       **kwargs: additional keyword arguments to be passed to ``fun``.
     Returns:
-      (params, state)
+      state
     """
     del hyperparams_prox  # Not used.
     linop = self.fun.make_linop(*args, **kwargs)
     predictions = linop.matvec(init_params)
     subfun_g = self._grad_subfun(predictions, *args, **kwargs)
-    state = BlockCDState(iter_num=0,
-                         predictions=predictions,
-                         subfun_g=subfun_g,
-                         error=jnp.inf)
-    return base.OptStep(params=init_params, state=state)
+    return BlockCDState(iter_num=0,
+                        predictions=predictions,
+                        subfun_g=subfun_g,
+                        error=jnp.inf)
 
   def update(self,
              params: Any,

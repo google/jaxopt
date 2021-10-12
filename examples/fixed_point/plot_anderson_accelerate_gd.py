@@ -50,15 +50,19 @@ jax.config.update("jax_platform_name", "cpu")
 
 # retrieve intermediate iterates.
 def run_all(solver, w_init, *args, **kwargs):
-  sol, state = solver.init(w_init, *args, **kwargs)
+  state = solver.init_state(w_init, *args, **kwargs)
+  sol = w_init
   sols, errors = [], []
+
   @jax.jit
   def jitted_update(sol, state):
     return solver.update(sol, state, *args, **kwargs)
+
   for _ in range(solver.maxiter):
     sol, state = jitted_update(sol, state)
     sols.append(sol)
     errors.append(state.error)
+
   return jnp.stack(sols, axis=0), errors
 
 

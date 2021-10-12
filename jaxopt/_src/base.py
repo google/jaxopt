@@ -16,6 +16,7 @@
 
 import abc
 import itertools
+import warnings
 
 from typing import Any
 from typing import Callable
@@ -74,7 +75,7 @@ class IterativeSolver(Solver):
   """Base class for iterative solvers.
 
   Any iterative solver should implement `init` and `update` methods:
-    - `params, state = init(init_params, *args, **kwargs)`
+    - `state = init_state(init_params, *args, **kwargs)`
     - `next_params, next_state = update(params, state, *args, **kwargs)`
 
   This class implements a `run` method:
@@ -93,6 +94,15 @@ class IterativeSolver(Solver):
   The following attribute is needed in the state:
     - `error`
   """
+
+  def init(self,
+           init_params: Any,
+           *args,
+           **kwargs) -> OptStep:
+    warnings.warn("Method 'init' will be removed in v0.2. "
+                  "Use 'init_state' instead.", FutureWarning)
+    state = self.init_state(init_params, *args, **kwargs)
+    return OptStep(params=init_params, state=state)
 
   def _run(self,
            init_params: Any,
@@ -121,15 +131,15 @@ class IterativeSolver(Solver):
     else:
       unroll = self.unroll
 
-    params, state = self.init(init_params, *args, **kwargs)
+    state = self.init_state(init_params, *args, **kwargs)
 
     if self.maxiter == 0:
-      return OptStep(params=params, state=state)
+      return OptStep(params=init_params, state=state)
 
     # We unroll the very first iteration. This allows `init_val` and `body_fun`
     # below to have the same output type, which is a requirement of
     # lax.while_loop and lax.scan.
-    opt_step = self.update(params, state, *args, **kwargs)
+    opt_step = self.update(init_params, state, *args, **kwargs)
 
     return loop.while_loop(cond_fun=cond_fun, body_fun=body_fun,
                            init_val=opt_step, maxiter=self.maxiter - 1, jit=jit,
@@ -192,7 +202,8 @@ class StochasticSolver(IterativeSolver):
       (params, state)
     """
     # TODO(mblondel): data-dependent initialization schemes need a batch.
-    params, state = self.init(init_params, *args, **kwargs)
+    state = self.init_state(init_params, *args, **kwargs)
+    params = init_params
 
     # TODO(mblondel): try and benchmark lax.fori_loop with host_call for `next`.
     for data in itertools.islice(iterator, 0, self.maxiter):

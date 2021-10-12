@@ -72,11 +72,11 @@ class Bisection(base.IterativeSolver):
   jit: base.AutoOrBoolean = "auto"
   unroll: base.AutoOrBoolean = "auto"
 
-  def init(self,
-           init_params=None,
-           *args,
-           **kwargs) -> base.OptStep:
-    """Initialize the parameters and state.
+  def init_state(self,
+                 init_params=None,
+                 *args,
+                 **kwargs) -> BisectionState:
+    """Initialize the solver state.
 
     Args:
       init_params: initial scalar value. If None (default), we use
@@ -86,7 +86,7 @@ class Bisection(base.IterativeSolver):
       *args: additional positional arguments to be passed to ``optimality_fun``.
       **kwargs: additional keyword arguments to be passed to ``optimality_fun``.
     Returns:
-      (params, state)
+      state
     """
     lower_value = self.optimality_fun(self.lower, *args, **kwargs)
     upper_value = self.optimality_fun(self.upper, *args, **kwargs)
@@ -105,17 +105,12 @@ class Bisection(base.IterativeSolver):
                          "`optimality_fun` evaluated at lower and upper should "
                          "have opposite signs.")
 
-    state = BisectionState(iter_num=0,
-                           value=jnp.inf,
-                           error=jnp.inf,
-                           low=self.lower,
-                           high=self.upper,
-                           sign=sign)
-
-    if init_params is None:
-      init_params = 0.5 * (state.high + state.low)
-
-    return base.OptStep(params=init_params, state=state)
+    return BisectionState(iter_num=0,
+                          value=jnp.inf,
+                          error=jnp.inf,
+                          low=self.lower,
+                          high=self.upper,
+                          sign=sign)
 
   def update(self,
              params: Any,
@@ -130,6 +125,9 @@ class Bisection(base.IterativeSolver):
     Returns:
       (params, state)
     """
+    if params is None:
+      params = 0.5 * (state.high + state.low)
+
     value, aux = self._fun_with_aux(params, *args, **kwargs)
     too_large = state.sign * value > 0
 

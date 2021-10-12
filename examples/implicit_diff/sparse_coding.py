@@ -188,7 +188,8 @@ def _task_sparse_dictionary_learning(
 
   if optimizer is None:
     solver = ProximalGradient(fun=loss_fun, prox=prox_dic, has_aux=True)
-    params, state = solver.init((dic_init, task_vars_init), None)
+    params = (dic_init, task_vars_init)
+    state = solver.init_state(params, None)
 
     for _ in range(maxiter):
       params, state = solver.update(
@@ -200,7 +201,8 @@ def _task_sparse_dictionary_learning(
 
   else:
     solver = OptaxSolver(opt=optimizer, fun=loss_fun, has_aux=True)
-    params, state = solver.init((dic_init, task_vars_init))
+    params = (dic_init, task_vars_init)
+    state = solver.init_state(params)
 
     for _ in range(maxiter):
       params, state = solver.update(

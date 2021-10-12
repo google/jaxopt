@@ -106,18 +106,18 @@ class PolyakSGD(base.StochasticSolver):
   jit: base.AutoOrBoolean = "auto"
   unroll: base.AutoOrBoolean = "auto"
 
-  def init(self,
-           init_params: Any,
-           *args,
-           **kwargs) -> base.OptStep:
-    """Initialize the parameters and state.
+  def init_state(self,
+                 init_params: Any,
+                 *args,
+                 **kwargs) -> PolyakSGDState:
+    """Initialize the solver state.
 
     Args:
       init_params: pytree containing the initial parameters.
       *args: additional positional arguments to be passed to ``fun``.
       **kwargs: additional keyword arguments to be passed to ``fun``.
     Returns:
-      (params, state)
+      state
     """
     del args, kwargs  # Not used.
 
@@ -126,9 +126,8 @@ class PolyakSGD(base.StochasticSolver):
     else:
       velocity = tree_zeros_like(init_params)
 
-    state = PolyakSGDState(iter_num=0, error=jnp.inf, value=jnp.inf,
-                           aux=None, stepsize=self.max_stepsize, velocity=velocity)
-    return base.OptStep(params=init_params, state=state)
+    return PolyakSGDState(iter_num=0, error=jnp.inf, value=jnp.inf,
+                          stepsize=1.0, aux=None, velocity=velocity)
 
   def update(self,
              params: Any,

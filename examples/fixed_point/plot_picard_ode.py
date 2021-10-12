@@ -17,15 +17,18 @@ Anderson acceleration in application to Picard–Lindelöf theorem.
 ================================================================
 
 Thanks to the `Picard–Lindelöf theorem,
-<https://en.wikipedia.org/wiki/Picard%E2%80%93Lindel%C3%B6f_theorem>`_ we can reduce differential equation solving to fixed point computations and simple integration.
-More precisely consider the ODE:
+<https://en.wikipedia.org/wiki/Picard%E2%80%93Lindel%C3%B6f_theorem>`_ we can
+reduce differential equation solving to fixed point computations and simple
+integration.  More precisely consider the ODE:
 
 .. math::
 
   y'(t)=f(t,y(t))
 
-of some time-dependant dynamic :math:`f:\mathbb{R}\times\mathbb{R}^d\rightarrow\mathbb{R}^d` and initial conditions :math:`y(0)=y_0`.
-Then :math:`y` is the fixed point of the following map:
+of some time-dependant dynamic
+:math:`f:\mathbb{R}\times\mathbb{R}^d\rightarrow\mathbb{R}^d` and initial
+conditions :math:`y(0)=y_0`.  Then :math:`y` is the fixed point of the following
+map:
 
 .. math::
 
@@ -88,7 +91,8 @@ ti = np.linspace(t0, tmax, num_interpolating_points)
 
 sols = [phi0]
 aa = AndersonAcceleration(T, history_size=3, maxiter=50, ridge=1e-5, jit=False)
-sol, state = aa.init(phi0, ti, y0, dx)
+state = aa.init_state(phi0, ti, y0, dx)
+sol = phi0
 sols.append(sol)
 for k in range(aa.maxiter):
   sol, state = aa.update(phi0, state, ti, y0, dx)

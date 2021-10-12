@@ -167,8 +167,8 @@ def main(argv):
 
   # Initialize parameters.
   rng_seq = hk.PRNGSequence(FLAGS.random_seed)
-  init_params = model.init(next(rng_seq), onp.zeros((1, *MNIST_IMAGE_SHAPE)))
-  params, state = solver.init(init_params)
+  params = model.init(next(rng_seq), onp.zeros((1, *MNIST_IMAGE_SHAPE)))
+  state = solver.init_state(params)
 
   # Run training loop.
   for step in range(FLAGS.training_steps):

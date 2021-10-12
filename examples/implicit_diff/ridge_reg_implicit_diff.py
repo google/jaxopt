@@ -78,8 +78,8 @@ def main(argv):
 
   # Initialize solver.
   solver = OptaxSolver(opt=optax.adam(1e-2), fun=outer_objective, has_aux=True)
-  theta_init = 1.0
-  theta, state = solver.init(theta_init)
+  theta = 1.0
+  state = solver.init_state(theta)
   init_w = jnp.zeros(X.shape[1])
 
   # Run outer loop.

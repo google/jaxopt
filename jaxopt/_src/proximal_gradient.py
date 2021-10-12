@@ -41,16 +41,8 @@ class ProxGradState(NamedTuple):
   stepsize: float
   error: float
   aux: Optional[Any] = None
-
-
-class AccelProxGradState(NamedTuple):
-  """Named tuple containing state information for the accelerated case."""
-  iter_num: int
-  y: Any
-  t: float
-  stepsize: float
-  error: float
-  aux: Optional[Any] = None
+  velocity: Optional[Any] = None
+  t: float = 1.0
 
 
 @dataclass
@@ -105,12 +97,12 @@ class ProximalGradient(base.IterativeSolver):
   jit: base.AutoOrBoolean = "auto"
   unroll: base.AutoOrBoolean = "auto"
 
-  def init(self,
-           init_params: Any,
-           hyperparams_prox: Any,
-           *args,
-           **kwargs) -> base.OptStep:
-    """Initialize the parameters and state.
+  def init_state(self,
+                 init_params: Any,
+                 hyperparams_prox: Any,
+                 *args,
+                 **kwargs) -> ProxGradState:
+    """Initialize the solver state.
 
     Args:
       init_params: pytree containing the initial parameters.
@@ -118,22 +110,22 @@ class ProximalGradient(base.IterativeSolver):
       *args: additional positional arguments to be passed to ``fun``.
       **kwargs: additional keyword arguments to be passed to ``fun``.
     Returns:
-      (params, state)
+      state
     """
     del hyperparams_prox, args, kwargs  # Not used.
 
     if self.acceleration:
-      state = AccelProxGradState(iter_num=0,
-                                 y=init_params,
-                                 t=1.0,
-                                 stepsize=1.0,
-                                 error=jnp.inf)
+      state = ProxGradState(iter_num=0,
+                            velocity=init_params,
+                            t=1.0,
+                            stepsize=1.0,
+                            error=jnp.inf)
     else:
       state = ProxGradState(iter_num=0,
                             stepsize=1.0,
                             error=jnp.inf)
 
-    return base.OptStep(params=init_params, state=state)
+    return state
 
   def _error(self, x, x_fun_grad, hyperparams_prox):
     next_x = self._prox_grad(x, x_fun_grad, 1.0, hyperparams_prox)
@@ -208,7 +200,8 @@ class ProximalGradient(base.IterativeSolver):
       return next_x, self.stepsize
 
   def _update(self, x, state, hyperparams_prox, args, kwargs):
-    iter_num, stepsize, _, _ = state
+    iter_num = state.iter_num
+    stepsize = state.stepsize
     (x_fun_val, aux), x_fun_grad = self._value_and_grad_with_aux(x, *args,
                                                                  **kwargs)
     next_x, next_stepsize = self._iter(x, x_fun_val, x_fun_grad, stepsize,
@@ -220,7 +213,10 @@ class ProximalGradient(base.IterativeSolver):
     return base.OptStep(params=next_x, state=next_state)
 
   def _update_accel(self, x, state, hyperparams_prox, args, kwargs):
-    iter_num, y, t, stepsize, _, _ = state
+    iter_num = state.iter_num
+    y = state.velocity
+    t = state.t
+    stepsize = state.stepsize
     y_fun_val, y_fun_grad = self._value_and_grad_fun(y, *args, **kwargs)
     next_x, next_stepsize = self._iter(y, y_fun_val, y_fun_grad, stepsize,
                                        hyperparams_prox, args, kwargs)
@@ -229,9 +225,9 @@ class ProximalGradient(base.IterativeSolver):
     next_y = tree_add_scalar_mul(next_x, (t - 1) / next_t, diff_x)
     next_x_fun_grad, aux = self._grad_with_aux(next_x, *args, **kwargs)
     next_error = self._error(next_x, next_x_fun_grad, hyperparams_prox)
-    next_state = AccelProxGradState(iter_num=iter_num + 1, y=next_y, t=next_t,
-                                    stepsize=next_stepsize, error=next_error,
-                                    aux=aux)
+    next_state = ProxGradState(iter_num=iter_num + 1, velocity=next_y, t=next_t,
+                               stepsize=next_stepsize, error=next_error,
+                               aux=aux)
     return base.OptStep(params=next_x, state=next_state)
 
   def update(self,

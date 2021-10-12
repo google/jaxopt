@@ -130,23 +130,22 @@ def main(argv):
     raise ValueError("Unknown solver: %s" % FLAGS.solver)
 
   rng = jax.random.PRNGKey(0)
-  init_params = CNN().init(rng, jnp.ones([1, 28, 28, 1]))["params"]
+  params = CNN().init(rng, jnp.ones([1, 28, 28, 1]))["params"]
 
   # Run training loop.
 
   # In JAXopt, stochastic solvers can be run either using a manual for loop or
   # using `run_iterator`. We include both here for demonstration purpose.
   if FLAGS.manual_loop:
-    params, state = solver.init(init_params)
+    state = solver.init_state(params)
 
     for _ in range(FLAGS.maxiter):
-      params, state = pre_update(params=params, state=state)
       params, state = solver.update(params=params, state=state,
                                     l2reg=FLAGS.l2reg,
                                     data=next(train_ds))
 
   else:
-    solver.run_iterator(init_params=init_params,
+    solver.run_iterator(init_params=params,
                         iterator=train_ds,
                         l2reg=FLAGS.l2reg)
 
