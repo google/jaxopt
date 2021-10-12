@@ -121,9 +121,11 @@ class MirrorDescentTest(jtu.JaxTestCase):
         n_informative=3,
         n_classes=3,
         random_state=0)
+
     X = preprocessing.Normalizer().fit_transform(X)
     Y = preprocessing.LabelBinarizer().fit_transform(y)
     Y = jnp.asarray(Y)
+
     n_samples, n_classes = Y.shape
     fun = objective.multiclass_linear_svm_dual
     lam = 10.0
@@ -134,9 +136,11 @@ class MirrorDescentTest(jtu.JaxTestCase):
     tol = 1e-3
 
     beta_init = jnp.ones((n_samples, n_classes)) / n_classes
+
     if projection_grad is None:
       projection_grad = MirrorDescent.make_projection_grad(
           kl_projection, kl_mapping_fun)
+
     md = MirrorDescent(
         fun=fun,
         projection_grad=projection_grad,
@@ -146,7 +150,15 @@ class MirrorDescentTest(jtu.JaxTestCase):
         implicit_diff=True)
 
     def mirror_descent_fun_primal(lam):
-      beta_fit, _ = md.run(beta_init, None, lam, data)
+      beta_fit = md.run(beta_init, None, lam, data).params
+      return jnp.dot(X.T, (Y - beta_fit)) / lam
+
+    jac_primal = jax.jacrev(mirror_descent_fun_primal)(lam)
+    jac_num = test_util.multiclass_linear_svm_skl_jac(X, y, lam, eps=1e-3)
+    self.assertArraysAllClose(jac_num, jac_primal, atol=5e-3)
+
+    def mirror_descent_fun_primal(lam):
+      beta_fit = md.run(beta_init, l2reg=lam, data=data).params
       return jnp.dot(X.T, (Y - beta_fit)) / lam
 
     jac_primal = jax.jacrev(mirror_descent_fun_primal)(lam)

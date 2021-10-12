@@ -105,6 +105,13 @@ class ProjectedGradient(base.IterativeSolver):
     """
     return self._pg.update(params, state, hyperparams_proj, *args, **kwargs)
 
+  def run(self,
+          init_params: Any,
+          hyperparams_proj: Optional[Any] = None,
+          *args,
+          **kwargs) -> base.OptStep:
+    return self._pg.run(init_params, hyperparams_proj, *args, **kwargs)
+
   def optimality_fun(self, sol, hyperparams_proj, *args, **kwargs):
     """Optimality function mapping compatible with ``@custom_root``."""
     return self._pg.optimality_fun(sol, hyperparams_proj, *args, **kwargs)

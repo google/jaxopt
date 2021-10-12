@@ -65,7 +65,7 @@ def pytree_replace_elem(tree_batched, index, new_elems):
   """Replace an element of a batch stored in a pytree.
 
   Args:
-    tree: tree of arrays of shape (batch_size, ...) 
+    tree: tree of arrays of shape (batch_size, ...)
     index: an integer between ``0`` and ``batch_size-1``
     values: a pytree with the same structure as ``tree``
       but without the additional batch dimension on each leaf
@@ -198,7 +198,7 @@ class AndersonAcceleration(base.IterativeSolver):
     iter_num = state.iter_num
     anderson_freq = jnp.equal(jnp.mod(iter_num, self.mixing_frequency), 0)
     is_not_init = jnp.greater_equal(iter_num, self.history_size)
-    
+
     def perform_anderson_step(t):
       _, state = t
       extrapolated = anderson_step(state.params_history, state.residuals_history,
@@ -208,7 +208,7 @@ class AndersonAcceleration(base.IterativeSolver):
 
     def use_param(t):
       return t[0]
-    
+
     extrapolated = jax.lax.cond(
       jnp.logical_and(anderson_freq, is_not_init),
       perform_anderson_step,  # extrapolation
@@ -229,7 +229,7 @@ class AndersonAcceleration(base.IterativeSolver):
     params_history, residuals_history, residual_gram, error = ret
 
     next_state = AndersonState(iter_num=state.iter_num+1,
-                               error=error,  
+                               error=error,
                                params_history=params_history,
                                residuals_history=residuals_history,
                                residual_gram=residual_gram)
@@ -243,4 +243,6 @@ class AndersonAcceleration(base.IterativeSolver):
 
   def __post_init__(self):
     if self.history_size < 2:
-      raise ValueError("You must set m >= 2. Otherwise you should use ``FixedPointIteration``.")
+      raise ValueError("history_size should be greater or equal to 2.")
+
+    self.reference_signature = self.fixed_point_fun

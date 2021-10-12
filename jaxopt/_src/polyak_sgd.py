@@ -186,3 +186,5 @@ class PolyakSGD(base.StochasticSolver):
     # Pre-compile useful functions.
     self._value_and_grad_fun = jax.value_and_grad(fun_with_aux, has_aux=True)
     self._grad_fun = jax.grad(fun_with_aux, has_aux=True)
+
+    self.reference_signature = self.fun

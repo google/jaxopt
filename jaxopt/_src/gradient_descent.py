@@ -85,4 +85,4 @@ class GradientDescent(ProximalGradient):
 
   def __post_init__(self):
     super().__post_init__()
-    self.reference_signature_fun = self.fun
+    self.reference_signature = self.fun

@@ -14,6 +14,8 @@
 
 """Implementation of proximal gradient descent in JAX."""
 
+import inspect
+
 from typing import Any
 from typing import Callable
 from typing import NamedTuple
@@ -282,3 +284,13 @@ class ProximalGradient(base.IterativeSolver):
 
     self._value_and_grad_with_aux = jax.value_and_grad(fun_with_aux,
                                                        has_aux=True)
+
+    # Sets up reference signature.
+    fun = getattr(self.fun, "subfun", self.fun)
+    signature = inspect.signature(fun)
+    parameters = list(signature.parameters.values())
+    new_param = inspect.Parameter(name="hyperparams_prox",
+                                  kind=inspect.Parameter.POSITIONAL_OR_KEYWORD)
+    parameters.insert(1, new_param)
+    self.reference_signature = inspect.Signature(parameters)
+

@@ -144,9 +144,13 @@ class OptaxWrapperTest(jtu.JaxTestCase):
     # Make sure the decorator works.
     opt = OptaxSolver(opt=optax.adam(1e-3), fun=fun, maxiter=5,
                                     implicit_diff=True)
-    def wrapper(hyperparams):
-      # Unfortunately positional arguments are required when implicit_diff=True.
+    def wrapper(l2reg):
       return opt.run(W_skl, l2reg, data).params
+    jac_custom = jax.jacrev(wrapper)(l2reg)
+    self.assertArraysAllClose(jac_num, jac_custom, atol=1e-2)
+
+    def wrapper(l2reg):
+      return opt.run(W_skl, l2reg=l2reg, data=data).params
     jac_custom = jax.jacrev(wrapper)(l2reg)
     self.assertArraysAllClose(jac_num, jac_custom, atol=1e-2)
 

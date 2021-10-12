@@ -169,7 +169,7 @@ def _signature_bind_and_match(signature, *args, **kwargs):
 
 
 def _custom_root(solver_fun, optimality_fun, solve, has_aux,
-                 reference_signature_fun=None):
+                 reference_signature=None):
   # When caling through `jax.custom_vjp`, jax attempts to resolve all
   # arguments passed by keyword to positions (this is in order to
   # match against a `nondiff_argnums` parameter that we do not use
@@ -190,10 +190,15 @@ def _custom_root(solver_fun, optimality_fun, solve, has_aux,
   # default, the signature of `optimality_fun`).
 
   solver_fun_signature = inspect.signature(solver_fun)
-  if reference_signature_fun is None:
+
+  if reference_signature is None:
     reference_signature = inspect.signature(optimality_fun)
-  else:
-    reference_signature = inspect.signature(reference_signature_fun)
+
+  elif not isinstance(reference_signature, inspect.Signature):
+    # If is a CompositeLinearFunction, accesses subfun.
+    # Otherwise, assumes a Callable.
+    fun = getattr(reference_signature, "subfun", reference_signature)
+    reference_signature = inspect.signature(fun)
 
   def make_custom_vjp_solver_fun(solver_fun, kwarg_keys):
     def solver_fun_fwd(*flat_args):
@@ -252,7 +257,7 @@ def _custom_root(solver_fun, optimality_fun, solve, has_aux,
 def custom_root(optimality_fun: Callable,
                 has_aux: bool = False,
                 solve: Callable = linear_solve.solve_normal_cg,
-                reference_signature_fun: Optional[Callable] = None):
+                reference_signature: Optional[Callable] = None):
   """Decorator for adding implicit differentiation to a root solver.
 
   Args:
@@ -261,8 +266,8 @@ def custom_root(optimality_fun: Callable,
       solution / root ``sol``.
     has_aux: whether the decorated solver function returns auxiliary data.
     solve: a linear solver of the form ``solve(matvec, b)``.
-    reference_signature_fun: optional function whose signature
-      (i.e. arguments and keyword arguments) is one with which the
+    reference_signature: optional function signature
+      (i.e. arguments and keyword arguments), with which the
       solver and optimality functions are expected to agree. Defaults
       to ``optimality_fun``. It is required that solver and optimality
       functions share the same input signature, but both might be
@@ -280,7 +285,7 @@ def custom_root(optimality_fun: Callable,
 
   def wrapper(solver_fun):
     return _custom_root(solver_fun, optimality_fun, solve, has_aux,
-                        reference_signature_fun)
+                        reference_signature)
 
   return wrapper
 
@@ -288,7 +293,7 @@ def custom_root(optimality_fun: Callable,
 def custom_fixed_point(fixed_point_fun: Callable,
                        has_aux: bool = False,
                        solve: Callable = linear_solve.solve_normal_cg,
-                       reference_signature_fun: Optional[Callable] = None):
+                       reference_signature: Optional[Callable] = None):
   """Decorator for adding implicit differentiation to a fixed point solver.
 
   Args:
@@ -297,7 +302,7 @@ def custom_fixed_point(fixed_point_fun: Callable,
       solution ``sol``.
     has_aux: whether the decorated solver function returns auxiliary data.
     solve: a linear solver of the form ``solve(matvec, b)``.
-    reference_signature_fun: optional function whose signature
+    reference_signature: optional function whose signature
       (i.e. arguments and keyword arguments) is one with which the
       solver and fixed-point functions are expected to agree. Defaults
       to ``fixed_point_fun``. It is required that solver and
@@ -320,7 +325,7 @@ def custom_fixed_point(fixed_point_fun: Callable,
   return custom_root(optimality_fun=optimality_fun,
                      has_aux=has_aux,
                      solve=solve,
-                     reference_signature_fun=reference_signature_fun)
+                     reference_signature=reference_signature)
 
 
 def make_kkt_optimality_fun(obj_fun, eq_fun, ineq_fun=None):
