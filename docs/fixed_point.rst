@@ -4,6 +4,18 @@ Fixed point resolution
 This section is concerned with fixed-point resolution, that is finding
 :math:`x` such that :math:`T(x, \theta) = x`.
 
+Equivalence with root finding
+-----------------------------
+
+If :math:`x` is a fixed point of :math:`T` then :math:`x` is a root
+of :math:`F(x, \theta) = T(x, \theta) - x`.  Reciprocally, if :math:`x` is the
+root of some :math:`F(x, \theta)` then it is also the fixed point of
+:math:`T(x, \theta) = F(x, \theta) + x`.  Hence, root finding and fixed-point
+resolution are two different views of the same problem.
+This section is concerned with algorithms that are more naturally seen
+or are historically associated with fixed point resolution.
+The root finding viewpoint is discussed in :ref:`this section <root_finding>`.
+
 Fixed point iterations
 ----------------------
 
@@ -117,25 +129,13 @@ For implicit differentiation::
   * :ref:`sphx_glr_auto_examples_fixed_point_plot_anderson_accelerate_gd.py`
   * :ref:`sphx_glr_auto_examples_fixed_point_plot_picard_ode.py`
 
-Equivalence with root finding
------------------------------
-
-Note that if :math:`x` is a fixed point of :math:`T` then :math:`x` is a root
-of :math:`F(x, \theta) = T(x, \theta) - x`.  Reciprocally, if :math:`x` is the
-root of some :math:`F(x, \theta)` then it is also the fixed point of
-:math:`T(x, \theta) = F(x, \theta) + x`.  Hence, root finding and fixed-point
-resolution are two different views of the same problem.
-See the :ref:`root finding <root_finding>` section for more details.
-
 Accelerating JAXopt optimizers
 ------------------------------
 
-Many optimizers can benefit from Anderson acceleration.  
-Indeed, the root :math:`x` of a function :math:`F` is the fixed point of iterative root finding algorithms. 
-Similarly the optimum :math:`x` of a function :math:`f` is the fixed point of iterative optimization algorithms.
-
-To spare the user the burden of implementing Anderson acceleration for every solver, we propose the ``AndersonWrapper`` class.  
-It takes an optimizer as input and applies Anderson acceleration to its iterates.
+Anderson acceleration can also be used to accelerate optimization algorithms.
+To spare the user the burden of implementing Anderson acceleration for every
+solver, we propose the ``AndersonWrapper`` class. It directly takes an
+optimizer as input and applies Anderson acceleration to its iterates.
 
 .. autosummary::
   :toctree: _autosummary
