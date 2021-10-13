@@ -74,7 +74,7 @@ class ProjectedGradientTest(jtu.JaxTestCase):
     pg = ProjectedGradient(fun=fun,
                            projection=projection.projection_l2_ball)
 
-    params, state = pg.init(params)
+    state = pg.init_state(params)
 
     for _ in range(10):
       params, state = pg.update(params, state, hyperparams_proj=1.0, data=(X, y))

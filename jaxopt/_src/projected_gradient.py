@@ -61,7 +61,7 @@ class ProjectedGradient(base.IterativeSolver):
   maxls: int = 15
   tol: float = 1e-3
   acceleration: bool = True
-  stepfactor: float = 0.5
+  decrease_factor: float = 0.5
   verbose: int = 0
   implicit_diff: bool = True
   implicit_diff_solve: Optional[Callable] = None
@@ -126,7 +126,7 @@ class ProjectedGradient(base.IterativeSolver):
                                 maxls=self.maxls,
                                 tol=self.tol,
                                 acceleration=self.acceleration,
-                                stepfactor=self.stepfactor,
+                                decrease_factor=self.decrease_factor,
                                 verbose=self.verbose,
                                 implicit_diff=self.implicit_diff,
                                 has_aux=self.has_aux)

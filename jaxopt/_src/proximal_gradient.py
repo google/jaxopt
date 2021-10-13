@@ -64,7 +64,7 @@ class ProximalGradient(base.IterativeSolver):
     maxls: maximum number of iterations to use in the line search.
     tol: tolerance to use.
     acceleration: whether to use acceleration (also known as FISTA) or not.
-    stepfactor: factor by which to reduce the stepsize during line search.
+    decrease_factor: factor by which to reduce the stepsize during line search.
     verbose: whether to print error on every iteration or not.
       Warning: verbose=True will automatically disable jit.
     implicit_diff: whether to enable implicit diff or autodiff of unrolled
@@ -89,7 +89,7 @@ class ProximalGradient(base.IterativeSolver):
   maxls: int = 15
   tol: float = 1e-3
   acceleration: bool = True
-  stepfactor: float = 0.5
+  decrease_factor: float = 0.5
   verbose: int = 0
   implicit_diff: bool = True
   implicit_diff_solve: Optional[Callable] = None
@@ -161,7 +161,7 @@ class ProximalGradient(base.IterativeSolver):
 
     def body_fun(pair):
       stepsize = pair[1]
-      next_stepsize = stepsize * self.stepfactor
+      next_stepsize = stepsize * self.decrease_factor
       next_x = self._prox_grad(x, x_fun_grad, next_stepsize, hyperparams_prox)
       return next_x, next_stepsize
 
@@ -191,7 +191,7 @@ class ProximalGradient(base.IterativeSolver):
       # If step size becomes too small, we restart it to 1.0.
       # Otherwise, we attempt to increase it.
       next_stepsize = jnp.where(next_stepsize <= 1e-6, 1.0,
-                                next_stepsize / self.stepfactor)
+                                next_stepsize / self.decrease_factor)
 
       return next_x, next_stepsize
     else:
