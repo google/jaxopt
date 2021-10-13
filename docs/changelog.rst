@@ -38,6 +38,7 @@ Examples
 - :ref:`sphx_glr_auto_examples_constrained_nmf.py`
 - :ref:`sphx_glr_auto_examples_implicit_diff_plot_dataset_distillation.py`
 - :ref:`sphx_glr_auto_examples_implicit_diff_ridge_reg_implicit_diff.py`
+- :ref:`sphx_glr_auto_examples_implicit_diff_sparse_coding.py`
 - :ref:`sphx_glr_auto_examples_deep_learning_robust_training.py`
 - :ref:`sphx_glr_auto_examples_fixed_point_plot_anderson_accelerate_gd.py`
 - :ref:`sphx_glr_auto_examples_fixed_point_plot_anderson_wrapper_cd.py`
