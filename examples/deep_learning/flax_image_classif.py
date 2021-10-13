@@ -13,8 +13,8 @@
 # limitations under the License.
 
 """
-MNIST example with Flax and JAXopt.
-===================================
+Image classification example with Flax and JAXopt.
+==================================================
 """
 
 from absl import app
@@ -35,6 +35,11 @@ import optax
 import tensorflow_datasets as tfds
 
 
+dataset_names = [
+    "mnist", "kmnist", "emnist", "fashion_mnist", "cifar10", "cifar100"
+]
+
+
 flags.DEFINE_float("l2reg", 1e-4, "L2 regularization.")
 flags.DEFINE_float("learning_rate", 0.001, "Learning rate (used in adam).")
 flags.DEFINE_bool("manual_loop", False, "Whether to use a manual training loop.")
@@ -42,20 +47,28 @@ flags.DEFINE_integer("maxiter", 100, "Maximum number of iterations.")
 flags.DEFINE_float("max_stepsize", 0.1, "Maximum step size (used in polyak-sgd).")
 flags.DEFINE_float("momentum", 0.9, "Momentum strength (used in adam, polyak-sgd).")
 flags.DEFINE_enum("solver", "adam", ["adam", "sgd", "polyak-sgd"], "Solver to use.")
+flags.DEFINE_enum("dataset", "mnist", dataset_names, "Dataset to train on.")
+flags.DEFINE_enum("model", "cnn", ["cnn", "mlp"], "Model architecture.")
 FLAGS = flags.FLAGS
 
 
 def load_dataset(split, *, is_training, batch_size):
-  """Loads the dataset as a generator of batches."""
-  ds = tfds.load("mnist:3.*.*", split=split).cache().repeat()
+  version = 3
+  ds, ds_info = tfds.load(
+      f"{FLAGS.dataset}:{version}.*.*",
+      as_supervised=True,  # remove useless keys
+      split=split,
+      with_info=True)
+  ds = ds.cache().repeat()
   if is_training:
     ds = ds.shuffle(10 * batch_size, seed=0)
   ds = ds.batch(batch_size)
-  return iter(tfds.as_numpy(ds))
+  return iter(tfds.as_numpy(ds)), ds_info
 
 
 class CNN(nn.Module):
   """A simple CNN model."""
+  num_classes: int
 
   @nn.compact
   def __call__(self, x):
@@ -68,38 +81,58 @@ class CNN(nn.Module):
     x = x.reshape((x.shape[0], -1))  # flatten
     x = nn.Dense(features=256)(x)
     x = nn.relu(x)
-    x = nn.Dense(features=10)(x)
+    x = nn.Dense(features=self.num_classes)(x)
     return x
 
 
-net = CNN()
+class MLP(nn.Module):
+  """MLP model."""
+  num_classes: int
 
-
-@jax.jit
-def accuracy(params, data):
-  x = data["image"].astype(jnp.float32) / 255.
-  logits = net.apply({"params": params}, x)
-  return jnp.mean(jnp.argmax(logits, axis=-1) == data["label"])
-
-
-logistic_loss = jax.vmap(loss.multiclass_logistic_loss)
-
-
-def loss_fun(params, l2reg, data):
-  """Compute the loss of the network."""
-  x = data["image"].astype(jnp.float32) / 255.
-  logits = net.apply({"params": params}, x)
-  labels = data["label"]
-  sqnorm = tree_util.tree_l2_norm(params, squared=True)
-  loss_value = jnp.mean(logistic_loss(labels, logits))
-  return loss_value + 0.5 * l2reg * sqnorm
+  @nn.compact
+  def __call__(self, x):
+    x = x.reshape((x.shape[0], -1))  # flatten
+    x = nn.Dense(features=300)(x)
+    x = nn.relu(x)
+    x = nn.Dense(features=100)(x)
+    x = nn.relu(x)
+    x = nn.Dense(features=self.num_classes)(x)
+    return x
 
 
 def main(argv):
   del argv
 
-  train_ds = load_dataset("train", is_training=True, batch_size=1000)
-  test_ds = load_dataset("test", is_training=False, batch_size=10000)
+  train_ds, ds_info = load_dataset("train", is_training=True, batch_size=256)
+  test_ds, _ = load_dataset("test", is_training=False, batch_size=1024)
+  input_shape = (1,) + ds_info.features["image"].shape
+  num_classes = ds_info.features["label"].num_classes
+
+  # Initialize parameters.
+  if FLAGS.model == "cnn":
+    net = CNN(num_classes)
+  else:
+    net = MLP(num_classes)
+  rng = jax.random.PRNGKey(0)
+  params = net.init(rng, jnp.zeros(input_shape))["params"]
+
+  @jax.jit
+  def accuracy(params, data):
+    inputs, labels = data
+    x = inputs.astype(jnp.float32) / 255.
+    logits = net.apply({"params": params}, x)
+    return jnp.mean(jnp.argmax(logits, axis=-1) == labels)
+
+  logistic_loss = jax.vmap(loss.multiclass_logistic_loss)
+
+  def loss_fun(params, l2reg, data):
+    """Compute the loss of the network."""
+    inputs, labels = data
+    x = inputs.astype(jnp.float32) / 255.
+    logits = net.apply({"params": params}, x)
+    sqnorm = tree_util.tree_l2_norm(params, squared=True)
+    loss_value = jnp.mean(logistic_loss(labels, logits))
+    return loss_value + 0.5 * l2reg * sqnorm
 
   def pre_update(params, state, *args, **kwargs):
     if state.iter_num % 10 == 0:
@@ -109,7 +142,7 @@ def main(argv):
       print(f"[Step {state.iter_num}] Test accuracy: {test_accuracy:.3f}.")
     return params, state
 
-  # Initialize solver and parameters.
+  # Initialize solver.
   if FLAGS.solver == "adam":
     solver = OptaxSolver(opt=optax.adam(1e-3), fun=loss_fun,
                          maxiter=FLAGS.maxiter, pre_update=pre_update)
@@ -129,9 +162,6 @@ def main(argv):
   else:
     raise ValueError("Unknown solver: %s" % FLAGS.solver)
 
-  rng = jax.random.PRNGKey(0)
-  params = CNN().init(rng, jnp.ones([1, 28, 28, 1]))["params"]
-
   # Run training loop.
 
   # In JAXopt, stochastic solvers can be run either using a manual for loop or
@@ -145,9 +175,10 @@ def main(argv):
                                     data=next(train_ds))
 
   else:
-    solver.run_iterator(init_params=params,
-                        iterator=train_ds,
-                        l2reg=FLAGS.l2reg)
+    params, state = solver.run_iterator(
+        init_params=params, iterator=train_ds, l2reg=FLAGS.l2reg)
+
+    pre_update(params=params, state=state)
 
 if __name__ == "__main__":
   app.run(main)

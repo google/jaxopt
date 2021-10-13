@@ -14,9 +14,10 @@
 # limitations under the License.
 
 """
-MNIST example with Haiku and JAXopt.
-====================================
+Image classification example with Haiku and JAXopt.
+===================================================
 """
+import functools
 
 from absl import app
 from absl import flags
@@ -36,6 +37,11 @@ import optax
 import tensorflow_datasets as tfds
 
 
+dataset_names = [
+    "mnist", "kmnist", "emnist", "fashion_mnist", "cifar10", "cifar100"
+]
+
+
 flags.DEFINE_float("l2reg", 1e-4, "L2 regularization.")
 flags.DEFINE_float("learning_rate", 0.001, "Learning rate (used in adam).")
 flags.DEFINE_bool("manual_loop", False, "Whether to use a manual training loop.")
@@ -43,56 +49,81 @@ flags.DEFINE_integer("maxiter", 100, "Maximum number of iterations.")
 flags.DEFINE_float("max_stepsize", 0.1, "Maximum step size (used in polyak-sgd).")
 flags.DEFINE_float("momentum", 0.9, "Momentum strength (used in adam, polyak-sgd).")
 flags.DEFINE_enum("solver", "adam", ["adam", "sgd", "polyak-sgd"], "Solver to use.")
+flags.DEFINE_enum("dataset", "mnist", dataset_names, "Dataset to train on.")
+flags.DEFINE_enum("model", "cnn", ["cnn", "mlp"], "Model architecture.")
 FLAGS = flags.FLAGS
 
 
 def load_dataset(split, *, is_training, batch_size):
   """Loads the dataset as a generator of batches."""
-  ds = tfds.load("mnist:3.*.*", split=split).cache().repeat()
+  version = 3
+  ds, ds_info = tfds.load(
+      f"{FLAGS.dataset}:{version}.*.*",
+      as_supervised=True,  # remove useless keys
+      split=split,
+      with_info=True)
+  ds = ds.cache().repeat()
   if is_training:
     ds = ds.shuffle(10 * batch_size, seed=0)
   ds = ds.batch(batch_size)
-  return iter(tfds.as_numpy(ds))
+  return iter(tfds.as_numpy(ds)), ds_info
 
 
-def net_fun(batch):
-  """Standard LeNet-300-100 MLP network."""
-  x = batch["image"].astype(jnp.float32) / 255.
-  mlp = hk.Sequential([
-      hk.Flatten(),
-      hk.Linear(300), jax.nn.relu,
-      hk.Linear(100), jax.nn.relu,
-      hk.Linear(10),
-  ])
-  return mlp(x)
-
-
-net = hk.without_apply_rng(hk.transform(net_fun))
-
-
-@jax.jit
-def accuracy(params, data):
-  predictions = net.apply(params, data)
-  return jnp.mean(jnp.argmax(predictions, axis=-1) == data["label"])
-
-
-logistic_loss = jax.vmap(loss.multiclass_logistic_loss)
-
-
-def loss_fun(params, l2reg, data):
-  """Compute the loss of the network."""
-  logits = net.apply(params, data)
-  labels = data["label"]
-  sqnorm = tree_util.tree_l2_norm(params, squared=True)
-  loss_value = jnp.mean(logistic_loss(labels, logits))
-  return loss_value + 0.5 * l2reg * sqnorm
+def net_fun(batch, num_classes):
+  """Create model."""
+  x = batch[0].astype(jnp.float32) / 255.
+  if FLAGS.model == "cnn":
+    model = hk.Sequential([
+        hk.Conv2D(output_channels=32, kernel_shape=(3, 3), padding="SAME"),
+        jax.nn.relu,
+        hk.AvgPool(window_shape=(2, 2), strides=(2, 2), padding="SAME"),
+        hk.Conv2D(output_channels=64, kernel_shape=(3, 3), padding="SAME"),
+        jax.nn.relu,
+        hk.AvgPool(window_shape=(2, 2), strides=(2, 2), padding="SAME"),
+        hk.Flatten(),
+        hk.Linear(256),
+        jax.nn.relu,
+        hk.Linear(num_classes),
+    ])
+  else:
+    model = hk.Sequential([
+        hk.Flatten(),
+        hk.Linear(300),
+        jax.nn.relu,
+        hk.Linear(100),
+        jax.nn.relu,
+        hk.Linear(num_classes),
+    ])
+  y = model(x)
+  return y
 
 
 def main(argv):
   del argv
 
-  train_ds = load_dataset("train", is_training=True, batch_size=1000)
-  test_ds = load_dataset("test", is_training=False, batch_size=10000)
+  train_ds, ds_info = load_dataset("train", is_training=True, batch_size=256)
+  test_ds, _ = load_dataset("test", is_training=False, batch_size=1024)
+  num_classes = ds_info.features["label"].num_classes
+
+  # Initialize parameters.
+  net = functools.partial(net_fun, num_classes=num_classes)
+  net = hk.without_apply_rng(hk.transform(net))
+
+  logistic_loss = jax.vmap(loss.multiclass_logistic_loss)
+
+  def loss_fun(params, l2reg, data):
+    """Compute the loss of the network."""
+    logits = net.apply(params, data)
+    _, labels = data
+    sqnorm = tree_util.tree_l2_norm(params, squared=True)
+    loss_value = jnp.mean(logistic_loss(labels, logits))
+    return loss_value + 0.5 * l2reg * sqnorm
+
+  @jax.jit
+  def accuracy(params, data):
+    _, labels = data
+    predictions = net.apply(params, data)
+    return jnp.mean(jnp.argmax(predictions, axis=-1) == labels)
 
   def pre_update(params, state, *args, **kwargs):
     if state.iter_num % 10 == 0:
@@ -102,7 +133,7 @@ def main(argv):
       print(f"[Step {state.iter_num}] Test accuracy: {test_accuracy:.3f}.")
     return params, state
 
-  # Initialize solver and parameters.
+  # Initialize solver.
 
   if FLAGS.solver == "adam":
     # Equilent to:
@@ -141,9 +172,10 @@ def main(argv):
                                     data=next(train_ds))
 
   else:
-    solver.run_iterator(init_params=params,
-                        iterator=train_ds,
-                        l2reg=FLAGS.l2reg)
+    params, state = solver.run_iterator(
+        init_params=params, iterator=train_ds, l2reg=FLAGS.l2reg)
+
+  pre_update(params=params, state=state)
 
 
 if __name__ == "__main__":
