@@ -4,6 +4,9 @@ Changelog
 Version 0.1 (initial release)
 -----------------------------
 
+Classes
+~~~~~~~
+
 - :class:`jaxopt.AndersonAcceleration`
 - :class:`jaxopt.AndersonWrapper`
 - :class:`jaxopt.Bisection`
@@ -23,7 +26,8 @@ Version 0.1 (initial release)
 - :class:`jaxopt.ScipyRootFinding`
 - :ref:`Implicit differentiation <implicit_diff>`
 
-Examples:
+Examples
+~~~~~~~~
 
 - :ref:`sphx_glr_auto_examples_constrained_binary_kernel_svm_with_intercept.py`
 - :ref:`sphx_glr_auto_examples_deep_learning_flax_image_classif.py`
@@ -38,3 +42,9 @@ Examples:
 - :ref:`sphx_glr_auto_examples_fixed_point_plot_anderson_accelerate_gd.py`
 - :ref:`sphx_glr_auto_examples_fixed_point_plot_anderson_wrapper_cd.py`
 - :ref:`sphx_glr_auto_examples_fixed_point_plot_picard_ode.py`
+
+Contributors
+~~~~~~~~~~~~
+
+Fabian Pedregosa, Felipe Llinares, Louis Bethune, Marco Cuturi, Mathieu
+Blondel, Peter Hawkins, Quentin Berthet, Robert Gower, Roy Frostig, Ta-Chu Kao

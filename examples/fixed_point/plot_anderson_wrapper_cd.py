@@ -13,7 +13,7 @@
 # limitations under the License.
 
 r"""
-Anderson acceleration of Block coordinate descent.
+Anderson acceleration of block coordinate descent.
 ==================================================
 
 Block coordinate descent converges to a fixed point. It can therefore be

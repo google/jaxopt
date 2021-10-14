@@ -125,7 +125,7 @@ def main(argv):
     predictions = net.apply(params, data)
     return jnp.mean(jnp.argmax(predictions, axis=-1) == labels)
 
-  def pre_update(params, state, *args, **kwargs):
+  def print_accuracy(params, state, *args, **kwargs):
     if state.iter_num % 10 == 0:
       # Periodically evaluate classification accuracy on test set.
       test_accuracy = accuracy(params, next(test_ds))
@@ -141,18 +141,19 @@ def main(argv):
     #                   optax.scale(-FLAGS.learning_rate))
     opt = optax.adam(FLAGS.learning_rate)
     solver = OptaxSolver(opt=opt, fun=loss_fun, maxiter=FLAGS.maxiter,
-                         pre_update=pre_update)
+                         pre_update=print_accuracy)
 
   elif FLAGS.solver == "sgd":
     opt = optax.sgd(FLAGS.learning_rate, FLAGS.momentum)
     solver = OptaxSolver(opt=opt, fun=loss_fun, maxiter=FLAGS.maxiter,
-                         pre_update=pre_update)
+                         pre_update=print_accuracy)
 
 
   elif FLAGS.solver == "polyak-sgd":
     solver = PolyakSGD(fun=loss_fun, maxiter=FLAGS.maxiter,
                        momentum=FLAGS.momentum,
-                       max_stepsize=FLAGS.max_stepsize, pre_update=pre_update)
+                       max_stepsize=FLAGS.max_stepsize,
+                       pre_update=print_accuracy)
 
   else:
     raise ValueError("Unknown solver: %s" % FLAGS.solver)
@@ -175,7 +176,7 @@ def main(argv):
     params, state = solver.run_iterator(
         init_params=params, iterator=train_ds, l2reg=FLAGS.l2reg)
 
-  pre_update(params=params, state=state)
+  print_accuracy(params=params, state=state)
 
 
 if __name__ == "__main__":
