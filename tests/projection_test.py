@@ -300,6 +300,16 @@ class ProjectionTest(jtu.JaxTestCase):
     self.assertEqual(jac_G.shape, (5, 2, 5))
     self.assertEqual(jac_h.shape, (5, 2))
 
+  def test_projection_polyhedron_infeasible(self):
+    def proj(x):
+      A = jnp.array([[1.0, 1.0],[0.0, 1.0],[-1.0, 1.0]])
+      b = jnp.array([1.0, 1.0, -1.0])
+      G = jnp.array([[-1.0, 0.0], [0.0, -1.0]])
+      h = jnp.array([0.0, 0.0])
+      return projection.projection_polyhedron(x, hyperparams=(A, b, G, h))
+
+    self.assertRaises(ValueError, proj, jnp.zeros(2))
+
   def test_projection_box_section(self):
     x = jnp.array([1.2, 3.0, 0.7])
     w = jnp.array([1.0, 2.0, 3.0])
