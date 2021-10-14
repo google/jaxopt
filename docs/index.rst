@@ -16,9 +16,17 @@ Hardware accelerated, batchable and differentiable optimizers in JAX.
 Installation
 ------------
 
-You may install JAXopt from GitHub with::
+To install the latest release of JAXopt, use the following command::
+
+    $ pip install jaxopt
+
+To install the **development** version, use the following command instead::
 
     $ pip install git+https://github.com/google/jaxopt
+
+Alternatively, it can be be installed from sources with the following command::
+
+    $ python setup.py install
 
 .. toctree::
    :maxdepth: 1
