@@ -32,6 +32,12 @@ if os.path.exists(req_path):
   with open(req_path) as fp:
     install_requires = [line.strip() for line in fp]
 
+readme_path = os.path.join(folder, "README.md")
+readme_contents = ""
+if os.path.exists(readme_path):
+  with open(readme_path) as fp:
+    readme_contents = fp.read().strip()
+
 setup(
     name="jaxopt",
     version=__version__,
@@ -39,6 +45,8 @@ setup(
     author="Google LLC",
     author_email="no-reply@google.com",
     url="https://github.com/google/jaxopt",
+    long_description=readme_contents,
+    long_description_content_type="text/markdown",
     license="Apache 2.0",
     packages=find_packages(),
     package_data={},

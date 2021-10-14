@@ -17,8 +17,13 @@ Hardware accelerated, batchable and differentiable optimizers in JAX.
 
 ## Installation<a id="installation"></a>
 
-JAXopt can be installed with pip directly from github, with the following
-command:
+To install the latest release of JAXopt, use the following command:
+
+```bash
+$ pip install jaxopt
+```
+
+To install the **development** version, use the following command instead:
 
 ```bash
 $ pip install git+https://github.com/google/jaxopt
@@ -38,7 +43,9 @@ Our implicit differentiation framework is described in this
 ```
 @article{jaxopt_implicit_diff,
   title={Efficient and Modular Implicit Differentiation},
-  author={Blondel, Mathieu and Berthet, Quentin and Cuturi, Marco and Frostig, Roy and Hoyer, Stephan and Llinares-L{\'o}pez, Felipe and Pedregosa, Fabian and Vert, Jean-Philippe},
+  author={Blondel, Mathieu and Berthet, Quentin and Cuturi, Marco and Frostig, Roy 
+    and Hoyer, Stephan and Llinares-L{\'o}pez, Felipe and Pedregosa, Fabian 
+    and Vert, Jean-Philippe},
   journal={arXiv preprint arXiv:2105.15183},
   year={2021}
 }
