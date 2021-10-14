@@ -82,15 +82,15 @@ def T(phi_cur, ti, y0, dx):
   return phi_next
 
 y0 = 0
-num_interpolating_points = 400
+num_interpolating_points = 100
 t0 = jnp.array(0.)
-tmax = 0.95 * (jnp.pi / 2) # stop before pi/2 to ensure convergence
+tmax = 0.9 * (jnp.pi / 2) # stop before pi/2 to ensure convergence
 dx = (tmax - t0) / (num_interpolating_points-1)
 phi0 = jnp.zeros(num_interpolating_points)
 ti = np.linspace(t0, tmax, num_interpolating_points)
 
 sols = [phi0]
-aa = AndersonAcceleration(T, history_size=3, maxiter=50, ridge=1e-5, jit=False)
+aa = AndersonAcceleration(T, history_size=5, maxiter=50, ridge=1e-5, jit=False)
 state = aa.init_state(phi0, ti, y0, dx)
 sol = phi0
 sols.append(sol)
@@ -102,7 +102,7 @@ print(f'Error of {jnp.linalg.norm(res)} with ground truth tan(t)')
 
 
 # vizualize the first 8 iterates to make the figure easier to read
-sols = sols[:8]
+sols = sols[4:12]
 fig = plt.figure(figsize=(8,4))
 ax = fig.add_subplot(1, 1, 1)
 
