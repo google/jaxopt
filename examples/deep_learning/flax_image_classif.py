@@ -167,7 +167,7 @@ def main(argv):
                        aggressiveness=FLAGS.aggressiveness,
                        momentum=FLAGS.momentum,
                        max_stepsize=FLAGS.max_stepsize,
-                       pre_update=pre_update)
+                       pre_update=print_accuracy)
 
   else:
     raise ValueError("Unknown solver: %s" % FLAGS.solver)
