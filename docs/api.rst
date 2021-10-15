@@ -39,6 +39,7 @@ Stochastic
 .. autosummary::
   :toctree: _autosummary
 
+    jaxopt.ArmijoSGD
     jaxopt.OptaxSolver
     jaxopt.PolyakSGD
 

@@ -50,6 +50,7 @@ Solvers
 .. autosummary::
   :toctree: _autosummary
 
+    jaxopt.ArmijoSGD
     jaxopt.OptaxSolver
     jaxopt.PolyakSGD
 
@@ -73,7 +74,17 @@ Adaptive solvers
 
 Adaptive solvers update the step size at each iteration dynamically.
 An example is :class:`PolyakSGD <jaxopt.PolyakSGD>`, a solver
-which computes step sizes adaptively using function values.
+which computes step sizes adaptively using function values.  
+  
+Another example is :class:`ArmijoSGD <jaxopt.ArmijoSGD>`, a solver
+that uses an Armijo line search.  
+  
+For convergence guarantees to hold, these two algorithms
+require the interpolation hypothesis to hold:  
+the global optimum over :math:`D` must also be a global optimum 
+for any finite sample of :math:`D`.  
+This is typically achieved by overparametrized models (e.g neural networks)
+in classification tasks with separable classes, or on regression tasks without noise.
 
 Run iterator vs. manual loop
 ----------------------------
