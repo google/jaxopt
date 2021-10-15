@@ -14,6 +14,7 @@
 
 """Implementation of proximal gradient descent in JAX."""
 
+from functools import partial
 import inspect
 
 from typing import Any
@@ -33,6 +34,50 @@ from jaxopt._src.tree_util import tree_add_scalar_mul
 from jaxopt._src.tree_util import tree_l2_norm
 from jaxopt._src.tree_util import tree_sub
 from jaxopt._src.tree_util import tree_vdot
+
+
+def fista_line_search(
+  fun,
+  prox_grad,
+  jit,
+  unroll,
+  maxls,
+  x,
+  x_fun_val,
+  x_fun_grad,
+  stepsize,
+  decrease_factor,
+  hyperparams_prox,
+  args,
+  kwargs):
+  # epsilon of current dtype for robust checking of
+  # sufficient decrease condition
+  eps = jnp.finfo(x_fun_val.dtype).eps
+
+  def cond_fun(pair):
+    next_x, stepsize = pair
+    diff_x = tree_sub(next_x, x)
+    sqdist = tree_l2_norm(diff_x, squared=True)
+    # The expression below checks the sufficient decrease condition
+    # f(next_x) < f(x) + dot(grad_f(x), diff_x) + (0.5/stepsize) ||diff_x||^2
+    # where the terms have been reordered for numerical stability.
+    fun_decrease = stepsize * (fun(next_x, *args, **kwargs) - x_fun_val)
+    condition = stepsize * tree_vdot(diff_x, x_fun_grad) + 0.5 * sqdist
+    return fun_decrease > condition + eps
+
+  def body_fun(pair):
+    stepsize = pair[1]
+    next_stepsize = stepsize * decrease_factor
+    next_x = prox_grad(x, x_fun_grad, next_stepsize, hyperparams_prox)
+    return next_x, next_stepsize
+
+  init_x = prox_grad(x, x_fun_grad, stepsize, hyperparams_prox)
+  init_val = (init_x, stepsize)
+
+  return loop.while_loop(cond_fun=cond_fun, body_fun=body_fun,
+                         init_val=init_val, maxiter=maxls,
+                         unroll=unroll, jit=jit)
+
 
 
 class ProxGradState(NamedTuple):
@@ -136,45 +181,6 @@ class ProximalGradient(base.IterativeSolver):
     update = tree_add_scalar_mul(x, -stepsize, x_fun_grad)
     return self.prox(update, hyperparams_prox, stepsize)
 
-  def _ls(self,
-          x,
-          x_fun_val,
-          x_fun_grad,
-          stepsize,
-          hyperparams_prox,
-          args,
-          kwargs):
-    # epsilon of current dtype for robust checking of
-    # sufficient decrease condition
-    eps = jnp.finfo(x_fun_val.dtype).eps
-
-    def cond_fun(pair):
-      next_x, stepsize = pair
-      diff_x = tree_sub(next_x, x)
-      sqdist = tree_l2_norm(diff_x, squared=True)
-      # The expression below checks the sufficient decrease condition
-      # f(next_x) < f(x) + dot(grad_f(x), diff_x) + (0.5/stepsize) ||diff_x||^2
-      # where the terms have been reordered for numerical stability.
-      fun_decrease = stepsize * (self._fun(next_x, *args, **kwargs) - x_fun_val)
-      condition = stepsize * tree_vdot(diff_x, x_fun_grad) + 0.5 * sqdist
-      return fun_decrease > condition + eps
-
-    def body_fun(pair):
-      stepsize = pair[1]
-      next_stepsize = stepsize * self.decrease_factor
-      next_x = self._prox_grad(x, x_fun_grad, next_stepsize, hyperparams_prox)
-      return next_x, next_stepsize
-
-    init_x = self._prox_grad(x, x_fun_grad, stepsize, hyperparams_prox)
-    init_val = (init_x, stepsize)
-
-    # We unroll when implicit diff is disabled or when verbose mode is enabled.
-    unroll = not self.implicit_diff or self.verbose
-
-    return loop.while_loop(cond_fun=cond_fun, body_fun=body_fun,
-                           init_val=init_val, maxiter=self.maxls,
-                           unroll=unroll, jit=True)
-
   def _iter(self,
             x,
             x_fun_val,
@@ -185,8 +191,8 @@ class ProximalGradient(base.IterativeSolver):
             kwargs):
     if self.stepsize <= 0:
       # With line search.
-      next_x, next_stepsize = self._ls(x, x_fun_val, x_fun_grad, stepsize,
-                                       hyperparams_prox, args, kwargs)
+      next_x, next_stepsize = self._fista_line_search(self.maxls, x, x_fun_val, x_fun_grad, stepsize,
+                                                      self.decrease_factor, hyperparams_prox, args, kwargs)
 
       # If step size becomes too small, we restart it to 1.0.
       # Otherwise, we attempt to increase it.
@@ -290,3 +296,23 @@ class ProximalGradient(base.IterativeSolver):
     parameters.insert(1, new_param)
     self.reference_signature = inspect.Signature(parameters)
 
+    # TODO: avoid code repetition
+
+    if self.jit == "auto":
+      # We always jit unless verbose mode is enabled.
+      jit = not self.verbose
+    else:
+      jit = self.jit
+
+    if self.unroll == "auto":
+      # We unroll when implicit diff is disabled or when jit is disabled.
+      unroll = not getattr(self, "implicit_diff", True) or not jit
+    else:
+      unroll = self.unroll
+
+    fista_ls_with_fun= partial(fista_line_search, self._fun, self._prox_grad, jit, unroll)
+    if jit:
+      jitted_fista_ls_with_fun = jax.jit(fista_ls_with_fun, static_argnums=(0,))
+      self._fista_line_search = jitted_fista_ls_with_fun
+    else:
+      self._fista_line_search = fista_ls_with_fun

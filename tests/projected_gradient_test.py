@@ -99,6 +99,21 @@ class ProjectedGradientTest(jtu.JaxTestCase):
     J2 = (solution(0.1 + eps) - solution(0.1 - eps)) / (2 * eps)
     self.assertArraysAllClose(J, J2, atol=1e-2)
 
+  def test_polyhedron_projection(self):
+    def f(x):
+      return x[0]**2-x[1]**2
+
+    A = jnp.array([[0, 0]])
+    b = jnp.array([0])
+    G = jnp.array([[-1, -1], [0, 1], [1, -1], [-1, 0], [0, -1]])
+    h = jnp.array([-1, 1, 1, 0, 0])    
+    hyperparams = (A, b, G, h)
+
+    proj = projection.projection_polyhedron
+    pg = ProjectedGradient(fun=f, projection=proj, jit=False)
+    sol, state = pg.run(init_params=jnp.array([0.,1.]), hyperparams_proj=hyperparams)
+    self.assertLess(state.error, pg.tol)
+
 
 if __name__ == '__main__':
   # Uncomment the line below in order to run in float64.
