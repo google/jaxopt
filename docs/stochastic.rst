@@ -18,6 +18,7 @@ variable (typically a mini-batch).
    * :ref:`sphx_glr_auto_examples_deep_learning_haiku_image_classif.py`
    * :ref:`sphx_glr_auto_examples_deep_learning_flax_image_classif.py`
    * :ref:`sphx_glr_auto_examples_deep_learning_haiku_vae.py`
+   * :ref:`sphx_glr_auto_examples_deep_learning_plot_sgd_solvers.py`
 
 
 Defining an objective function
