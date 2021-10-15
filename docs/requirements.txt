@@ -1,7 +1,6 @@
 matplotlib>=3.3.4
 pandoc>=1.0.2
 sphinx>=3.5.1
-nbsphinx>=0.8.0
 recommonmark>=0.7.1
 sphinx_rtd_theme>=0.5.1
 sphinx_autodoc_typehints>=1.11.1
