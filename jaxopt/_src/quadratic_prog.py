@@ -109,6 +109,10 @@ def _solve_constrained_qp_cvxpy(params_obj, params_eq, params_ineq):
   constraints = [A @ x == b, G @ x <= h]
   pb = cp.Problem(cp.Minimize(objective), constraints)
   pb.solve()
+
+  if pb.status in ["infeasible", "unbounded"]:
+    raise ValueError("The problem is %s." % pb.status)
+
   return (jnp.array(x.value), jnp.array(pb.constraints[0].dual_value),
           jnp.array(pb.constraints[1].dual_value))
 
