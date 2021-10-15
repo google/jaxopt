@@ -129,5 +129,7 @@ class ProjectedGradient(base.IterativeSolver):
                                 decrease_factor=self.decrease_factor,
                                 verbose=self.verbose,
                                 implicit_diff=self.implicit_diff,
-                                has_aux=self.has_aux)
+                                has_aux=self.has_aux,
+                                jit=self.jit,
+                                unroll=self.unroll)
 
