@@ -36,13 +36,13 @@ loss achieved by :math:`x^\star(\theta)` over the training set:
     \underbrace{\min_{\theta \in \mathbb{R}^{k \times p}} f(x^\star(\theta),
     X_{\text{tr}}; y_{\text{tr}})}_{\text{outer problem}} ~\text{ subject to }~
     x^\star(\theta) \in \underbrace{\text{argmin}_{x \in \mathbb{R}^{p \times k}}
-    f(x, \theta; [k]) + \varepsilon \|x\|^2\,}_{\text{inner problem}},
+    f(x, \theta; [k]) + \text{l2reg} \|x\|^2\,}_{\text{inner problem}},
 
 where :math:`f(W, X; y) := \ell(y, XW)`, and :math:`\ell` denotes the multiclass
-logistic regression loss, and :math:`\varepsilon = 10^{-3}` is a regularization
+logistic regression loss, and :math:`\text{l2reg} = 10^{-1}` is a regularization
 parameter that we found improved convergence.
 """
-
+import itertools
 import tensorflow_datasets as tfds
 from matplotlib import pyplot as plt
 
@@ -64,8 +64,6 @@ images_test = jnp.array([ex['image'].ravel() for ex in tfds.as_numpy(mnist_test)
 labels_test = jnp.array([ex['label'] for ex in tfds.as_numpy(mnist_test)])
 
 
-# we now construct the outer loss and perform gradient descent on the outer loss
-
 # these are the parameters of the logistic regression problem (inner problem)
 params = jnp.ones((28 * 28, 10))
 
@@ -83,6 +81,7 @@ l2reg = 1e-1
 inner_loss = objective.l2_multiclass_logreg
 gd = GradientDescent(fun=inner_loss, tol=1e-3, maxiter=500)
 
+# we now construct the outer loss and perform gradient descent on it
 def outer_loss(img):
     # inner_sol is the solution to the inner problem, which computes the
     # model trained on the 10 images from distilled_images. This makes
@@ -95,13 +94,13 @@ def outer_loss(img):
 gd_outer = GradientDescent(fun=outer_loss, tol=1e-3, maxiter=50)
 distilled_images, _ = gd_outer.run(distilled_images)
 
-fig, axarr = plt.subplots(1, 10, figsize=(10 * 10, 1 * 10))
-plt.suptitle(
-    "Distilled images", fontsize=40)
-for i in range(10):
-    img_i = distilled_images[i].reshape((28, 28))
-    axarr[i].imshow(
+fig, axarr = plt.subplots(2, 5, figsize=(10 * 5, 2 * 10))
+plt.suptitle("Distilled images", fontsize=40)
+
+for k, (i, j) in enumerate(itertools.product(range(2), range(5))):
+    img_i = distilled_images[k].reshape((28, 28))
+    axarr[i, j].imshow(
         img_i / jnp.abs(img_i).max(), cmap=plt.cm.gray_r, vmin=-1, vmax=1)
-    axarr[i].set_xticks(())
-    axarr[i].set_yticks(())
+    axarr[i, j].set_xticks(())
+    axarr[i, j].set_yticks(())
 plt.show()

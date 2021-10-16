@@ -14,7 +14,7 @@
 
 """
 Sparse coding.
-=============
+==============
 """
 
 import functools
