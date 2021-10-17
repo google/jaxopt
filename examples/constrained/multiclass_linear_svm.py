@@ -28,9 +28,9 @@ from sklearn import preprocessing
 from sklearn import svm
 
 
-def multiclass_linear_svm_skl(X, y, lam, tol=1e-5):
+def multiclass_linear_svm_skl(X, y, l2reg, tol=1e-5):
   svc = svm.LinearSVC(loss="hinge", dual=True, multi_class="crammer_singer",
-                      C=1.0 / lam, fit_intercept=False, tol=tol).fit(X, y)
+                      C=1.0 / l2reg, fit_intercept=False, tol=tol).fit(X, y)
   return svc.coef_.T
 
 
@@ -49,19 +49,23 @@ def main(argv):
   block_prox = prox.make_prox_from_projection(projection.projection_simplex)
   fun = objective.multiclass_linear_svm_dual
   data = (X, Y)
-  lam = 1000.0
+  l2reg = 1000.0
   beta_init = jnp.ones((n_samples, n_classes)) / n_classes
 
   # Run solver.
   bcd = BlockCoordinateDescent(fun=fun, block_prox=block_prox,
                                maxiter=3500, tol=1e-5)
-  sol = bcd.run(beta_init, hyperparams_prox=None, lam=lam, data=data)
+  sol = bcd.run(beta_init, hyperparams_prox=None, l2reg=l2reg, data=data)
 
   # Compare against sklearn.
-  W_skl = multiclass_linear_svm_skl(X, y, lam)
-  W_fit = jnp.dot(X.T, (Y - sol.params)) / lam
+  W_skl = multiclass_linear_svm_skl(X, y, l2reg)
+  W_fit = jnp.dot(X.T, (Y - sol.params)) / l2reg
 
+  print("scikit-learn solution:")
   print(W_skl)
+  print()
+
+  print("BlockCoordinateDescent solution:")
   print(W_fit)
 
 
