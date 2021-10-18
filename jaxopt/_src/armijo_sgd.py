@@ -302,19 +302,7 @@ class ArmijoSGD(base.StochasticSolver):
                                                        has_aux=True)
     self.reference_signature = self.fun
 
-    #TODO: avoid code repetition
-
-    if self.jit == "auto":
-      # We always jit unless verbose mode is enabled.
-      jit = not self.verbose
-    else:
-      jit = self.jit
-
-    if self.unroll == "auto":
-      # We unroll when implicit diff is disabled or when jit is disabled.
-      unroll = not getattr(self, "implicit_diff", True) or not jit
-    else:
-      unroll = self.unroll
+    jit, unroll = self._get_loop_options()
 
     armijo_with_fun = partial(armijo_line_search, fun_with_aux, unroll, jit)
     if jit:

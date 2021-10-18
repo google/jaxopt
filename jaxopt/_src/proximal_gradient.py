@@ -296,19 +296,7 @@ class ProximalGradient(base.IterativeSolver):
     parameters.insert(1, new_param)
     self.reference_signature = inspect.Signature(parameters)
 
-    # TODO: avoid code repetition
-
-    if self.jit == "auto":
-      # We always jit unless verbose mode is enabled.
-      jit = not self.verbose
-    else:
-      jit = self.jit
-
-    if self.unroll == "auto":
-      # We unroll when implicit diff is disabled or when jit is disabled.
-      unroll = not getattr(self, "implicit_diff", True) or not jit
-    else:
-      unroll = self.unroll
+    jit, unroll = self._get_loop_options()
 
     fista_ls_with_fun= partial(fista_line_search, self._fun, self._prox_grad, jit, unroll)
     if jit:

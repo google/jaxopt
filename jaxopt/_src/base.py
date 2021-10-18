@@ -104,6 +104,23 @@ class IterativeSolver(Solver):
     state = self.init_state(init_params, *args, **kwargs)
     return OptStep(params=init_params, state=state)
 
+  def _get_loop_options(self):
+    """Returns jit and unroll options based on user-provided attributes."""
+
+    if self.jit == "auto":
+      # We always jit unless verbose mode is enabled.
+      jit = not self.verbose
+    else:
+      jit = self.jit
+
+    if self.unroll == "auto":
+      # We unroll when implicit diff is disabled or when jit is disabled.
+      unroll = not getattr(self, "implicit_diff", True) or not jit
+    else:
+      unroll = self.unroll
+    
+    return jit, unroll
+
   def _run(self,
            init_params: Any,
            *args,
@@ -119,18 +136,6 @@ class IterativeSolver(Solver):
       params, state = pair
       return self.update(params, state, *args, **kwargs)
 
-    if self.jit == "auto":
-      # We always jit unless verbose mode is enabled.
-      jit = not self.verbose
-    else:
-      jit = self.jit
-
-    if self.unroll == "auto":
-      # We unroll when implicit diff is disabled or when jit is disabled.
-      unroll = not getattr(self, "implicit_diff", True) or not jit
-    else:
-      unroll = self.unroll
-
     state = self.init_state(init_params, *args, **kwargs)
 
     if self.maxiter == 0:
@@ -140,6 +145,8 @@ class IterativeSolver(Solver):
     # below to have the same output type, which is a requirement of
     # lax.while_loop and lax.scan.
     opt_step = self.update(init_params, state, *args, **kwargs)
+
+    jit, unroll = self._get_loop_options()
 
     return loop.while_loop(cond_fun=cond_fun, body_fun=body_fun,
                            init_val=opt_step, maxiter=self.maxiter - 1, jit=jit,
