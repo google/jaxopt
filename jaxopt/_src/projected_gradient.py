@@ -18,6 +18,7 @@ from typing import Any
 from typing import Callable
 from typing import NamedTuple
 from typing import Optional
+from typing import Union
 
 from dataclasses import dataclass
 
@@ -39,7 +40,8 @@ class ProjectedGradient(base.IterativeSolver):
     projection: projection operator associated with the constraints.
       It should be of the form ``projection(params, hyperparams_proj)``.
       See ``jaxopt.projection`` for examples.
-    stepsize: a stepsize to use (if <= 0, use backtracking line search).
+    stepsize: a stepsize to use (if <= 0, use backtracking line search),
+      or a callable specifying the **positive** stepsize to use at each iteration.
     maxiter: maximum number of projected gradient descent iterations.
     maxls: maximum number of iterations to use in the line search.
     tol: tolerance to use.
@@ -56,7 +58,7 @@ class ProjectedGradient(base.IterativeSolver):
   """
   fun: Callable
   projection: Callable
-  stepsize: float = 0.0
+  stepsize: Union[float, Callable] = 0.0
   maxiter: int = 500
   maxls: int = 15
   tol: float = 1e-3

@@ -21,6 +21,7 @@ from typing import Any
 from typing import Callable
 from typing import NamedTuple
 from typing import Optional
+from typing import Union
 
 from dataclasses import dataclass
 
@@ -104,7 +105,8 @@ class ProximalGradient(base.IterativeSolver):
     prox: proximity operator associated with the function ``non_smooth``.
       It should be of the form ``prox(params, hyperparams_prox, scale=1.0)``.
       See ``jaxopt.prox`` for examples.
-    stepsize: a stepsize to use (if <= 0, use backtracking line search).
+    stepsize: a stepsize to use (if <= 0, use backtracking line search),
+      or a callable specifying the **positive** stepsize to use at each iteration.
     maxiter: maximum number of proximal gradient descent iterations.
     maxls: maximum number of iterations to use in the line search.
     tol: tolerance to use.
@@ -129,7 +131,7 @@ class ProximalGradient(base.IterativeSolver):
   """
   fun: Callable
   prox: Callable = prox_none
-  stepsize: float = 0.0
+  stepsize: Union[float, Callable] = 0.0
   maxiter: int = 500
   maxls: int = 15
   tol: float = 1e-3
@@ -182,6 +184,7 @@ class ProximalGradient(base.IterativeSolver):
     return self.prox(update, hyperparams_prox, stepsize)
 
   def _iter(self,
+            iter_num,
             x,
             x_fun_val,
             x_fun_grad,
@@ -189,28 +192,28 @@ class ProximalGradient(base.IterativeSolver):
             hyperparams_prox,
             args,
             kwargs):
-    if self.stepsize <= 0:
-      # With line search.
+    
+    if not isinstance(self.stepsize, Callable) and self.stepsize <= 0:
+      # with line search
       next_x, next_stepsize = self._fista_line_search(self.maxls, x, x_fun_val, x_fun_grad, stepsize,
                                                       self.decrease_factor, hyperparams_prox, args, kwargs)
-
       # If step size becomes too small, we restart it to 1.0.
       # Otherwise, we attempt to increase it.
       next_stepsize = jnp.where(next_stepsize <= 1e-6, 1.0,
                                 next_stepsize / self.decrease_factor)
-
       return next_x, next_stepsize
     else:
-      # Without line search.
-      next_x = self._prox_grad(x, x_fun_grad, self.stepsize, hyperparams_prox)
-      return next_x, self.stepsize
+      # without line search
+      next_stepsize = self.stepsize(iter_num) if isinstance(self.stepsize, Callable) else self.stepsize
+      next_x = self._prox_grad(x, x_fun_grad, next_stepsize, hyperparams_prox)
+      return next_x, next_stepsize
 
   def _update(self, x, state, hyperparams_prox, args, kwargs):
     iter_num = state.iter_num
     stepsize = state.stepsize
     (x_fun_val, aux), x_fun_grad = self._value_and_grad_with_aux(x, *args,
                                                                  **kwargs)
-    next_x, next_stepsize = self._iter(x, x_fun_val, x_fun_grad, stepsize,
+    next_x, next_stepsize = self._iter(iter_num, x, x_fun_val, x_fun_grad, stepsize,
                                        hyperparams_prox, args, kwargs)
     error = self._error(x, x_fun_grad, hyperparams_prox)
     next_state = ProxGradState(iter_num=iter_num + 1,
@@ -224,7 +227,7 @@ class ProximalGradient(base.IterativeSolver):
     t = state.t
     stepsize = state.stepsize
     y_fun_val, y_fun_grad = self._value_and_grad_fun(y, *args, **kwargs)
-    next_x, next_stepsize = self._iter(y, y_fun_val, y_fun_grad, stepsize,
+    next_x, next_stepsize = self._iter(iter_num, y, y_fun_val, y_fun_grad, stepsize,
                                        hyperparams_prox, args, kwargs)
     next_t = 0.5 * (1 + jnp.sqrt(1 + 4 * t ** 2))
     diff_x = tree_sub(next_x, x)
