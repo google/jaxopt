@@ -128,6 +128,7 @@ For implicit differentiation::
 
   * :ref:`sphx_glr_auto_examples_fixed_point_plot_anderson_accelerate_gd.py`
   * :ref:`sphx_glr_auto_examples_fixed_point_plot_picard_ode.py`
+  * :ref:`sphx_glr_auto_examples_fixed_point_deep_equilibrium_model.py`
 
 Accelerating JAXopt optimizers
 ------------------------------
