@@ -15,12 +15,13 @@
 """
 Deep Equilibrium (DEQ) model in Flax with Anderson acceleration.
 ================================================================
-  
-  
-This implementation is strongly inspired by the Pytorch code snippets in [3].  
-  
+
+This implementation is strongly inspired by the Pytorch code snippets in [3].
+
+A similar model called "implicit deep learning" is also proposed in [2].
+
 In practice BatchNormalization and initialization of weights in convolutions are
-important to ensure convergence. 
+important to ensure convergence.
 
 [1] Bai, S., Kolter, J.Z. and Koltun, V., 2019. Deep Equilibrium Models.
 Advances in Neural Information Processing Systems, 32, pp.690-701.
@@ -136,7 +137,7 @@ class DEQFixedPoint(nn.Module):
         solver = self.fixed_point_solver(fixed_point_fun=block_apply)
         def batch_run(x, block_params):
           return solver.run(x, x, block_params)[0]
-        
+
         return jax.vmap(batch_run, in_axes=(0,None), out_axes=0)(x, block_params)
 
 
@@ -147,7 +148,7 @@ class FullDEQ(nn.Module):
     fixed_point_solver: Callable
 
     @nn.compact
-    def __call__(self, x, train): 
+    def __call__(self, x, train):
         x = nn.Conv(features=self.channels, kernel_size=(3,3), use_bias=True, padding='SAME')(x)
         x = nn.BatchNorm(use_running_average=not train, momentum=0.9, epsilon=1e-5)(x)
         block = ResNetBlock(self.channels, self.channels_bottleneck)
@@ -261,7 +262,7 @@ def main(argv):
         batch_stats = state.aux['batch_stats']
         print_accuracy(params, state)
         params, state = jitted_update(params, state, batch_stats, next(train_ds))
-    
+
 
 if __name__ == "__main__":
     app.run(main)

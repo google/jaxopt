@@ -1,14 +1,27 @@
 Changelog
 =========
 
-Version 0.1.1 (development version)
------------------------------------
-  
-- :class:`jaxopt.ArmijoSGD`
-- :ref:`sphx_glr_auto_examples_fixed_point_deep_equilibrium_model.py`
-- :ref:`sphx_glr_auto_examples_deep_learning_plot_sgd_solvers.py`
-  
-  
+Version 0.1.1
+-------------
+
+New features
+~~~~~~~~~~~~
+
+- Added solver :class:`jaxopt.ArmijoSGD`
+- Added example :ref:`sphx_glr_auto_examples_fixed_point_deep_equilibrium_model.py`
+- Added example :ref:`sphx_glr_auto_examples_deep_learning_plot_sgd_solvers.py`
+
+Bug fixes
+~~~~~~~~~
+
+- Allow non-jittable proximity operators in :class:`jaxopt.ProximalGradient`
+- Raise an exception if a quadratic program is infeasible or unbounded
+
+Contributors
+~~~~~~~~~~~~
+
+Fabian Pedregosa, Louis Bethune, Mathieu Blondel.
+
 Version 0.1 (initial release)
 -----------------------------
 
