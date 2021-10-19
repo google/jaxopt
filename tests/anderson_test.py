@@ -74,11 +74,15 @@ class AndersonAccelerationTest(jtu.JaxTestCase):
     
     Also test the support of pytree in input/output.
     """
-    def f(x):  # Another fixed point exists for x[0] : ~1.11
-      return jnp.sin(x[0]) * (x[0] ** 2), (x[1][0] ** 3, -x[1][1])
+    if jit:
+      def f(x):  # Another fixed point exists for x[0] : ~1.11
+        return jnp.sin(x[0]) * (x[0] ** 2), (x[1][0] ** 3, -x[1][1])
+    else:
+      def f(x):  # Another fixed point exists for x[0] : ~1.11
+        return onp.sin(x[0]) * (x[0] ** 2), (x[1][0] ** 3, -x[1][1])
     x0 = jnp.array([0.6, 0., -0.1]), (jnp.array([[0.7], [0.5]]), jnp.array([[-1., 0., 2., -0.4]])/3)
     tol = 1e-6
-    sol, state = AndersonAcceleration(f, history_size=3, maxiter=100*1000, ridge=1e-6, tol=tol).run(x0)
+    sol, state = AndersonAcceleration(f, history_size=3, maxiter=100*1000, ridge=1e-6, tol=tol, jit=jit).run(x0)
     self.assertLess(state.error, tol)
     sol_norm = tree_l2_norm(sol)
     self.assertLess(sol_norm, tol)
