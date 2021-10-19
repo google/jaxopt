@@ -13,8 +13,8 @@
 # limitations under the License.
 
 r"""
-Comparison of different GD algorithms.
-======================================
+Comparison of different SGD algorithms.
+=======================================
 
 The purpose of this example is to illustrate the power
 of adaptive stepsize algorithms.
@@ -29,9 +29,11 @@ We compare:
 * SGD with constant stepsize
 * RMSprop
 
-The reported ``training loss`` is an estimation of the true training loss based on the current minibatch.  
-  
-This experiment was conducted without momentum, with popular default values for learning rate.  
+The reported ``training loss`` is an estimation of the true training loss based
+on the current minibatch.
+
+This experiment was conducted without momentum, with popular default values for
+learning rate.
 """
 
 from absl import flags
@@ -112,7 +114,7 @@ def main(argv):
   # manual flags parsing to avoid conflicts between absl.app.run and sphinx-gallery
   flags.FLAGS(argv)
   FLAGS = flags.FLAGS
-  
+
   train_ds, ds_info = load_dataset(FLAGS.dataset, FLAGS.batch_size)
 
   # Initialize parameters.
