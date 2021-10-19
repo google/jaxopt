@@ -6,8 +6,9 @@ Version 0.1.1 (development version)
   
 - :class:`jaxopt.ArmijoSGD`
 - :ref:`sphx_glr_auto_examples_fixed_point_deep_equilibrium_model.py`
-
-
+- :ref:`sphx_glr_auto_examples_deep_learning_plot_sgd_solvers.py`
+  
+  
 Version 0.1 (initial release)
 -----------------------------
 
