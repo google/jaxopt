@@ -39,7 +39,7 @@ class DenseLinearOperator:
     return self.matvec(x), self.rmatvec(x, y)
 
   def normal_matvec(self, x):
-    """Computes A^T A x from matvec(x) = A x, where A is square."""
+    """Computes A^T A x from matvec(x) = A x."""
     return self.rmatvec(x, self.matvec(x))
 
   def diag(self):
@@ -75,6 +75,13 @@ class FunctionalLinearOperator:
     return matvec_x, rmatvec_y
 
   def normal_matvec(self, x):
-    """Computes A^T A x from matvec(x) = A x, where A is square."""
+    """Computes A^T A x from matvec(x) = A x."""
     matvec_x, vjp = jax.vjp(self.matvec, x)
     return vjp(matvec_x)[0]
+
+
+def _make_linear_operator(matvec):
+  if matvec is None:
+    return DenseLinearOperator
+  else:
+    return functools.partial(FunctionalLinearOperator, matvec)

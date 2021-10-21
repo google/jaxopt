@@ -19,6 +19,7 @@ from typing import Callable
 from typing import Optional
 from typing import Tuple
 
+import warnings
 from dataclasses import dataclass
 
 import jax
@@ -229,6 +230,14 @@ class QuadraticProgramming(base.Solver):
     return tree_util.tree_l2_norm(pytree)
 
   def __post_init__(self):
+    warnings.warn("Class 'QuadraticProgramming' will be removed in v0.3. "
+                  "Use 'EqualityConstraintsQP' if you want the same behavior as "
+                  "'QuadraticProgramming' for QPs with equality constraints only. "
+                  "Use 'CVXPY_QP' if you want the same behavior as "
+                  "'QuadraticProgramming' for QPs with inequality constraints. "
+                  "Use 'OSQP' if you want a solver that supports pytrees, matvec, jit and vmap "
+                  "for QPs with inequality constraints.", FutureWarning)
+    
     self.optimality_fun = _make_quadratic_prog_optimality_fun(self.matvec_Q,
                                                               self.matvec_A)
 
