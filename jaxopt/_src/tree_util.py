@@ -33,6 +33,7 @@ tree_unflatten = tu.tree_unflatten
 tree_add = functools.partial(tree_multimap, operator.add)
 tree_sub = functools.partial(tree_multimap, operator.sub)
 tree_mul = functools.partial(tree_multimap, operator.mul)
+tree_div = functools.partial(tree_multimap, operator.truediv)
 
 
 def tree_scalar_mul(scalar, tree_x):
@@ -78,6 +79,11 @@ def tree_zeros_like(tree_x):
   return tree_map(jnp.zeros_like, tree_x)
 
 
+def tree_ones_like(tree_x):
+  """Creates an all-ones tree with the same structure as tree_x."""
+  return tree_map(jnp.ones_like, tree_x)
+
+
 def tree_average(trees, weights):
   """Return the linear combination of a list of trees.
 
@@ -103,3 +109,39 @@ def tree_gram(a):
   vmap_left = jax.vmap(tree_vdot, in_axes=(0,None))
   vmap_right = jax.vmap(vmap_left, in_axes=(None,0))
   return vmap_right(a, a)
+
+
+def tree_inf_norm(tree_x):
+  """Computes the infinity norm of a pytree."""
+  leaf_inf_norm = tree_map(lambda x: jnp.max(jnp.abs(x)), tree_x)
+  return tree_reduce(jnp.maximum, leaf_inf_norm)
+
+
+def tree_where(cond, a, b):
+  """jnp.where for trees. Mimic broadcasting semantic of jnp.where."""
+  la = len(tree_leaves(a))
+  lb = len(tree_leaves(b))
+  lc = len(tree_leaves(cond))
+  if la > 1 and lb > 1:
+    return tree_map(lambda c,u,v: jnp.where(c, u, v), cond, a, b)
+  if la > 1 and lb == 1:
+    return tree_map(lambda c,u: jnp.where(c, u, b), cond, a)
+  if la == 1 and lb > 1:
+    return tree_map(lambda c,v: jnp.where(c, a, v), cond, b)
+  return tree_map(lambda c: jnp.where(c, a, b), cond)
+
+
+def tree_negative(tree):
+  """Computes elementwise negation -x."""
+  return tree_scalar_mul(-1, tree)
+
+
+def tree_reciproqual(tree):
+  """Computes elementwise inverse 1/x."""
+  return tree_map(lambda x: jnp.reciprocal(x), tree)
+
+
+def tree_mean(tree):
+  """Mean reduction for trees."""
+  leaves_avg = tree_map(jnp.mean, tree)
+  return tree_sum(leaves_avg) / len(tree_leaves(leaves_avg))
