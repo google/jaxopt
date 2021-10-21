@@ -1,6 +1,14 @@
 Changelog
 =========
 
+Version 0.1.2 (development)
+---------------------------
+
+New features
+~~~~~~~~~~~~
+
+- allow ``Callable`` for ``stepsize`` in :class:`jaxopt.ProximalGradient`, :class:`jaxopt.ProjectedGradient`, :class:`jaxopt.GradientDescent`
+
 Version 0.1.1
 -------------
 

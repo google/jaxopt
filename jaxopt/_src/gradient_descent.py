@@ -17,6 +17,7 @@
 from typing import Any
 from typing import Callable
 from typing import NamedTuple
+from typing import Union
 
 from dataclasses import dataclass
 
@@ -33,7 +34,8 @@ class GradientDescent(ProximalGradient):
     fun: a smooth function of the form ``fun(parameters, *args, **kwargs)``,
       where ``parameters`` are the model parameters w.r.t. which we minimize
       the function and the rest are fixed auxiliary parameters.
-    stepsize: a stepsize to use (if <= 0, use backtracking line search).
+    stepsize: a stepsize to use (if <= 0, use backtracking line search),
+      or a callable specifying the **positive** stepsize to use at each iteration.
     maxiter: maximum number of proximal gradient descent iterations.
     maxls: maximum number of iterations to use in the line search.
     tol: tolerance to use.

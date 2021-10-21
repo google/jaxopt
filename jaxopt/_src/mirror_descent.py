@@ -131,10 +131,14 @@ class MirrorDescent(base.IterativeSolver):
     diff_x = tree_sub(next_x, x)
     return tree_l2_norm(diff_x)
 
+  def _stepsize(self, iter_num):
+    if isinstance(self.stepsize, Callable):
+      return self.stepsize(iter_num)
+    return self.stepsize
+
   def _update(self, x, state, hyperparams_proj, args, kwargs):
     iter_num = state.iter_num
-    stepsize = (self.stepsize(iter_num) if isinstance(self.stepsize, Callable)
-                else self.stepsize)
+    stepsize = self._stepsize(iter_num)
     x_fun_grad, aux = self._grad_with_aux(x, *args, **kwargs)
     next_x = self.projection_grad(x, x_fun_grad, stepsize, hyperparams_proj)
     error = self._error(x, x_fun_grad, hyperparams_proj)

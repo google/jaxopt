@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import functools
-
+from typing import Callable
 from absl.testing import absltest
 from absl.testing import parameterized
 import jax
@@ -28,6 +28,15 @@ from jaxopt._src import test_util
 from jaxopt import tree_util as tu
 from sklearn import datasets
 from sklearn import preprocessing
+
+
+def make_stepsize_schedule(max_stepsize, n_steps, power=1.0) -> Callable:
+  def stepsize_schedule(t: int) -> float:
+    true_fn = lambda t: 1.0
+    false_fn = lambda t: (n_steps / t) ** power
+    decay_factor = jax.lax.cond(t <= n_steps, true_fn, false_fn, t)
+    return decay_factor * max_stepsize
+  return stepsize_schedule
 
 
 class ProximalGradientTest(jtu.JaxTestCase):
@@ -105,6 +114,21 @@ class ProximalGradientTest(jtu.JaxTestCase):
 
     jac_prox = jax.jacrev(wrapper)(lam)
     self.assertArraysAllClose(jac_num, jac_prox, atol=1e-3)
+
+  def test_stepsize_schedule(self):
+    X, y = datasets.make_regression(n_samples=10, n_features=3, random_state=0)
+    fun = objective.least_squares  # fun(params, data)
+    data = (X, y)
+
+    schedule = make_stepsize_schedule(max_stepsize=1., n_steps=80, power=1.0)
+
+    pg = ProximalGradient(fun=fun, stepsize=schedule,
+                          prox=prox.prox_none,
+                          acceleration=False)
+    params = jnp.zeros(X.shape[1])
+    _, state = pg.run(params, hyperparams_prox=None, data=data)
+    self.assertLess(state.error, 1e-3)
+                      
 
 if __name__ == '__main__':
   # Uncomment the line below in order to run in float64.
