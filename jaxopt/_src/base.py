@@ -118,7 +118,7 @@ class IterativeSolver(Solver):
       unroll = not getattr(self, "implicit_diff", True) or not jit
     else:
       unroll = self.unroll
-    
+
     return jit, unroll
 
   def _run(self,
