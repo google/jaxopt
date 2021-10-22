@@ -7,7 +7,10 @@ Version 0.1.2 (development)
 New features
 ~~~~~~~~~~~~
 
-- allow ``Callable`` for ``stepsize`` in :class:`jaxopt.ProximalGradient`, :class:`jaxopt.ProjectedGradient`, :class:`jaxopt.GradientDescent`
+- Allow ``Callable`` for the ``stepsize`` argument in
+  :class:`jaxopt.ProximalGradient`, :class:`jaxopt.ProjectedGradient` and
+  :class:`jaxopt.GradientDescent`.
+- Added example :ref:`sphx_glr_auto_examples_deep_learning_flax_resnet.py`
 
 Version 0.1.1
 -------------
