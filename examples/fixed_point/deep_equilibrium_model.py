@@ -70,12 +70,15 @@ flags.DEFINE_integer("maxiter", 1000, "Maximum number of iterations.")
 flags.DEFINE_enum("dataset", "cifar10", dataset_names, "Dataset to train on.")
 flags.DEFINE_integer("net_width", 1, "Multiplicator of neural network width.")
 flags.DEFINE_integer("evaluation_frequency", 1, "Number of iterations between two evaluation measures.")
+flags.DEFINE_integer("train_batch_size", 256, "Batch size at train time.")
+flags.DEFINE_integer("test_batch_size", 1024, "Batch size at test time.")
+
 
 solvers = ["normal_cg", "gmres", "anderson"]
 flags.DEFINE_enum("backward_solver", "normal_cg", solvers, "Solver of linear sytem in implicit differentiation.")
 
 # anderson acceleration parameters
-flags.DEFINE_enum("forward_solver", "anderson", ["anderson", "fixed_point"], 'Whether to use Anderson acceleration.')
+flags.DEFINE_enum("forward_solver", "anderson", ["anderson", "fixed_point"], "Whether to use Anderson acceleration.")
 flags.DEFINE_integer("forward_maxiter", 20, "Number of fixed point iterations.")
 flags.DEFINE_float("forward_tol", 1e-2, "Tolerance in fixed point iterations.")
 flags.DEFINE_integer("anderson_history_size", 5, "Size of history in Anderson updates.")
@@ -95,7 +98,7 @@ def load_dataset(split, *, is_training, batch_size):
 
 
 class ResNetBlock(nn.Module):
-  """Fixed Point ResNet block."""
+  """ResNet block."""
   channels: int
   channels_bottleneck: int
   num_groups: int = 8
@@ -105,14 +108,16 @@ class ResNetBlock(nn.Module):
 
   @nn.compact
   def __call__(self, z, x):
+    # Note that stddev=0.01 is important to avoid divergence.
+    # Empirically it ensures that fixed point iterations converge.
     y = z
     y = nn.Conv(features=self.channels_bottleneck, kernel_size=self.kernel_size,
-                padding='SAME', use_bias=self.use_bias,
+                padding="SAME", use_bias=self.use_bias,
                 kernel_init=jax.nn.initializers.normal(stddev=0.01))(y)
     y = self.act(y)
     y = nn.GroupNorm(num_groups=self.num_groups)(y)
     y = nn.Conv(features=self.channels, kernel_size=self.kernel_size,
-                padding='SAME', use_bias=self.use_bias,
+                padding="SAME", use_bias=self.use_bias,
                 kernel_init=jax.nn.initializers.normal(stddev=0.01))(y)
     y = y + x
     y = nn.GroupNorm(num_groups=self.num_groups)(y)
@@ -123,12 +128,13 @@ class ResNetBlock(nn.Module):
 
 
 class DEQFixedPoint(nn.Module):
+    """Batched computation of the fixed point of a Module ``block`` using ``fixed_point_solver``."""
     block: Any  # nn.Module
     fixed_point_solver: Any  # jaxopt.AndersonAcceleration or jaxopt.FixedPointIteration
 
     @nn.compact
     def __call__(self, x):
-        init = lambda rng, x: self.block.init(rng, x[0], x[0])
+        init = lambda rng, x: self.block.init(rng, x[0], x[0])  # shape of a single example
         block_params = self.param("block_params", init, x)
 
         def block_apply(z, x, block_params):
@@ -138,10 +144,12 @@ class DEQFixedPoint(nn.Module):
         def batch_run(x, block_params):
           return solver.run(x, x, block_params)[0]
 
+        # We use vmap since we want to compute the fixed point separately for each example in the batch.
         return jax.vmap(batch_run, in_axes=(0,None), out_axes=0)(x, block_params)
 
 
 class FullDEQ(nn.Module):
+    """DEQ model."""
     num_classes: int
     channels: int
     channels_bottleneck: int
@@ -149,19 +157,21 @@ class FullDEQ(nn.Module):
 
     @nn.compact
     def __call__(self, x, train):
-        x = nn.Conv(features=self.channels, kernel_size=(3,3), use_bias=True, padding='SAME')(x)
+        # Note that x is a batch of examples:
+        # because of BatchNorm we cannot define the forward pass in the network for a single example.
+        x = nn.Conv(features=self.channels, kernel_size=(3,3), use_bias=True, padding="SAME")(x)
         x = nn.BatchNorm(use_running_average=not train, momentum=0.9, epsilon=1e-5)(x)
         block = ResNetBlock(self.channels, self.channels_bottleneck)
         deq_fixed_point = DEQFixedPoint(block, self.fixed_point_solver)
         x = deq_fixed_point(x)
         x = nn.BatchNorm(use_running_average=not train, momentum=0.9, epsilon=1e-5)(x)
-        x = nn.avg_pool(x, window_shape=(8,8), padding='SAME')
+        x = nn.avg_pool(x, window_shape=(8,8), padding="SAME")
         x = x.reshape(x.shape[:-3]+(-1,))  # flatten
         x = nn.Dense(self.num_classes)(x)
         return x
 
 # For completeness, we also allow Anderson acceleration for solving
-# the implicit differentiation linear system occurring in the backward pass
+# the implicit differentiation linear system occurring in the backward pass.
 def solve_linear_system_fixed_point(matvec, v):
   """Solve linear system matvec(u) = v.
 
@@ -181,7 +191,7 @@ def solve_linear_system_fixed_point(matvec, v):
 def main(argv):
     del argv
 
-    # Solver used for implicit differentiation (backward pass)
+    # Solver used for implicit differentiation (backward pass).
     if FLAGS.backward_solver == "normal_cg":
         implicit_solver = partial(solve_normal_cg, tol=1e-2, maxiter=20)
     elif FLAGS.backward_solver == "gmres":
@@ -189,7 +199,7 @@ def main(argv):
     elif FLAGS.backward_solver == "anderson":
         implicit_solver = solve_linear_system_fixed_point
 
-    # Solver used for fixed point resolution (forward pass)
+    # Solver used for fixed point resolution (forward pass).
     if FLAGS.forward_solver == "anderson":
         fixed_point_solver = partial(AndersonAcceleration,
                                      history_size=FLAGS.anderson_history_size, ridge=FLAGS.anderson_ridge,
@@ -200,68 +210,78 @@ def main(argv):
                                      maxiter=FLAGS.forward_maxiter, tol=FLAGS.forward_tol,
                                      implicit_diff=True, implicit_diff_solve=implicit_solver)
 
-    train_ds, ds_info = load_dataset("train", is_training=True, batch_size=256)
-    test_ds, _ = load_dataset("test", is_training=False, batch_size=1024)
+    train_ds, ds_info = load_dataset("train", is_training=True, batch_size=FLAGS.train_batch_size)
+    test_ds, _ = load_dataset("test", is_training=False, batch_size=FLAGS.test_batch_size)
     input_shape = (1,) + ds_info.features["image"].shape
     num_classes = ds_info.features["label"].num_classes
 
     net = FullDEQ(num_classes, 3*8*FLAGS.net_width, 4*8*FLAGS.net_width, fixed_point_solver)
 
-    @jax.jit
-    def accuracy(all_vars, data):
-        images, labels = data
+    def predict(all_params, images, train):
+        """Forward pass in the network on the images."""
         x = images.astype(jnp.float32) / 255.
-        logits = net.apply(all_vars, x, train=False)
-        return jnp.mean(jnp.argmax(logits, axis=-1) == labels)
-
+        mutable = ["batch_stats"] if train else False
+        return net.apply(all_params, x, train=train, mutable=mutable)
 
     logistic_loss = jax.vmap(loss.multiclass_logistic_loss)
-    def loss_fun(params, batch_stats, l2reg, data, train):
+    def loss_from_logits(logits, labels, l2reg):
         """Compute the loss of the network."""
-        images, labels = data
-        x = images.astype(jnp.float32) / 255.
-        if train:
-            all_params = {'params':params, 'batch_stats':batch_stats}
-            logits, batch_stats = net.apply(all_params, x, True, mutable=['batch_stats'])
-        else:
-            logits = net.apply({'params':params, 'batch_stats':batch_stats}, x, False)
         sqnorm = tree_l2_norm(params, squared=True)
         loss_value = jnp.mean(logistic_loss(labels, logits))
         loss = loss_value + 0.5 * l2reg * sqnorm
-        if train:
-            return loss, batch_stats
         return loss
 
+    @jax.jit
+    def test_loss_and_accuracy(params, batch_stats, l2reg, data):
+        """Return testing loss and accuracy."""
+        all_vars = {"params":params, "batch_stats":batch_stats}
+        images, labels = data
+        logits = predict(all_vars, images, train=False)
+        accuracy = jnp.mean(jnp.argmax(logits, axis=-1) == labels)
+        loss = loss_from_logits(logits, labels, l2reg)
+        return loss, accuracy
 
-    def print_accuracy(params, state):
+    @jax.jit
+    def train_loss_fun(params, batch_stats, l2reg, data):
+        """Return training loss and new network state (i.e batch_stats)."""
+        all_vars = {"params":params, "batch_stats":batch_stats}
+        images, labels = data
+        logits, net_state = predict(all_vars, images, train=True)
+        loss = loss_from_logits(logits, labels, l2reg)
+        return loss, net_state
+
+
+    def print_accuracy(params, batch_stats, state):
         if state.iter_num % FLAGS.evaluation_frequency == 0:
             # Periodically evaluate classification accuracy on test set.
-            all_vars = {'params':params, 'batch_stats':state.aux['batch_stats']}
-            test_accuracy = accuracy(all_vars, next(test_ds))
-            test_accuracy = jax.device_get(test_accuracy)
-            print(f"[Step {state.iter_num}] Test accuracy: {test_accuracy:.3f}.")
+            data = next(test_ds)
+            loss, accuracy = test_loss_and_accuracy(params, batch_stats, FLAGS.l2reg, data)
+            print(f"[Step {state.iter_num}]\tTest accuracy: {accuracy:.3f}\tTest loss: {loss:.3f}.")
         return params, state
 
 
     # Initialize solver and parameters.
-    solver = OptaxSolver(opt=optax.adam(FLAGS.learning_rate), fun=loss_fun,
+    solver = OptaxSolver(opt=optax.adam(FLAGS.learning_rate), fun=train_loss_fun,
                          maxiter=FLAGS.maxiter, pre_update=None,
                          has_aux=True)
+
     rng = jax.random.PRNGKey(0)
     init_vars = net.init(rng, jnp.ones(input_shape), train=True)
-    params = init_vars['params']
-
+    params = init_vars["params"]
+    batch_stats = init_vars["batch_stats"]
     state = solver.init_state(params)
-    state = state._replace(aux=init_vars)
 
     @jax.jit
     def jitted_update(params, state, batch_stats, data):
-        return solver.update(params, state, batch_stats, FLAGS.l2reg, data, True)
+        return solver.update(params, state, batch_stats, FLAGS.l2reg, data)
 
-    for _ in range(solver.maxiter):
-        batch_stats = state.aux['batch_stats']
-        print_accuracy(params, state)
+    for iternum in range(solver.maxiter):
+        print_accuracy(params, batch_stats, state)
         params, state = jitted_update(params, state, batch_stats, next(train_ds))
+        net_state = state.aux
+        batch_stats = net_state["batch_stats"]
+
+    print_accuracy(params, batch_stats, state)
 
 
 if __name__ == "__main__":
