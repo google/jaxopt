@@ -33,7 +33,6 @@ References
 """
 
 import tensorflow_datasets as tfds
-from matplotlib import pyplot as plt
 
 import jax
 from jax import numpy as jnp
@@ -41,20 +40,43 @@ from jax import numpy as jnp
 from flax import linen as nn
 import optax
 
-from jaxopt import GradientDescent
+from tqdm import tqdm
+
 from jaxopt import loss
 from jaxopt import OptaxSolver
 from jaxopt import tree_util
 
 
-def load_dataset(split, *, is_training, batch_size):
-  """Loads the dataset as a generator of batches."""
-  ds = tfds.load("mnist:3.*.*", split=split).cache().repeat()
-  if is_training:
-    ds = ds.shuffle(10 * batch_size, seed=0)
-  ds = ds.batch(batch_size)
-  return iter(tfds.as_numpy(ds))
+def normalize(images):
+  """Normalizes images to lie in (0,1) and be float32."""
+  return jnp.asarray(images).astype(jnp.float32) / 255.
 
+def load_datasets():
+  """Load MNIST train and test datasets into memory.
+  
+  Taken from https://github.com/google/flax/blob/main/examples/mnist/train.py.
+  """
+  ds_builder = tfds.builder('mnist')
+  ds_builder.download_and_prepare()
+  train_ds = tfds.as_numpy(ds_builder.as_dataset(split='train', batch_size=-1))
+  test_ds = tfds.as_numpy(ds_builder.as_dataset(split='test', batch_size=-1))
+  train_ds['image'], test_ds['image'] = map(normalize, (train_ds['image'], test_ds['image']))
+  return train_ds, test_ds
+
+
+def shuffle(ds, rng, batch_size):
+  """Shuffles training data set, and returns batched examples."""
+  n_train = len(ds['image'])
+  rng_perm, rng = jax.random.split(rng)
+
+  steps_per_epoch = n_train // batch_size
+
+  permutation = jax.random.permutation(rng_perm, n_train)
+  permutation = permutation[:steps_per_epoch * batch_size]  # skip incomplete batch
+  permutation = permutation.reshape((steps_per_epoch, batch_size))
+
+  images, labels = train_ds['image'][permutation, ...], train_ds['label'][permutation, ...]
+  return zip(images, labels)
 
 class CNN(nn.Module):
   """A simple CNN model."""
@@ -67,7 +89,7 @@ class CNN(nn.Module):
     x = nn.Conv(features=64, kernel_size=(3, 3))(x)
     x = nn.relu(x)
     x = nn.avg_pool(x, window_shape=(2, 2), strides=(2, 2))
-    x = x.reshape((x.shape[0], -1))  # flatten
+    x = x.flatten()
     x = nn.Dense(features=256)(x)
     x = nn.relu(x)
     x = nn.Dense(features=10)(x)
@@ -86,6 +108,7 @@ def accuracy(params, images, labels):
 logistic_loss = jax.vmap(loss.multiclass_logistic_loss)
 
 
+@jax.jit
 def loss_fun(params, l2_regul, images, labels):
   """Compute the loss of the network."""
   logits = net.apply({"params": params}, images)
@@ -93,8 +116,29 @@ def loss_fun(params, l2_regul, images, labels):
   loss_value = jnp.mean(logistic_loss(labels, logits))
   return loss_value + 0.5 * l2_regul * sqnorm
 
-train_ds = load_dataset("train", is_training=True, batch_size=128)
-test_ds = load_dataset("test", is_training=False, batch_size=1000)
+
+@jax.jit
+def fsgm_attack(image, label, params, l2_regul, epsilon=0.1):
+  """Fast sign-gradient attack on the L-infinity ball with radius epsilon.
+
+  Parameters:
+    image: array-like, input data for the CNN
+    label: integer, class label corresponding to image
+    params: tree, parameters of the model to attack
+    l2_regul: float, L2 regularization scale in the loss function
+    epsilon: float, radius of the L-infinity ball.
+
+  Returns:
+    perturbed_image: Adversarial image on the boundary of the L-infinity ball of radius
+      epsilon and centered at image.
+  """
+  # compute gradient of the loss wrt to the image
+  grad = jax.grad(loss_fun, argnums=2)(params, l2_regul, image, label)
+  adv_image = image + epsilon * jnp.sign(grad)
+  # clip the image to ensure pixels are between 0 and 1
+  return jnp.clip(adv_image, 0, 1)
+
+train_ds, test_ds = load_datasets()
 
 # Initialize solver and parameters.
 solver = OptaxSolver(opt=optax.adam(1e-3), fun=loss_fun)
@@ -102,46 +146,39 @@ rng = jax.random.PRNGKey(0)
 params = CNN().init(rng, jnp.ones([1, 28, 28, 1]))["params"]
 l2_regul = 1e-4
 
+n_epochs = 10
+batch_size = 128
+
 state = solver.init_state(params)
+rng = jax.random.PRNGKey(0)
 
-for it in range(200):
-  data = next(train_ds)
-  images = data['image'].astype(jnp.float32) / 255
-  labels = data['label']
+for epoch in range(n_epochs):
+  # Training
+  pbar = tqdm(shuffle(train_ds, rng, batch_size=128),
+              total=train_ds['label'].size // 128)
+  acc = []
+  adv_acc = []
+  for images, labels in pbar:
 
-  def fsgm_attack(image, label, epsilon=0.1):
-    """Fast sign-gradient attack on the L-infinity ball with radius epsilon.
+    images_adv = fsgm_attack(images, labels, params, l2_regul=0.)
 
-    Parameters:
-      image: array-like, input data for the CNN
-      label: integer, class label corresponding to image
-      epsilon: float, radius of the L-infinity ball.
+    # train on adversarial images
+    params, state = solver.update(params=params, state=state,
+                              l2_regul=l2_regul, images=images_adv, labels=labels)
+    acc.append(accuracy(params, images, labels))
+    adv_acc.append(accuracy(params, images_adv, labels))
 
-    Returns:
-      perturbed_image: Adversarial image on the boundary of the L-infinity ball of radius
-        epsilon and centered at image.
-    """
-    # comppute gradient of the loss wrt to the image
-    grad = jax.grad(loss_fun, argnums=2)(params, l2_regul, image, label)
-    adv_image = image + epsilon * jnp.sign(grad)
-    # clip the image to ensure pixels are between 0 and 1
-    return jnp.clip(adv_image, 0, 1)
+  print(f"Train accuracy: {jnp.mean(jnp.array(acc)): .3f}")
+  print(f"Train adversarial accuracy: {jnp.mean(jnp.array(adv_acc)): .3f}")
 
-  images_adv = fsgm_attack(images, labels)
+  # Testing
+  images_test = test_ds['image']
+  labels_test = test_ds['label']
 
-  # run adversarial training
-  params, state = solver.update(params=params, state=state,
-                             l2_regul=l2_regul, images=images_adv, labels=labels)
+  test_accuracy = accuracy(params, images_test, labels_test)
+  print("Test accuracy:", test_accuracy)
 
-  if it % 10 == 0:
-    data_test = next(test_ds)
-    images_test = data_test['image'].astype(jnp.float32) / 255
-    labels_test = data_test['label']
-
-    test_accuracy = accuracy(params, images_test, labels_test)
-    print("Accuracy on test set", test_accuracy)
-
-    images_adv_test = fsgm_attack(images_test, labels_test)
-    test_adversarial_accuracy = accuracy(params, images_adv_test, labels_test)
-    print("Accuracy on adversarial images", test_adversarial_accuracy)
-    print()
+  images_adv_test = fsgm_attack(images_test, labels_test, params, l2_regul=0.)
+  test_adversarial_accuracy = accuracy(params, images_adv_test, labels_test)
+  print("Test adversarial accuracy:", test_adversarial_accuracy)
+  print()
