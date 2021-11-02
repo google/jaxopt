@@ -33,7 +33,6 @@ References
 """
 
 import tensorflow_datasets as tfds
-from matplotlib import pyplot as plt
 
 import jax
 from jax import numpy as jnp
@@ -43,15 +42,14 @@ import optax
 
 from tqdm import tqdm
 
-from jaxopt import GradientDescent
 from jaxopt import loss
 from jaxopt import OptaxSolver
 from jaxopt import tree_util
 
 
-def normalize_example(image, label):
-  """Normalizes images to lie in (0,1) and float32."""
-  return jnp.asarray(image).astype(jnp.float32) / 255., label
+def normalize(images):
+  """Normalizes images to lie in (0,1) and be float32."""
+  return jnp.asarray(images).astype(jnp.float32) / 255.
 
 def load_datasets():
   """Load MNIST train and test datasets into memory.
@@ -62,8 +60,7 @@ def load_datasets():
   ds_builder.download_and_prepare()
   train_ds = tfds.as_numpy(ds_builder.as_dataset(split='train', batch_size=-1))
   test_ds = tfds.as_numpy(ds_builder.as_dataset(split='test', batch_size=-1))
-  train_ds['image'] = jnp.float32(train_ds['image']) / 255.
-  test_ds['image'] = jnp.float32(test_ds['image']) / 255.
+  train_ds['image'], test_ds['image'] = map(normalize, (train_ds['image'], test_ds['image']))
   return train_ds, test_ds
 
 
@@ -92,7 +89,7 @@ class CNN(nn.Module):
     x = nn.Conv(features=64, kernel_size=(3, 3))(x)
     x = nn.relu(x)
     x = nn.avg_pool(x, window_shape=(2, 2), strides=(2, 2))
-    x = x.reshape((x.shape[0], -1))  # flatten
+    x = x.flatten()
     x = nn.Dense(features=256)(x)
     x = nn.relu(x)
     x = nn.Dense(features=10)(x)
@@ -135,7 +132,7 @@ def fsgm_attack(image, label, params, l2_regul, epsilon=0.1):
     perturbed_image: Adversarial image on the boundary of the L-infinity ball of radius
       epsilon and centered at image.
   """
-  # comppute gradient of the loss wrt to the image
+  # compute gradient of the loss wrt to the image
   grad = jax.grad(loss_fun, argnums=2)(params, l2_regul, image, label)
   adv_image = image + epsilon * jnp.sign(grad)
   # clip the image to ensure pixels are between 0 and 1
@@ -157,15 +154,15 @@ rng = jax.random.PRNGKey(0)
 
 for epoch in range(n_epochs):
   # Training
-
-  pbar = tqdm(enumerate(shuffle(train_ds, rng, batch_size=128)))
+  pbar = tqdm(shuffle(train_ds, rng, batch_size=128),
+              total=train_ds['label'].size // 128)
   acc = []
   adv_acc = []
-  for it, (images, labels) in pbar:
+  for images, labels in pbar:
 
     images_adv = fsgm_attack(images, labels, params, l2_regul=0.)
 
-    # run adversarial training
+    # train on adversarial images
     params, state = solver.update(params=params, state=state,
                               l2_regul=l2_regul, images=images_adv, labels=labels)
     acc.append(accuracy(params, images, labels))
@@ -179,9 +176,9 @@ for epoch in range(n_epochs):
   labels_test = test_ds['label']
 
   test_accuracy = accuracy(params, images_test, labels_test)
-  print("Accuracy on test set", test_accuracy)
+  print("Test accuracy:", test_accuracy)
 
   images_adv_test = fsgm_attack(images_test, labels_test, params, l2_regul=0.)
   test_adversarial_accuracy = accuracy(params, images_adv_test, labels_test)
-  print("Accuracy on adversarial images", test_adversarial_accuracy)
+  print("Test adversarial accuracy:", test_adversarial_accuracy)
   print()
