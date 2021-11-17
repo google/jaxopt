@@ -108,7 +108,7 @@ def _solve_constrained_qp_cvxpy(params_obj, params_eq, params_ineq):
   objective = 0.5 * cp.quad_form(x, Q) + c.T @ x
   constraints = [A @ x == b, G @ x <= h]
   pb = cp.Problem(cp.Minimize(objective), constraints)
-  pb.solve()
+  pb.solve(solver='OSQP')
 
   if pb.status in ["infeasible", "unbounded"]:
     raise ValueError("The problem is %s." % pb.status)
