@@ -138,7 +138,7 @@ def main(argv):
   # Initialize solver.
 
   if FLAGS.solver == "adam":
-    # Equilent to:
+    # Equivalent to:
     # opt = optax.chain(optax.scale_by_adam(b1=0.9, b2=0.999, eps=1e-8),
     #                   optax.scale(-FLAGS.learning_rate))
     opt = optax.adam(FLAGS.learning_rate)
