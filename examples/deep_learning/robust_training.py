@@ -75,7 +75,7 @@ def shuffle(ds, rng, batch_size):
   permutation = permutation[:steps_per_epoch * batch_size]  # skip incomplete batch
   permutation = permutation.reshape((steps_per_epoch, batch_size))
 
-  images, labels = train_ds['image'][permutation, ...], train_ds['label'][permutation, ...]
+  images, labels = ds['image'][permutation, ...], ds['label'][permutation, ...]
   return zip(images, labels)
 
 class CNN(nn.Module):
@@ -89,7 +89,7 @@ class CNN(nn.Module):
     x = nn.Conv(features=64, kernel_size=(3, 3))(x)
     x = nn.relu(x)
     x = nn.avg_pool(x, window_shape=(2, 2), strides=(2, 2))
-    x = x.flatten()
+    x = jnp.reshape(x, (x.shape[0], -1))
     x = nn.Dense(features=256)(x)
     x = nn.relu(x)
     x = nn.Dense(features=10)(x)
