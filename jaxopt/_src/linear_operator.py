@@ -39,7 +39,7 @@ class DenseLinearOperator:
     return self.matvec(x), self.rmatvec(x, y)
 
   def normal_matvec(self, x):
-    """Computes A^T A x from matvec(x) = A x."""
+    """Computes A^T A x."""
     return self.rmatvec(x, self.matvec(x))
 
   def diag(self):
