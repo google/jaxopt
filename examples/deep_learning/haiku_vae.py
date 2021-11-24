@@ -29,6 +29,7 @@ from jaxopt import OptaxSolver
 import numpy as onp
 import optax
 import tensorflow_datasets as tfds
+import tensorflow as tf
 
 MNIST_IMAGE_SHAPE = (28, 28, 1)
 
@@ -157,6 +158,10 @@ def loss_fun(params, rng_key, batch):
 
 def main(argv):
   del argv
+
+  # Hide any GPUs from TensorFlow. Otherwise TF might reserve memory and make
+  # it unavailable to JAX.
+  tf.config.experimental.set_visible_devices([], 'GPU')
 
   # Initialize solver.
   solver = OptaxSolver(opt=optax.adam(FLAGS.learning_rate), fun=loss_fun)

@@ -58,6 +58,7 @@ import numpy as onp
 import matplotlib.pyplot as plt
 from scipy.signal import convolve
 import tensorflow_datasets as tfds
+import tensorflow as tf
 
 
 dataset_names = [
@@ -114,6 +115,10 @@ def main(argv):
   # manual flags parsing to avoid conflicts between absl.app.run and sphinx-gallery
   flags.FLAGS(argv)
   FLAGS = flags.FLAGS
+
+  # Hide any GPUs from TensorFlow. Otherwise TF might reserve memory and make
+  # it unavailable to JAX.
+  tf.config.experimental.set_visible_devices([], 'GPU')
 
   train_ds, ds_info = load_dataset(FLAGS.dataset, FLAGS.batch_size)
 

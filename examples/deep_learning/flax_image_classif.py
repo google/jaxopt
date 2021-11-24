@@ -34,6 +34,7 @@ from jaxopt import tree_util
 import optax
 
 import tensorflow_datasets as tfds
+import tensorflow as tf
 
 
 dataset_names = [
@@ -104,6 +105,10 @@ class MLP(nn.Module):
 
 def main(argv):
   del argv
+
+  # Hide any GPUs from TensorFlow. Otherwise TF might reserve memory and make
+  # it unavailable to JAX.
+  tf.config.experimental.set_visible_devices([], 'GPU')
 
   train_ds, ds_info = load_dataset("train", is_training=True, batch_size=256)
   test_ds, _ = load_dataset("test", is_training=False, batch_size=1024)

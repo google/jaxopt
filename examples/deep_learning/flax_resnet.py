@@ -35,6 +35,7 @@ from jaxopt import tree_util
 import optax
 
 import tensorflow_datasets as tfds
+import tensorflow as tf
 
 
 dataset_names = [
@@ -138,6 +139,10 @@ ResNet34 = partial(ResNet, stage_sizes=[3, 4, 6, 3], block_cls=ResNetBlock)
 
 def main(argv):
   del argv
+
+  # Hide any GPUs from TensorFlow. Otherwise TF might reserve memory and make
+  # it unavailable to JAX.
+  tf.config.experimental.set_visible_devices([], 'GPU')
 
   train_ds, ds_info = load_dataset("train", is_training=True,
                                    batch_size=FLAGS.train_batch_size)
