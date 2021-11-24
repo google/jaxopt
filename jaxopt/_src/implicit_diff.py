@@ -352,25 +352,25 @@ def make_kkt_optimality_fun(obj_fun, eq_fun, ineq_fun=None):
   def optimality_fun(params, params_obj, params_eq, params_ineq):
     primal_var, eq_dual_var, ineq_dual_var = params
 
-    # Same pytree structure as the primal variable.
-    _, eq_vjp_fun = jax.vjp(eq_fun, primal_var, params_eq)
-    stationarity = tree_add(grad_fun(primal_var, params_obj),
-                            eq_vjp_fun(eq_dual_var)[0])
+    stationarity = grad_fun(primal_var, params_obj)
 
-    # Size: number of equality constraints.
-    primal_feasability = eq_fun(primal_var, params_eq)
+    if eq_dual_var is not None:
+      _, eq_vjp_fun = jax.vjp(eq_fun, primal_var, params_eq)
+      stationarity = tree_add(stationarity, eq_vjp_fun(eq_dual_var)[0])
+      # Size: number of equality constraints.
+      primal_feasability = eq_fun(primal_var, params_eq)
+    else:
+      primal_feasability = None
 
-    if params_ineq is not None:
+    if ineq_dual_var is not None:
       _, ineq_vjp_fun = jax.vjp(ineq_fun, primal_var, params_ineq)
-
       stationarity = tree_add(stationarity, ineq_vjp_fun(ineq_dual_var)[0])
-
       # Size: number of inequality constraints.
       comp_slackness = tree_mul(ineq_fun(primal_var, params_ineq),
                                 ineq_dual_var)
-
-      return base.KKTSolution(stationarity, primal_feasability, comp_slackness)
     else:
-      return base.KKTSolution(stationarity, primal_feasability)
+      comp_slackness = None
+
+    return base.KKTSolution(stationarity, primal_feasability, comp_slackness)
 
   return optimality_fun

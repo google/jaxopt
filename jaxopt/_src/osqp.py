@@ -21,7 +21,6 @@ from typing import Optional
 from typing import Tuple
 
 from dataclasses import dataclass
-from functools import partial
 
 import jax
 import jax.nn as nn
@@ -30,20 +29,19 @@ from jax.tree_util import tree_reduce
 
 from jaxopt._src import base
 from jaxopt._src import implicit_diff as idf
-from jaxopt._src.tree_util import tree_add, tree_sub, tree_mul, tree_div 
-from jaxopt._src.tree_util import tree_scalar_mul, tree_add_scalar_mul, tree_mean
+from jaxopt._src.tree_util import tree_add, tree_sub, tree_mul
+from jaxopt._src.tree_util import tree_scalar_mul, tree_add_scalar_mul
 from jaxopt._src.tree_util import tree_map, tree_vdot, tree_l2_norm, tree_inf_norm
 from jaxopt._src.tree_util import tree_ones_like, tree_zeros_like, tree_where
-from jaxopt._src.tree_util import tree_reciproqual, tree_negative
-from jaxopt._src.linear_operator import DenseLinearOperator, FunctionalLinearOperator
+from jaxopt._src.tree_util import tree_negative
+from jaxopt._src.linear_operator import DenseLinearOperator, _make_linear_operator
 from jaxopt._src.linear_solve import solve_cg
-from jaxopt._src.quadratic_prog import _matvec_and_rmatvec
 from jaxopt.projection import projection_box
 from jaxopt import loop
 
 
 def _make_osqp_optimality_fun(matvec_Q, matvec_A):
-  """Makes the optimality function for OSQP.
+  """Makes the optimality function for BoxOSQP.
 
   Returns:
     optimality_fun(params, params_obj, params_eq, params_ineq) where
@@ -87,13 +85,13 @@ def _make_osqp_optimality_fun(matvec_Q, matvec_A):
   return idf.make_kkt_optimality_fun(obj_fun, eq_fun, ineq_fun)
 
 
-class OSQPState(NamedTuple):
+class BoxOSQPState(NamedTuple):
   """Named tuple containing state information.
 
   Attributes:
     iter_num: iteration number
     error: error used as stop criterion, deduced from residuals
-    status: integer, one of ``[OSQP.UNSOLVED, OSQP.SOLVED, OSQP.PRIMAL_INFEASIBLE, OSQP.DUAL_INFEASIBLE]``.
+    status: integer, one of ``[BoxOSQP.UNSOLVED, BoxOSQP.SOLVED, BoxOSQP.PRIMAL_INFEASIBLE, BoxOSQP.DUAL_INFEASIBLE]``.
     primal_residuals: residuals of constraints of primal problem
     dual_residuals: residuals of constraints of dual problem
     rho_bar: current stepsize.
@@ -110,16 +108,9 @@ class OSQPState(NamedTuple):
   params_precond: Any
 
 
-def _make_linear_operator(matvec):
-  if matvec is None:
-    return DenseLinearOperator
-  else:
-    return partial(FunctionalLinearOperator, matvec)
-
-
 @dataclass
-class OSQPPreconditioner(ABC):
-  """Abstract class for OSQP preconditioners.
+class BoxOSQPPreconditioner(ABC):
+  """Abstract class for BoxOSQP preconditioners.
   
   Must approximate the inverse of Mx = Px + sigma x + rho_bar A^T A x.
   
@@ -146,7 +137,7 @@ class OSQPPreconditioner(ABC):
     pass
 
 
-class NoPreconditioner(OSQPPreconditioner):
+class NoPreconditioner(BoxOSQPPreconditioner):
   """Dummy class for no-preconditioning."""
 
   def __call__(self, params_precond, x):
@@ -159,7 +150,7 @@ class NoPreconditioner(OSQPPreconditioner):
     return None
 
 
-class JacobiPreconditioner(OSQPPreconditioner):
+class JacobiPreconditioner(BoxOSQPPreconditioner):
   """Jacobi preconditioner (only available for pytree of matrices)."""
 
   def __call__(self, params_precond, x):
@@ -179,10 +170,11 @@ class JacobiPreconditioner(OSQPPreconditioner):
 
 
 @dataclass
-class OSQP(base.IterativeSolver):
+class BoxOSQP(base.IterativeSolver):
   """Operator Splitting Solver for Quadratic Programs.
 
   Jax implementation of the celebrated GPU-OSQP [1,3] based on ADMM.
+  Suppports jit, vmap, matvecs and pytrees.
 
   It solves convex problems of the form::
   
@@ -203,7 +195,8 @@ class OSQP(base.IterativeSolver):
     \mathcal{L} = \frac{1}{2}x^TQx + c^Tx + y^T(Ax-z) + mu^T (z-u) + phi^T (l-z)
 
   Primal variables: x, z
-  Dual variables  : y, mu, phi
+  Dual Eq   variables: y
+  Dual Ineq variables: mu, phi
 
   ADMM computes y at each iteration. mu and phi can be deduced from z and y.
   Defaults values for hyper-parameters come from: https://github.com/osqp/osqp/blob/master/include/constants.h
@@ -214,7 +207,7 @@ class OSQP(base.IterativeSolver):
     matvec_A: (optional) a Callable matvec_A(params_A, x).
       By default, matvec_A(A, x) = tree_dot(A, x), where tree pytree A = params_A matches x structure.
     check_primal_dual_infeasability: if True populates the ``status`` field of ``state``
-      with one of ``OSQP.PRIMAL_INFEASIBLE``, ``OSQP.DUAL_INFEASIBLE``.
+      with one of ``BoxOSQP.PRIMAL_INFEASIBLE``, ``BoxOSQP.DUAL_INFEASIBLE``.
       If False it improves speed but does not check feasability.
       If the problem is primal or dual infeasible, and jit=False, then a ValueError exception is raised.
       If "auto", it will be True if jit=False and False otherwise. (default: "auto")
@@ -300,14 +293,14 @@ class OSQP(base.IterativeSolver):
     params_precond = self._eq_qp_preconditioner_impl.init_params_precond(params_obj[0], params_obj[1],
                                                                          self.sigma, self.rho_start)
 
-    return OSQPState(iter_num=0,
-                     error=jnp.inf,
-                     status=OSQP.UNSOLVED,
-                     primal_residuals=primal_residuals,
-                     dual_residuals=dual_residuals,
-                     rho_bar=self.rho_start,
-                     eq_qp_last_sol=x,
-                     params_precond=params_precond)
+    return BoxOSQPState(iter_num=0,
+                        error=jnp.inf,
+                        status=BoxOSQP.UNSOLVED,
+                        primal_residuals=primal_residuals,
+                        dual_residuals=dual_residuals,
+                        rho_bar=self.rho_start,
+                        eq_qp_last_sol=x,
+                        params_precond=params_precond)
   
   def init_params(self, init_x, params_obj, params_eq, params_ineq):
     """Return defaults params for initialization."""
@@ -319,7 +312,7 @@ class OSQP(base.IterativeSolver):
 
   def _get_full_KKT_solution(primal, y):
     """Returns all dual variables of the problem."""
-    # Unfortunately OSQP algorithm only returns y as dual variable,
+    # Unfortunately BoxOSQP algorithm only returns y as dual variable,
     # mu and phi are missing, but can be recovered:
     #
     # We distinguish between l=u and l<u.
@@ -328,8 +321,8 @@ class OSQP(base.IterativeSolver):
     #   2. l = z < u: phi=-y mu=0 (and y<0)
     #   3. l < z = u: phi=0  mu=y (and y>0)
     #  this can be simplified with mu=relu(y) and phi=relu(-y)
-    # If l=u then y=mu-phi then we have one degree of liberty to chose mu and phi
-    # by symmetry with previous case we may chose mu=relu(y) and phi=relu(-y).
+    # If l=u then y=mu-phi, so we have one degree of liberty to chose mu and phi.
+    # By symmetry with previous case we may chose mu=relu(y) and phi=relu(-y).
     is_pos = tree_map(lambda yi: yi >= 0, y)
     mu  = tree_where(is_pos, y, 0)  # derivative = 1 in y = 0
     phi = tree_map(lambda yi: jax.nn.relu(-yi), y)  # derivative = 0 in y = 0
@@ -361,7 +354,7 @@ class OSQP(base.IterativeSolver):
     primal_res_inf = tree_inf_norm(primal_residuals)
     dual_res_inf = tree_inf_norm(dual_residuals)
     criterion = jnp.maximum(primal_res_inf, dual_res_inf)
-    status = jnp.where(criterion <= self.tol, OSQP.SOLVED, OSQP.UNSOLVED)
+    status = jnp.where(criterion <= self.tol, BoxOSQP.SOLVED, BoxOSQP.UNSOLVED)
     return criterion, status
 
   def _check_dual_infeasability(self, error, status, delta_x, Q, c, Adx, l, u):
@@ -383,7 +376,7 @@ class OSQP(base.IterativeSolver):
 
     # infeasible dual implies either infeasible primal, either unbounded primal.
     return jax.lax.cond(certif_dual_infeasible,
-      lambda _: (0., OSQP.DUAL_INFEASIBLE),  # dual unfeasible; exit the main loop with error = 0.
+      lambda _: (0., BoxOSQP.DUAL_INFEASIBLE),  # dual unfeasible; exit the main loop with error = 0.
       lambda _: (error, status),
       operand=None)
 
@@ -402,7 +395,7 @@ class OSQP(base.IterativeSolver):
 
     return jax.lax.cond(certif_primal_infeasible,
       lambda _: (0.,  # primal unfeasible; exit the main loop with error = 0.
-                OSQP.PRIMAL_INFEASIBLE),  
+                BoxOSQP.PRIMAL_INFEASIBLE),  
       lambda _: (error, status),  # primal feasible or unbounded (depends of dual feasability).
       operand=None)  
 
@@ -413,13 +406,6 @@ class OSQP(base.IterativeSolver):
 
     error, status = self._check_dual_infeasability(error, status, delta_x, Q, c, Adx, l, u)
     error, status = self._check_primal_infeasability(error, status, delta_y, ATdy, l, u)
-
-    jit, _ = self._get_loop_options()
-    if not jit:
-      if status == OSQP.PRIMAL_INFEASIBLE:
-        raise ValueError(f"Primal infeasible. Certificate: y(t+1)-y(t) = {delta_y}.")
-      if status == OSQP.DUAL_INFEASIBLE:
-        raise ValueError(f"Dual infeasible. Certificate: x(t+1)-x(t) = {delta_x}.")
 
     return error, status
 
@@ -504,7 +490,7 @@ class OSQP(base.IterativeSolver):
     return (x_next, z_next), y_next, x_bar
 
   def update(self, params, state, params_obj, params_eq, params_ineq):
-    """Perform OSQP step."""
+    """Perform BoxOSQP step."""
     # The original problem on variables (x,z) is split into TWO problems
     # with variables (x, z) and (x_bar, z_bar)
     # 
@@ -540,14 +526,21 @@ class OSQP(base.IterativeSolver):
       lambda _: self._update_stepsize(rho_bar, state.params_precond, primal_residuals, dual_residuals, Q, c, A, x, y),
       lambda _: (rho_bar, state.params_precond), operand=None)
 
-    sol = OSQP._get_full_KKT_solution(primal=(x, z), y=y)
+    sol = BoxOSQP._get_full_KKT_solution(primal=(x, z), y=y)
 
     error, status = jax.lax.cond(jnp.mod(state.iter_num, self.termination_check_frequency) == 0,
       lambda _: self._check_termination_conditions(primal_residuals, dual_residuals,
                                                    params, sol, Q, c, A, l, u),
       lambda s: (state.error, s), operand=(state.status))
 
-    state = OSQPState(iter_num=state.iter_num+1,
+    jit, _ = self._get_loop_options()
+    if not jit:
+      if status == BoxOSQP.PRIMAL_INFEASIBLE:
+        raise ValueError(f"Primal infeasible.")
+      if status == BoxOSQP.DUAL_INFEASIBLE:
+        raise ValueError(f"Dual infeasible.")
+
+    state = BoxOSQPState(iter_num=state.iter_num+1,
                       error=error,
                       status=status,
                       primal_residuals=primal_residuals,
@@ -557,7 +550,11 @@ class OSQP(base.IterativeSolver):
                       params_precond=params_precond)
     return base.OptStep(params=sol, state=state)
 
-  def run(self, init_params, params_obj, params_eq, params_ineq) -> base.OptStep:
+  def run(self,
+          init_params: Any,
+          params_obj: Tuple[Optional[Any], Any],  # Q can be params_Q or None
+          params_eq: Optional[Any],  # A can be params_A or None
+          params_ineq: Tuple[Optional[Any], Any]) -> base.OptStep:
     """Return primal/dual variables.
     
     Args:
@@ -599,3 +596,229 @@ class OSQP(base.IterativeSolver):
       self.check_primal_dual_infeasability = not jit
 
     self.optimality_fun = _make_osqp_optimality_fun(self.matvec_Q, self.matvec_A)
+
+
+class OSQP_to_BoxOSQP:
+  """Converts a QP in OSQP / CvxpyQP form to a QP in BoxOSQP form."""
+
+  @staticmethod
+  def transform_matvec(matvec_Q, matvec_A, matvec_G):
+    """Return matvec_Q, matvec_A of BoxOSQP from the matvec_Q, matvec_A, matvec_G of OSQP."""
+    if matvec_A is None and matvec_G is None:
+      matvec_A_box = None
+    else:
+      def matvec_A_box(params, x):
+        params_A, params_G = params
+        ret = []
+        if matvec_A is not None:  # matvec_A.
+          ret.append(matvec_A(params_A, x))
+        elif params_A is not None:  # no matvec and pytree of matrices available.
+          ret.append(DenseLinearOperator(params_A)(x))
+        if matvec_G is not None:  # matvec_G.
+          ret.append(matvec_G(params_G, x))
+        elif params_G is not None:  # no matvec and pytree of matrices available.
+          ret.append(DenseLinearOperator(params_G)(x))
+        return ret  # list of length 1 or 2.
+
+    return matvec_Q, matvec_A_box
+
+  @staticmethod
+  def _pytree_concat(pytrees, axis=0):
+    """Concatenate leaves of a list of pytrees."""
+    def concat(*leaves):
+      return jnp.concatenate(leaves, axis=axis)
+    return tree_map(concat, *pytrees)
+  
+  @staticmethod
+  def transform(matvec_A_box: Optional[Callable],
+                params: Optional[jnp.ndarray],
+                params_obj: Tuple[Optional[Any], Any],
+                params_eq: Optional[Tuple[Any,Any]],
+                params_ineq: Optional[Tuple[Any,Any]]):
+    """Transform parameters of run()"""
+    # The huge volume of code is explained by the diversity of situations encountered:
+    #
+    # params can be None.
+    # One of params_eq or params_ineq can be None.
+    # One of A, G can be represented as a matvec, which forces matvec_A_box to be not None.
+    # Note that params_A (resp. params_G) can be None if matvec_A (resp. matvec_G) is not None.
+    # when matvec_A is None and matvec_G is None we MUST concatenate rows of constraints to ensure
+    # that pre-conditioning is still possible.
+
+    # TODO(lbethune): does it make sense to support QP without constraints ?
+    # should the user switch to another solver instead ? (e.g order 2 methods... )
+    if params_eq is None and params_ineq is None:
+      raise ValueError("At least one of params_eq or params_ineq must be not None.")
+    
+    eq_size, ineq_neg_size = None, None
+    A, G = None, None
+    l, u, y = [], [], []
+    
+    if params_eq is not None:
+      A, b = params_eq
+      l.append(b)
+      u.append(b)
+      eq_size = tree_map(lambda bi: bi.shape[0], b)
+      if params is not None:
+        y.append(params.dual_eq)
+
+    if params_ineq is not None:
+      G, h = params_ineq
+      l.append(tree_scalar_mul(-jnp.inf, tree_ones_like(h)))
+      u.append(h)
+      ineq_neg_size = tree_map(lambda hi: -hi.shape[0], h)
+      if params is not None:
+        y.append(params.dual_ineq)
+
+    A_box = [A, G]
+    if matvec_A_box is None:
+      # no matvec: construct a pytree of matrices containing all constraints: A_box = [A; G].
+      if None in A_box:
+        A_box.remove(None)
+      A_box = OSQP_to_BoxOSQP._pytree_concat(A_box)
+      l = OSQP_to_BoxOSQP._pytree_concat(l)
+      u = OSQP_to_BoxOSQP._pytree_concat(u)
+
+    if params is not None:
+      x = params.primal
+      z = _make_linear_operator(matvec_A_box)(A_box)(x)
+      if matvec_A_box is None:
+        y = OSQP_to_BoxOSQP._pytree_concat(y)
+      params = BoxOSQP._get_full_KKT_solution((x, z), y)
+
+    hyper_params = dict(params_obj=params_obj, params_eq=A_box, params_ineq=(l, u))
+    return params, hyper_params, (eq_size, ineq_neg_size)
+
+  @staticmethod
+  def _pytree_split(pytree, slice_sizes):
+    """Extract slices of size slice_sizes in each leaf of pytree."""
+    if slice_sizes is None:
+      return None
+    _signed_slice = lambda leaf,slice: (leaf[:slice] if slice > 0 else leaf[slice:])
+    return tree_map(_signed_slice, pytree, slice_sizes)
+  
+  @staticmethod
+  def inverse_transform(matvec_A_box, eq_ineq_size, kkt_solution):
+    """Inverse transform the KKT solution returned by run()"""
+    box_primal, box_dual_eq, (box_mu, _) = kkt_solution
+    x, _ = box_primal
+
+    eq_size, ineq_neg_size = eq_ineq_size
+    if matvec_A_box is not None:
+      box_dual_eq = box_dual_eq[0]  # if Ax=b is defined, it is here.
+      box_mu = box_mu[-1]  # if Gx <= h is defined, it is here.
+    # else: dual_variable is a pytree of (concatenated) tensors
+
+    # The sign of ineq_neg_size removes the need of detecting if it is a concatenation or singleton.
+    dual_eq = OSQP_to_BoxOSQP._pytree_split(box_dual_eq, eq_size)
+    dual_ineq = OSQP_to_BoxOSQP._pytree_split(box_mu, ineq_neg_size)
+
+    return base.KKTSolution(x, dual_eq, dual_ineq)
+
+
+class OSQPState(NamedTuple):
+  iter_num: int
+  error: float
+  status: int
+
+
+class OSQP(base.Solver):
+  """OSQP solver for general quadratic programming.
+
+  Meant as drop-in replacement for CvxpyQP.
+  No support for matvec and pytrees. Supports jit and vmap.
+  
+  CvxpyQP is more precised and should be preferred on CPU.
+  OSQP can be quicker than CvxpyQP when GPU/TPU are available.
+
+  The objective function is::
+
+    0.5 * x^T Q x + c^T x subject to Gx <= h, Ax = b.
+
+  The attributes must be given as keyword arguments.
+
+  Attributes:
+    check_primal_dual_infeasability: if True populates the ``status`` field of ``state``
+      with one of ``BoxOSQP.PRIMAL_INFEASIBLE``, ``BoxOSQP.DUAL_INFEASIBLE``. (default: True)
+      If False it improves speed but does not check feasability.
+      If True and the problem is primal or dual infeasible, then a ValueError exception is raised.
+    sigma: ridge regularization parameter in linear system.
+    momentum: relaxation parameter (default: 1.6), must belong to the open interval (0,2).
+      momentum=1 => no relaxation.
+      momentum<1 => under-relaxation.
+      momentum>1 => over-relaxation.
+      Boyd [2, p21] suggests chosing momentum in [1.5, 1.8].
+    eq_qp_preconditioner: (optional) a string specifying the pre-conditioner (default: 'jacobi').
+    eq_qp_solve_tol: tolerance for linear solver in equality constrained QP. (default: 1e-5)
+      High tolerance may speedup each ADMM step but will slow down overall convergence. 
+    eq_qp_solve_maxiter: number of iterations for linear solver in equality constrained QP. (default: None)
+      Low maxiter will speedup each ADMM step but may slow down overall convergence.
+    rho_start: initial learning rate. (default: 1e-1)
+    rho_min: minimum learning rate. (default: 1e-6)
+    rho_max: maximum learning rate. (default: 1e6)
+    stepsize_updates_frequency: frequency of stepsize updates. (default: 10).
+      One every `stepsize_updates_frequency` updates computes a new stepsize.
+    primal_infeasible_tol: relative tolerance for primal infeasability detection. (default: 1e-4)
+    dual_infeasible_tol: relative tolerance for dual infeasability detection. (default: 1e-4)
+    maxiter: maximum number of iterations.  (default: 4000)
+    tol: absolute tolerance for stoping criterion (default: 1e-3).
+    termination_check_frequency: frequency of termination check. (default: 5).
+      One every `termination_check_frequency` the error is computed.
+    implicit_diff_solve: the linear system solver to use.
+  """
+  matvec_A_box: Optional[Callable] = None
+
+  def __init__(self, *,
+    matvec_Q: Optional[Callable] = None,
+    matvec_A: Optional[Callable] = None,
+    matvec_G: Optional[Callable] = None,
+    **kwargs):
+    if 'eq_qp_preconditioner' not in kwargs and matvec_A is None and matvec_G is None:
+      kwargs['eq_qp_preconditioner'] = 'jacobi'  # available for matrices.
+
+    matvec_Q, matvec_A_box = OSQP_to_BoxOSQP.transform_matvec(matvec_Q, matvec_A, matvec_G)
+    self.matvec_A_box = matvec_A_box
+
+    self._box_osqp = BoxOSQP(matvec_Q=matvec_Q, matvec_A=matvec_A_box,
+                             implicit_diff=True, **kwargs)
+  
+  def run(self,
+          init_params: Any,
+          params_obj: Tuple[Optional[Any], Any],
+          params_eq: Optional[Tuple[Any,Any]],
+          params_ineq: Optional[Tuple[Any,Any]]) -> base.OptStep:
+    """Runs the quadratic programming solver in Cvxpy.
+
+    The returned params contains both the primal and dual solutions.
+
+    Args:
+      init_params: init_params for warm_start.
+      params_obj: (Q, c).
+      params_eq: (A, b) or None if no equality constraints.
+      params_ineq: (G, h) or None if no inequality constraints.
+    Returns:
+      (params, state), ``params = (primal_var, dual_var_eq, dual_var_ineq)``
+    """
+    init_params, hyper_params, eq_ineq_size = OSQP_to_BoxOSQP.transform(self.matvec_A_box,
+                                                                        init_params, params_obj,
+                                                                        params_eq, params_ineq)
+    sol, box_osqp_state = self._box_osqp.run(init_params, **hyper_params)
+    sol = OSQP_to_BoxOSQP.inverse_transform(self.matvec_A_box, eq_ineq_size, sol)
+    state = OSQPState(
+      iter_num=box_osqp_state.iter_num,
+      error=box_osqp_state.error,
+      status=box_osqp_state.status
+    )
+    return base.OptStep(params=sol, state=state)
+
+  def l2_optimality_error(self,
+    params: jnp.array,
+    params_obj: base.ArrayPair,
+    params_eq: Optional[base.ArrayPair],
+    params_ineq: Optional[base.ArrayPair]):
+    """Computes the L2 norm of the KKT residuals."""
+    params, hyper_params, _ = OSQP_to_BoxOSQP.transform(self.matvec_A_box,
+                                                        params, params_obj,
+                                                        params_eq, params_ineq)
+    pytree = self._box_osqp.l2_optimality_error(params, **hyper_params)
+    return tree_l2_norm(pytree)
