@@ -57,6 +57,7 @@ from jaxopt.tree_util import tree_add, tree_sub, tree_l2_norm
 import optax
 
 import tensorflow_datasets as tfds
+import tensorflow as tf
 from collections import namedtuple
 
 
@@ -206,103 +207,107 @@ def solve_linear_system_fixed_point(matvec, v):
 
 
 def main(argv):
-    del argv
+  del argv
 
-    # Solver used for implicit differentiation (backward pass).
-    if FLAGS.backward_solver == "normal_cg":
-        implicit_solver = partial(solve_normal_cg, tol=1e-2, maxiter=20)
-    elif FLAGS.backward_solver == "gmres":
-        implicit_solver = partial(solve_gmres, tol=1e-2, maxiter=20)
-    elif FLAGS.backward_solver == "anderson":
-        implicit_solver = solve_linear_system_fixed_point
+  # Hide any GPUs from TensorFlow. Otherwise TF might reserve memory and make
+  # it unavailable to JAX.
+  tf.config.experimental.set_visible_devices([], 'GPU')
 
-    # Solver used for fixed point resolution (forward pass).
-    if FLAGS.forward_solver == "anderson":
-        fixed_point_solver = partial(AndersonAcceleration,
-                                     history_size=FLAGS.anderson_history_size,
-                                     ridge=FLAGS.anderson_ridge,
-                                     maxiter=FLAGS.forward_maxiter,
-                                     tol=FLAGS.forward_tol, implicit_diff=True,
-                                     implicit_diff_solve=implicit_solver)
-    else:
-        fixed_point_solver = partial(FixedPointIteration,
-                                     maxiter=FLAGS.forward_maxiter,
-                                     tol=FLAGS.forward_tol, implicit_diff=True,
-                                     implicit_diff_solve=implicit_solver)
+  # Solver used for implicit differentiation (backward pass).
+  if FLAGS.backward_solver == "normal_cg":
+      implicit_solver = partial(solve_normal_cg, tol=1e-2, maxiter=20)
+  elif FLAGS.backward_solver == "gmres":
+      implicit_solver = partial(solve_gmres, tol=1e-2, maxiter=20)
+  elif FLAGS.backward_solver == "anderson":
+      implicit_solver = solve_linear_system_fixed_point
 
-    train_ds, ds_info = load_dataset("train", is_training=True,
-                                     batch_size=FLAGS.train_batch_size)
-    test_ds, _ = load_dataset("test", is_training=False,
-                              batch_size=FLAGS.test_batch_size)
-    input_shape = (1,) + ds_info.features["image"].shape
-    num_classes = ds_info.features["label"].num_classes
+  # Solver used for fixed point resolution (forward pass).
+  if FLAGS.forward_solver == "anderson":
+      fixed_point_solver = partial(AndersonAcceleration,
+                                    history_size=FLAGS.anderson_history_size,
+                                    ridge=FLAGS.anderson_ridge,
+                                    maxiter=FLAGS.forward_maxiter,
+                                    tol=FLAGS.forward_tol, implicit_diff=True,
+                                    implicit_diff_solve=implicit_solver)
+  else:
+      fixed_point_solver = partial(FixedPointIteration,
+                                    maxiter=FLAGS.forward_maxiter,
+                                    tol=FLAGS.forward_tol, implicit_diff=True,
+                                    implicit_diff_solve=implicit_solver)
 
-    net = FullDEQ(num_classes, 3 * 8 * FLAGS.net_width, 4 * 8 * FLAGS.net_width,
-                  fixed_point_solver)
+  train_ds, ds_info = load_dataset("train", is_training=True,
+                                    batch_size=FLAGS.train_batch_size)
+  test_ds, _ = load_dataset("test", is_training=False,
+                            batch_size=FLAGS.test_batch_size)
+  input_shape = (1,) + ds_info.features["image"].shape
+  num_classes = ds_info.features["label"].num_classes
 
-    def predict(all_params, images, train=False):
-      """Forward pass in the network on the images."""
-      x = images.astype(jnp.float32) / 255.
-      mutable = ["batch_stats"] if train else False
-      return net.apply(all_params, x, train=train, mutable=mutable)
+  net = FullDEQ(num_classes, 3 * 8 * FLAGS.net_width, 4 * 8 * FLAGS.net_width,
+                fixed_point_solver)
 
-    logistic_loss = jax.vmap(loss.multiclass_logistic_loss)
+  def predict(all_params, images, train=False):
+    """Forward pass in the network on the images."""
+    x = images.astype(jnp.float32) / 255.
+    mutable = ["batch_stats"] if train else False
+    return net.apply(all_params, x, train=train, mutable=mutable)
 
-    def loss_from_logits(params, l2reg, logits, labels):
-      sqnorm = tree_l2_norm(params, squared=True)
-      mean_loss = jnp.mean(logistic_loss(labels, logits))
-      return mean_loss + 0.5 * l2reg * sqnorm
+  logistic_loss = jax.vmap(loss.multiclass_logistic_loss)
 
-    @jax.jit
-    def accuracy_and_loss(params, l2reg, data, aux):
-      all_vars = {"params": params, "batch_stats": aux}
-      images, labels = data
-      logits = predict(all_vars, images)
-      accuracy = jnp.mean(jnp.argmax(logits, axis=-1) == labels)
-      loss = loss_from_logits(params, l2reg, logits, labels)
-      return accuracy, loss
+  def loss_from_logits(params, l2reg, logits, labels):
+    sqnorm = tree_l2_norm(params, squared=True)
+    mean_loss = jnp.mean(logistic_loss(labels, logits))
+    return mean_loss + 0.5 * l2reg * sqnorm
 
-    @jax.jit
-    def loss_fun(params, l2reg, data, aux):
-      all_vars = {"params": params, "batch_stats": aux}
-      images, labels = data
-      logits, net_state = predict(all_vars, images, train=True)
-      loss = loss_from_logits(params, l2reg, logits, labels)
-      return loss, net_state["batch_stats"]
+  @jax.jit
+  def accuracy_and_loss(params, l2reg, data, aux):
+    all_vars = {"params": params, "batch_stats": aux}
+    images, labels = data
+    logits = predict(all_vars, images)
+    accuracy = jnp.mean(jnp.argmax(logits, axis=-1) == labels)
+    loss = loss_from_logits(params, l2reg, logits, labels)
+    return accuracy, loss
 
-    def print_evaluation(params, state, l2reg, data, aux):
-      # We don't need `data` because we evaluate on the test set.
-      del data
+  @jax.jit
+  def loss_fun(params, l2reg, data, aux):
+    all_vars = {"params": params, "batch_stats": aux}
+    images, labels = data
+    logits, net_state = predict(all_vars, images, train=True)
+    loss = loss_from_logits(params, l2reg, logits, labels)
+    return loss, net_state["batch_stats"]
 
-      if state.iter_num % FLAGS.evaluation_frequency == 0:
-        # Periodically evaluate classification accuracy on test set.
-        accuracy, loss = accuracy_and_loss(params, l2reg, data=next(test_ds),
-                                           aux=aux)
+  def print_evaluation(params, state, l2reg, data, aux):
+    # We don't need `data` because we evaluate on the test set.
+    del data
 
-        print(f"[Step {state.iter_num}] "
-              f"Test accuracy: {accuracy:.3f} "
-              f"Test loss: {loss:.3f}.")
+    if state.iter_num % FLAGS.evaluation_frequency == 0:
+      # Periodically evaluate classification accuracy on test set.
+      accuracy, loss = accuracy_and_loss(params, l2reg, data=next(test_ds),
+                                          aux=aux)
 
-      return params, state
+      print(f"[Step {state.iter_num}] "
+            f"Test accuracy: {accuracy:.3f} "
+            f"Test loss: {loss:.3f}.")
 
-    # Initialize solver and parameters.
-    solver = OptaxSolver(opt=optax.adam(FLAGS.learning_rate),
-                         fun=loss_fun,
-                         maxiter=FLAGS.maxiter,
-                         pre_update=print_evaluation,
-                         has_aux=True)
+    return params, state
 
-    rng = jax.random.PRNGKey(0)
-    init_vars = net.init(rng, jnp.ones(input_shape), train=True)
-    params = init_vars["params"]
-    batch_stats = init_vars["batch_stats"]
-    state = solver.init_state(params)
+  # Initialize solver and parameters.
+  solver = OptaxSolver(opt=optax.adam(FLAGS.learning_rate),
+                        fun=loss_fun,
+                        maxiter=FLAGS.maxiter,
+                        pre_update=print_evaluation,
+                        has_aux=True)
 
-    for iternum in range(solver.maxiter):
-        params, state = solver.update(params=params, state=state,
-                                      l2reg=FLAGS.l2reg, data=next(train_ds),
-                                      aux=batch_stats)
-        batch_stats = state.aux
+  rng = jax.random.PRNGKey(0)
+  init_vars = net.init(rng, jnp.ones(input_shape), train=True)
+  params = init_vars["params"]
+  batch_stats = init_vars["batch_stats"]
+  state = solver.init_state(params)
+
+  for iternum in range(solver.maxiter):
+      params, state = solver.update(params=params, state=state,
+                                    l2reg=FLAGS.l2reg, data=next(train_ds),
+                                    aux=batch_stats)
+      batch_stats = state.aux
 
 
 if __name__ == "__main__":
