@@ -215,25 +215,25 @@ def main(argv):
 
   # Solver used for implicit differentiation (backward pass).
   if FLAGS.backward_solver == "normal_cg":
-      implicit_solver = partial(solve_normal_cg, tol=1e-2, maxiter=20)
+    implicit_solver = partial(solve_normal_cg, tol=1e-2, maxiter=20)
   elif FLAGS.backward_solver == "gmres":
-      implicit_solver = partial(solve_gmres, tol=1e-2, maxiter=20)
+    implicit_solver = partial(solve_gmres, tol=1e-2, maxiter=20)
   elif FLAGS.backward_solver == "anderson":
-      implicit_solver = solve_linear_system_fixed_point
+    implicit_solver = solve_linear_system_fixed_point
 
   # Solver used for fixed point resolution (forward pass).
   if FLAGS.forward_solver == "anderson":
-      fixed_point_solver = partial(AndersonAcceleration,
-                                    history_size=FLAGS.anderson_history_size,
-                                    ridge=FLAGS.anderson_ridge,
-                                    maxiter=FLAGS.forward_maxiter,
-                                    tol=FLAGS.forward_tol, implicit_diff=True,
-                                    implicit_diff_solve=implicit_solver)
+    fixed_point_solver = partial(AndersonAcceleration,
+                                 history_size=FLAGS.anderson_history_size,
+                                 ridge=FLAGS.anderson_ridge,
+                                 maxiter=FLAGS.forward_maxiter,
+                                 tol=FLAGS.forward_tol, implicit_diff=True,
+                                 implicit_diff_solve=implicit_solver)
   else:
-      fixed_point_solver = partial(FixedPointIteration,
-                                    maxiter=FLAGS.forward_maxiter,
-                                    tol=FLAGS.forward_tol, implicit_diff=True,
-                                    implicit_diff_solve=implicit_solver)
+    fixed_point_solver = partial(FixedPointIteration,
+                                 maxiter=FLAGS.forward_maxiter,
+                                 tol=FLAGS.forward_tol, implicit_diff=True,
+                                 implicit_diff_solve=implicit_solver)
 
   train_ds, ds_info = load_dataset("train", is_training=True,
                                     batch_size=FLAGS.train_batch_size)
@@ -282,7 +282,7 @@ def main(argv):
     if state.iter_num % FLAGS.evaluation_frequency == 0:
       # Periodically evaluate classification accuracy on test set.
       accuracy, loss = accuracy_and_loss(params, l2reg, data=next(test_ds),
-                                          aux=aux)
+                                         aux=aux)
 
       print(f"[Step {state.iter_num}] "
             f"Test accuracy: {accuracy:.3f} "
@@ -292,10 +292,10 @@ def main(argv):
 
   # Initialize solver and parameters.
   solver = OptaxSolver(opt=optax.adam(FLAGS.learning_rate),
-                        fun=loss_fun,
-                        maxiter=FLAGS.maxiter,
-                        pre_update=print_evaluation,
-                        has_aux=True)
+                       fun=loss_fun,
+                       maxiter=FLAGS.maxiter,
+                       pre_update=print_evaluation,
+                       has_aux=True)
 
   rng = jax.random.PRNGKey(0)
   init_vars = net.init(rng, jnp.ones(input_shape), train=True)
@@ -304,11 +304,11 @@ def main(argv):
   state = solver.init_state(params)
 
   for iternum in range(solver.maxiter):
-      params, state = solver.update(params=params, state=state,
-                                    l2reg=FLAGS.l2reg, data=next(train_ds),
-                                    aux=batch_stats)
-      batch_stats = state.aux
+    params, state = solver.update(params=params, state=state,
+                                  l2reg=FLAGS.l2reg, data=next(train_ds),
+                                  aux=batch_stats)
+    batch_stats = state.aux
 
 
 if __name__ == "__main__":
-    app.run(main)
+  app.run(main)
