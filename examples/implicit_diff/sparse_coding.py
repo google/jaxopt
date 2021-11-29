@@ -17,18 +17,40 @@ Sparse coding.
 ==============
 """
 
+from absl import app
+from absl import flags
+
 import functools
 from typing import Any
 from typing import Callable
 from typing import Mapping
 from typing import Optional
 
+import unittest
+
 import jax
 import jax.numpy as jnp
+from jax.nn import softplus
+
+from jaxopt import loss
 from jaxopt import OptaxSolver
 from jaxopt import projection
 from jaxopt import prox
 from jaxopt import ProximalGradient
+
+import optax
+from sklearn import datasets
+
+
+flags.DEFINE_integer("num_examples", 74, "NUmber of examples.")
+flags.DEFINE_integer("num_components", 7, "Number of atoms in dictionnary.")
+flags.DEFINE_integer("num_features", 13, "Number of features.")
+flags.DEFINE_integer("sparse_coding_maxiter", 100, "Number of iterations for sparse coding.")
+flags.DEFINE_integer("maxiter", 10, "Number of iterations of the outer loop.")
+flags.DEFINE_float("elastic_penalty", 0.01, "Strength of L2 penalty relative to L1.")
+flags.DEFINE_float("regularization", 0.01, "Regularization strength of elastic penalty.")
+flags.DEFINE_enum("reconstruction_loss", "squared", ["squared", "abs", "hubert"], "Loss used to build dictionnary.")
+FLAGS = flags.FLAGS
 
 
 def dictionary_loss(
@@ -238,3 +260,102 @@ def sparse_coding(dic, params, reconstruction_loss_fun=None,
   codes = solver.run(codes_init, [regularization, elastic_penalty],
                      dic, data).params
   return codes
+
+
+def main(argv):
+  del argv
+
+  # needed for asserts
+  tc = unittest.TestCase()
+
+  N = FLAGS.num_examples
+  k = FLAGS.num_components
+  d = FLAGS.num_features
+  # X is N x d
+  # dic is k x d
+  X, dictionary_0, codes_0 = datasets.make_sparse_coded_signal(
+      n_samples=N,
+      n_components=k,
+      n_features=d,
+      n_nonzero_coefs=k//2,
+      random_state=0,
+  )
+  X = X.T # bug in https://github.com/scikit-learn/scikit-learn/issues/19894
+  X = .1 * X + .0001 * jax.random.normal(jax.random.PRNGKey(0), (N, d))
+
+  if FLAGS.reconstruction_loss == "squared":
+    reconstruction_loss_fun = None
+  elif FLAGS.reconstruction_loss == "abs":
+    reconstruction_loss_fun = lambda x, y: jnp.sum(jnp.abs(x - y)**2.1)
+  elif FLAGS.reconstruction_loss == "hubert":
+    reconstruction_loss_fun = lambda x, y: jnp.sum(loss.huber_loss(x, y, .01))
+  else:
+    raise ValueError(f"Unkwown reconstruction_loss {FLAGS.reconstruction_loss}")
+
+  elastic_penalty = FLAGS.elastic_penalty
+  regularization = FLAGS.regularization
+
+  # slightly complicated Vanilla dictionary learning when no task.
+  # complicated in the sense that Danskin is not used. Here using prox from
+  # jaxopt.
+  solver = jax.jit(
+      make_task_driven_dictionary_learner(
+          reconstruction_loss_fun=reconstruction_loss_fun, maxiter=FLAGS.maxiter,
+          sparse_coding_kw={'maxiter': FLAGS.sparse_coding_maxiter}),
+      static_argnums=(1, 8))  # n_components & reconstruction_loss_fun
+
+  print("Create dictionnary with no task:", flush=True)
+  # Compute dictionary
+  dic_jop_0 = solver(
+      X,
+      n_components=k,
+      regularization=regularization,
+      elastic_penalty=elastic_penalty)
+  tc.assertEqual(dic_jop_0.shape, (k, d))
+  print(dic_jop_0)
+
+  # Test now task driven dictionary learning using *arbitrary* labels computed
+  # from initial codes. This is a binary logistic regression problem.
+  label = jnp.sum(codes_0[0:3, :], axis=0) > 0
+  def task_loss_fun(codes, dic, task_vars, task_params):
+    del dic
+    w, b = task_vars
+    logit = jnp.dot(codes, w) + b
+    return jnp.sum(
+        jnp.sum(softplus(logit) - label * logit) + 0.5 * task_params *
+        (jnp.dot(w, w) + b * b))
+
+  # Create a solver that will now use optax's Adam to learn both dic and
+  # logistic regression parameters.
+  solver = jax.jit(
+      make_task_driven_dictionary_learner(
+          task_loss_fun=task_loss_fun,
+          reconstruction_loss_fun=reconstruction_loss_fun, maxiter=FLAGS.maxiter,
+          sparse_coding_kw={'maxiter': FLAGS.sparse_coding_maxiter},
+          optimizer=optax.adam(1e-3)),
+      static_argnums=(1, 8))  # n_components & reconstruction_loss_fun
+
+  print("Compute task driven dictionnary:", flush=True)
+  dic_jop_task, w_and_b = solver(
+      X,
+      n_components=k,
+      regularization=regularization,
+      elastic_penalty=elastic_penalty,
+      task_vars_init=(jnp.zeros(k), jnp.zeros(1)),
+      task_params=0.001)
+  print(dic_jop_task)
+
+  # Check we have at least improved results using the very same w_and_b
+  losses = []
+  for dic in [dic_jop_0, dic_jop_task]:
+    losses.append(
+        task_loss_fun(
+            sparse_coding(
+                dic, (X, regularization, elastic_penalty)), dic, w_and_b,
+            0.0))
+  tc.assertGreater(losses[0], losses[1])
+  print(f"With task the loss ({losses[1]}) is smaller than without task ({losses[0]})")
+
+
+if __name__ == "__main__":
+  app.run(main)
