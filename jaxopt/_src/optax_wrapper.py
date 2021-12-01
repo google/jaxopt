@@ -123,15 +123,14 @@ class OptaxSolver(base.StochasticSolver):
 
     delta, opt_state = self.opt.update(grad, state.internal_state, params)
     params = self._apply_updates(params, delta)
-    error = self.l2_optimality_error(params, *args, **kwargs)
 
+    # Computes optimality error before update to re-use grad evaluation.
     new_state = OptaxState(iter_num=state.iter_num + 1,
-                           error=error,
+                           error=tree_util.tree_l2_norm(grad),
                            value=value,
                            aux=aux,
                            internal_state=opt_state)
     return base.OptStep(params=params, state=new_state)
-
 
   def optimality_fun(self, params, *args, **kwargs):
     """Optimality function mapping compatible with ``@custom_root``."""
