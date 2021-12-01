@@ -15,6 +15,7 @@
 """Base definitions useful across the project."""
 
 import abc
+import dataclasses
 import itertools
 import warnings
 
@@ -71,6 +72,17 @@ class Solver(abc.ABC):
     """Computes the L2 optimality error."""
     optimality = self.optimality_fun(params, *args, **kwargs)
     return tree_util.tree_l2_norm(optimality)
+
+  def attribute_names(self):
+    return tuple(field.name for field in dataclasses.fields(self))
+
+  def attribute_values(self):
+    return tuple(getattr(self, name) for name in self.attribute_names())
+
+  # Dataclasses need to set eq=False, otherwise inherited __hash__ is ignored.
+  def __hash__(self):
+    # We assume that the attribute values completely determine the solver.
+    return hash(self.attribute_values())
 
 
 class IterativeSolver(Solver):

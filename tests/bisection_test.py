@@ -56,12 +56,6 @@ def _projection_simplex_bisect(x, s=1.0):
 
 class BisectionTest(jtu.JaxTestCase):
 
-  def test_bracket_floats(self):
-    bisect = Bisection(optimality_fun=_optimality_fun_proj_simplex,
-                       lower=0, upper=100)
-    self.assertEqual(str(bisect.lower.dtype), "float32")
-    self.assertEqual(str(bisect.upper.dtype), "float32")
-
   def test_bisect(self):
     rng = onp.random.RandomState(0)
 

@@ -42,7 +42,7 @@ class BlockCDState(NamedTuple):
   subfun_g: jnp.ndarray
 
 
-@dataclass
+@dataclass(eq=False)
 class BlockCoordinateDescent(base.IterativeSolver):
   """Block coordinate solver.
 
@@ -96,10 +96,10 @@ class BlockCoordinateDescent(base.IterativeSolver):
     linop = self.fun.make_linop(*args, **kwargs)
     predictions = linop.matvec(init_params)
     subfun_g = self._grad_subfun(predictions, *args, **kwargs)
-    return BlockCDState(iter_num=0,
+    return BlockCDState(iter_num=jnp.asarray(0),
                         predictions=predictions,
                         subfun_g=subfun_g,
-                        error=jnp.inf)
+                        error=jnp.asarray(jnp.inf))
 
   def update(self,
              params: Any,

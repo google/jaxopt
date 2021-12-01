@@ -22,6 +22,57 @@ from jaxopt import base
 
 import numpy as onp
 
+from typing import Any
+from typing import Callable
+from typing import NamedTuple
+from typing import Optional
+
+import dataclasses
+
+import jax
+import jax.numpy as jnp
+
+from jaxopt._src import base
+from jaxopt.tree_util import tree_add
+from jaxopt.tree_util import tree_add_scalar_mul
+from jaxopt.tree_util import tree_l2_norm
+from jaxopt.tree_util import tree_scalar_mul
+from jaxopt.tree_util import tree_sub
+from jaxopt.tree_util import tree_zeros_like
+
+
+class DummySolverState(NamedTuple):
+  iter_num: int
+  error: float
+  value: float
+  aux: Any
+
+
+@dataclasses.dataclass(eq=False)
+class DummySolver(base.IterativeSolver):
+  """Dummy solver."""
+
+  fun: Callable
+  maxiter: int = 500
+  tol: float = 1e-3
+  implicit_diff: bool = False
+
+  def init_state(self, init_params: Any, *args, **kwargs) -> DummySolverState:
+    return DummySolverState(iter_num=0, error=jnp.inf, value=jnp.inf, aux=None)
+
+  def update(self,
+             params: Any,
+             state: DummySolverState,
+             *args,
+             **kwargs) -> base.OptStep:
+    return base.OptStep(params=params, state=state)
+
+  def dummy_method(self):
+    return self
+
+  def __post_init__(self):
+    self.dummy_attr = True
+
 
 class BaseTest(jtu.JaxTestCase):
 
@@ -82,6 +133,29 @@ class BaseTest(jtu.JaxTestCase):
     leaf_values, treedef = jax.tree_util.tree_flatten(linop)
     linop2 = jax.tree_util.tree_unflatten(treedef, leaf_values)
     self.assertArraysAllClose(linop2.matvec(x), Ax)
+
+  def test_solver_attributes(self):
+    fun = lambda x: x
+    solver = DummySolver(fun=fun, maxiter=10, tol=1.0, implicit_diff=True)
+    self.assertEqual(solver.attribute_names(),
+                     ("fun", "maxiter", "tol", "implicit_diff"))
+    self.assertEqual(solver.attribute_values(), (fun, 10, 1.0, True))
+
+  def test_solver_hash(self):
+    fun = lambda x: x
+    solver = DummySolver(fun=fun, maxiter=10, tol=1.0, implicit_diff=True)
+    hash(solver)
+
+  def test_solver_equality(self):
+    fun = lambda x: x
+    solver = DummySolver(fun=fun, maxiter=10, tol=1.0, implicit_diff=True)
+    self.assertTrue(solver == solver)
+
+  def test_jit_update(self):
+    fun = lambda x: x
+    solver = DummySolver(fun=fun, maxiter=10, tol=1.0, implicit_diff=True)
+    update = jax.jit(solver.update)
+
 
 if __name__ == '__main__':
   absltest.main(testLoader=jtu.JaxTestLoader())

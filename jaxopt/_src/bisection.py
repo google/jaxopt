@@ -39,7 +39,7 @@ class BisectionState(NamedTuple):
   aux: Optional[Any] = None
 
 
-@dataclass
+@dataclass(eq=False)
 class Bisection(base.IterativeSolver):
   """One-dimensional root finding using bisection.
 
@@ -73,7 +73,7 @@ class Bisection(base.IterativeSolver):
   unroll: base.AutoOrBoolean = "auto"
 
   def init_state(self,
-                 init_params=None,
+                 init_params: Optional[Any] = None,
                  *args,
                  **kwargs) -> BisectionState:
     """Initialize the solver state.
@@ -88,8 +88,11 @@ class Bisection(base.IterativeSolver):
     Returns:
       state
     """
-    lower_value = self.optimality_fun(self.lower, *args, **kwargs)
-    upper_value = self.optimality_fun(self.upper, *args, **kwargs)
+    lower = jnp.asarray(self.lower, float)
+    upper = jnp.asarray(self.upper, float)
+
+    lower_value = self.optimality_fun(lower, *args, **kwargs)
+    upper_value = self.optimality_fun(upper, *args, **kwargs)
 
     # sign = 1: the function is increasing
     # sign = -1: the function is decreasing
@@ -105,15 +108,14 @@ class Bisection(base.IterativeSolver):
                          "`optimality_fun` evaluated at lower and upper should "
                          "have opposite signs.")
 
-    return BisectionState(iter_num=0,
-                          value=jnp.inf,
-                          error=jnp.inf,
-                          low=self.lower,
-                          high=self.upper,
-                          sign=sign)
+    return BisectionState(iter_num=jnp.asarray(0),
+                          value=jnp.asarray(jnp.inf),
+                          error=jnp.asarray(jnp.inf),
+                          low=lower, high=upper,
+                          sign=jnp.asarray(sign))
 
   def update(self,
-             params: Any,
+             params,
              state: NamedTuple,
              *args,
              **kwargs) -> base.OptStep:
@@ -127,6 +129,8 @@ class Bisection(base.IterativeSolver):
     """
     if params is None:
       params = 0.5 * (state.high + state.low)
+    else:
+      params = jnp.asarray(params, float)
 
     value, aux = self._fun_with_aux(params, *args, **kwargs)
     too_large = state.sign * value > 0
@@ -150,15 +154,14 @@ class Bisection(base.IterativeSolver):
 
     return base.OptStep(params=midpoint, state=state)
 
-  def run(self, init_params=None, *args, **kwargs):
+  def run(self,
+          init_params: Optional[Any] = None,
+          *args,
+          **kwargs) -> base.OptStep:
     # We override run in order to set init_params=None by default.
     return super().run(init_params, *args, **kwargs)
 
   def __post_init__(self):
-    # Make sure integers are converted to floats.
-    self.lower = jnp.array(self.lower, float)
-    self.upper = jnp.array(self.upper, float)
-
     if self.has_aux:
       self._fun_with_aux = self.optimality_fun
     else:

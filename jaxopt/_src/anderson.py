@@ -107,7 +107,7 @@ class AndersonState(NamedTuple):
   residual_gram: jnp.array
 
 
-@dataclass
+@dataclass(eq=False)
 class AndersonAcceleration(base.IterativeSolver):
   """Anderson acceleration.
 
@@ -120,8 +120,8 @@ class AndersonAcceleration(base.IterativeSolver):
       conditions hold, Anderson acceleration will converge.
     history_size: size of history. Affect memory cost.
     mixing_frequency: frequency of Anderson updates. (default: 1).
-      Only one every `mixing_frequency` updates uses Anderson, while the other updates use
-      regular fixed point iterations.
+      Only one every `mixing_frequency` updates uses Anderson, while the other
+      updates use regular fixed point iterations.
     beta: momentum in Anderson updates. Default = 1.
     maxiter: maximum number of iterations.
     tol: tolerance (stoping criterion).
@@ -173,8 +173,8 @@ class AndersonAcceleration(base.IterativeSolver):
     residuals_history = tree_map(jnp.zeros_like, params_history)
     residual_gram = jnp.zeros((m,m))
 
-    return AndersonState(iter_num=0,
-                         error=jnp.inf,
+    return AndersonState(iter_num=jnp.asarray(0),
+                         error=jnp.asarray(jnp.inf),
                          params_history=params_history,
                          residuals_history=residuals_history,
                          residual_gram=residual_gram)
