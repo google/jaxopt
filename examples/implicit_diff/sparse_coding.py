@@ -49,7 +49,7 @@ flags.DEFINE_integer("sparse_coding_maxiter", 100, "Number of iterations for spa
 flags.DEFINE_integer("maxiter", 10, "Number of iterations of the outer loop.")
 flags.DEFINE_float("elastic_penalty", 0.01, "Strength of L2 penalty relative to L1.")
 flags.DEFINE_float("regularization", 0.01, "Regularization strength of elastic penalty.")
-flags.DEFINE_enum("reconstruction_loss", "squared", ["squared", "abs", "hubert"], "Loss used to build dictionnary.")
+flags.DEFINE_enum("reconstruction_loss", "squared", ["squared", "abs", "huber"], "Loss used to build dictionnary.")
 FLAGS = flags.FLAGS
 
 
@@ -287,7 +287,7 @@ def main(argv):
     reconstruction_loss_fun = None
   elif FLAGS.reconstruction_loss == "abs":
     reconstruction_loss_fun = lambda x, y: jnp.sum(jnp.abs(x - y)**2.1)
-  elif FLAGS.reconstruction_loss == "hubert":
+  elif FLAGS.reconstruction_loss == "huber":
     reconstruction_loss_fun = lambda x, y: jnp.sum(loss.huber_loss(x, y, .01))
   else:
     raise ValueError(f"Unkwown reconstruction_loss {FLAGS.reconstruction_loss}")

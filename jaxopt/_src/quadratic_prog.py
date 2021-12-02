@@ -158,7 +158,7 @@ def _make_quadratic_prog_optimality_fun(matvec_Q, matvec_A):
 
 @dataclass
 class QuadraticProgramming(base.Solver):
-  """Quadratic programming solver.
+  """Quadratic programming solver (deprecated).
 
   The objective function is::
 

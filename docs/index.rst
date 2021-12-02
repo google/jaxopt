@@ -35,6 +35,7 @@ Alternatively, it can be be installed from sources with the following command::
    basics
    unconstrained
    constrained
+   quadratic_programming
    non_smooth
    stochastic
    objective_and_loss
