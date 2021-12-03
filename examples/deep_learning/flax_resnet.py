@@ -19,6 +19,7 @@ Resnet example with Flax and JAXopt.
 
 from absl import app
 from absl import flags
+from datetime import datetime
 
 from functools import partial
 from typing import Any, Callable, Sequence, Tuple
@@ -44,11 +45,11 @@ dataset_names = [
 
 
 flags.DEFINE_float("l2reg", 1e-4, "L2 regularization.")
-flags.DEFINE_float("learning_rate", 0.1, "Learning rate.")
-flags.DEFINE_integer("maxiter", 100, "Maximum number of iterations.")
+flags.DEFINE_float("learning_rate", 0.2, "Learning rate.")
+flags.DEFINE_integer("epochs", 10, "Number of passes over the dataset.")
 flags.DEFINE_float("momentum", 0.9, "Momentum strength.")
 flags.DEFINE_enum("dataset", "mnist", dataset_names, "Dataset to train on.")
-flags.DEFINE_enum("model", "resnet1", ["resnet1", "resnet18", "resnet34"],
+flags.DEFINE_enum("model", "resnet18", ["resnet1", "resnet18", "resnet34"],
                   "Model architecture.")
 flags.DEFINE_integer("train_batch_size", 256, "Batch size at train time.")
 flags.DEFINE_integer("test_batch_size", 1024, "Batch size at test time.")
@@ -150,6 +151,7 @@ def main(argv):
                             batch_size=FLAGS.test_batch_size)
   input_shape = (1,) + ds_info.features["image"].shape
   num_classes = ds_info.features["label"].num_classes
+  iter_per_epoch = ds_info.splits['train'].num_examples // FLAGS.train_batch_size
 
   # Set up model.
   if FLAGS.model == "resnet1":
@@ -192,48 +194,52 @@ def main(argv):
     # batch_stats will be stored in state.aux
     return loss, net_state["batch_stats"]
 
-  def print_evaluation(params, state, l2reg, data, aux):
-    if state.iter_num % 10 == 0:
-      # Periodically evaluate the model on the train and test sets.
-      train_acc, train_loss = accuracy_and_loss(params, l2reg, data, aux)
-      test_acc, test_loss = accuracy_and_loss(params, l2reg, next(test_ds), aux)
-
-      train_acc = jax.device_get(train_acc)
-      train_loss = jax.device_get(train_loss)
-      test_acc = jax.device_get(test_acc)
-      test_loss = jax.device_get(test_loss)
-
-      print(f"[Step {state.iter_num}] "
-            f"Train acc: {train_acc:.3f}, loss: {train_loss:.3f}. "
-            f"Test acc: {test_acc:.3f}, loss: {test_loss:.3f}.")
-
-    return params, state
-
   # Initialize solver.
   opt = optax.sgd(learning_rate=FLAGS.learning_rate,
                   momentum=FLAGS.momentum,
                   nesterov=True)
 
   # We need has_aux=True because loss_fun returns batch_stats.
-  solver = OptaxSolver(opt=opt, fun=loss_fun, maxiter=FLAGS.maxiter,
-                       pre_update=print_evaluation, has_aux=True)
+  solver = OptaxSolver(opt=opt, fun=loss_fun, maxiter=FLAGS.epochs * iter_per_epoch, has_aux=True)
 
   # Initialize parameters.
   rng = jax.random.PRNGKey(0)
   init_vars = net.init(rng, jnp.zeros(input_shape), train=True)
   params = init_vars["params"]
   batch_stats = init_vars["batch_stats"]
+  start = datetime.now().replace(microsecond=0)
 
   # Run training loop.
   state = solver.init_state(params)
+  jitted_update = jax.jit(solver.update)
 
-  for _ in range(FLAGS.maxiter):
-    params, state = solver.update(params=params,
+  for _ in range(solver.maxiter):
+    train_minibatch = next(train_ds)
+
+    if state.iter_num % iter_per_epoch == iter_per_epoch - 1:
+      # Once per epoch evaluate the model on the train and test sets.
+      train_acc, train_loss = accuracy_and_loss(params, FLAGS.l2reg, train_minibatch, batch_stats)
+      test_acc, test_loss = accuracy_and_loss(params, FLAGS.l2reg, next(test_ds), batch_stats)
+
+      train_acc = jax.device_get(train_acc)
+      train_loss = jax.device_get(train_loss)
+      test_acc = jax.device_get(test_acc)
+      test_loss = jax.device_get(test_loss)
+      # time elapsed without microseconds
+      time_elapsed = (datetime.now().replace(microsecond=0) - start)
+
+      print(f"[Epoch {state.iter_num // (iter_per_epoch+1)}/{FLAGS.epochs}] "
+            f"Train acc: {train_acc:.3f}, train loss: {train_loss:.3f}. "
+            f"Test acc: {test_acc:.3f}, test loss: {test_loss:.3f}. "
+            f"Time elapsed: {time_elapsed}")
+
+    params, state = jitted_update(params=params,
                                   state=state,
                                   l2reg=FLAGS.l2reg,
-                                  data=next(train_ds),
+                                  data=train_minibatch,
                                   aux=batch_stats)
     batch_stats = state.aux
+
 
 if __name__ == "__main__":
   app.run(main)
