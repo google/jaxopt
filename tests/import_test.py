@@ -15,16 +15,21 @@
 from absl.testing import absltest
 from jax import test_util as jtu
 
+import jaxopt
+
 
 class ImportTest(jtu.JaxTestCase):
 
   def test_implicit_diff(self):
+    jaxopt.implicit_diff.root_vjp
     from jaxopt.implicit_diff import root_vjp
 
   def test_prox(self):
+    jaxopt.prox.prox_none
     from jaxopt.prox import prox_none
 
   def test_projection(self):
+    jaxopt.projection.projection_simplex
     from jaxopt.projection import projection_simplex
 
   def test_tree_util(self):
@@ -40,9 +45,11 @@ class ImportTest(jtu.JaxTestCase):
     from jaxopt.perturbations import make_perturbed_argmax
 
   def test_loss(self):
+    jaxopt.loss.binary_logistic_loss
     from jaxopt.loss import binary_logistic_loss
 
   def test_objective(self):
+    jaxopt.objective.least_squares
     from jaxopt.objective import least_squares
 
   def test_loop(self):
