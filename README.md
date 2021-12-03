@@ -29,7 +29,7 @@ To install the **development** version, use the following command instead:
 $ pip install git+https://github.com/google/jaxopt
 ```
 
-Alternatively, it can be be installed from sources with the following command:
+Alternatively, it can be installed from sources with the following command:
 
 ```bash
 $ python setup.py install
