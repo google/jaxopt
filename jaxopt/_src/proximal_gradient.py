@@ -91,7 +91,7 @@ class ProxGradState(NamedTuple):
   t: float = 1.0
 
 
-@dataclass
+@dataclass(eq=False)
 class ProximalGradient(base.IterativeSolver):
   """Proximal gradient solver.
 
@@ -162,15 +162,15 @@ class ProximalGradient(base.IterativeSolver):
     del hyperparams_prox, args, kwargs  # Not used.
 
     if self.acceleration:
-      state = ProxGradState(iter_num=0,
+      state = ProxGradState(iter_num=jnp.asarray(0),
                             velocity=init_params,
-                            t=1.0,
-                            stepsize=1.0,
-                            error=jnp.inf)
+                            t=jnp.asarray(1.0),
+                            stepsize=jnp.asarray(1.0),
+                            error=jnp.asarray(jnp.inf))
     else:
-      state = ProxGradState(iter_num=0,
-                            stepsize=1.0,
-                            error=jnp.inf)
+      state = ProxGradState(iter_num=jnp.asarray(0),
+                            stepsize=jnp.asarray(1.0),
+                            error=jnp.asarray(jnp.inf))
 
     return state
 
@@ -192,11 +192,14 @@ class ProximalGradient(base.IterativeSolver):
             hyperparams_prox,
             args,
             kwargs):
-    
+
     if not isinstance(self.stepsize, Callable) and self.stepsize <= 0:
       # with line search
-      next_x, next_stepsize = self._fista_line_search(self.maxls, x, x_fun_val, x_fun_grad, stepsize,
-                                                      self.decrease_factor, hyperparams_prox, args, kwargs)
+      next_x, next_stepsize = self._fista_line_search(self.maxls, x, x_fun_val,
+                                                      x_fun_grad, stepsize,
+                                                      self.decrease_factor,
+                                                      hyperparams_prox, args,
+                                                      kwargs)
       # If step size becomes too small, we restart it to 1.0.
       # Otherwise, we attempt to increase it.
       next_stepsize = jnp.where(next_stepsize <= 1e-6, 1.0,
@@ -204,7 +207,10 @@ class ProximalGradient(base.IterativeSolver):
       return next_x, next_stepsize
     else:
       # without line search
-      next_stepsize = self.stepsize(iter_num) if isinstance(self.stepsize, Callable) else self.stepsize
+      if isinstance(self.stepsize, Callable):
+        next_stepsize = self.stepsize(iter_num)
+      else:
+        next_stepsize = self.stepsize
       next_x = self._prox_grad(x, x_fun_grad, next_stepsize, hyperparams_prox)
       return next_x, next_stepsize
 
@@ -213,8 +219,8 @@ class ProximalGradient(base.IterativeSolver):
     stepsize = state.stepsize
     (x_fun_val, aux), x_fun_grad = self._value_and_grad_with_aux(x, *args,
                                                                  **kwargs)
-    next_x, next_stepsize = self._iter(iter_num, x, x_fun_val, x_fun_grad, stepsize,
-                                       hyperparams_prox, args, kwargs)
+    next_x, next_stepsize = self._iter(iter_num, x, x_fun_val, x_fun_grad,
+                                       stepsize, hyperparams_prox, args, kwargs)
     error = self._error(x, x_fun_grad, hyperparams_prox)
     next_state = ProxGradState(iter_num=iter_num + 1,
                                stepsize=next_stepsize,
@@ -227,8 +233,8 @@ class ProximalGradient(base.IterativeSolver):
     t = state.t
     stepsize = state.stepsize
     y_fun_val, y_fun_grad = self._value_and_grad_fun(y, *args, **kwargs)
-    next_x, next_stepsize = self._iter(iter_num, y, y_fun_val, y_fun_grad, stepsize,
-                                       hyperparams_prox, args, kwargs)
+    next_x, next_stepsize = self._iter(iter_num, y, y_fun_val, y_fun_grad,
+                                       stepsize, hyperparams_prox, args, kwargs)
     next_t = 0.5 * (1 + jnp.sqrt(1 + 4 * t ** 2))
     diff_x = tree_sub(next_x, x)
     next_y = tree_add_scalar_mul(next_x, (t - 1) / next_t, diff_x)
@@ -301,7 +307,9 @@ class ProximalGradient(base.IterativeSolver):
 
     jit, unroll = self._get_loop_options()
 
-    fista_ls_with_fun= partial(fista_line_search, self._fun, self._prox_grad, jit, unroll)
+    fista_ls_with_fun= partial(fista_line_search, self._fun, self._prox_grad,
+                               jit, unroll)
+
     if jit:
       jitted_fista_ls_with_fun = jax.jit(fista_ls_with_fun, static_argnums=(0,))
       self._fista_line_search = jitted_fista_ls_with_fun

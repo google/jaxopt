@@ -37,7 +37,7 @@ class OptaxState(NamedTuple):
   aux: Any
 
 
-@dataclass
+@dataclass(eq=False)
 class OptaxSolver(base.StochasticSolver):
   """Optax solver.
 
@@ -91,9 +91,9 @@ class OptaxSolver(base.StochasticSolver):
     """
     del args, kwargs  # Not used.
     opt_state = self.opt.init(init_params)
-    return OptaxState(iter_num=0,
-                      value=jnp.inf,
-                      error=jnp.inf,
+    return OptaxState(iter_num=jnp.asarray(0),
+                      value=jnp.asarray(jnp.inf),
+                      error=jnp.asarray(jnp.inf),
                       aux=None,
                       internal_state=opt_state)
 

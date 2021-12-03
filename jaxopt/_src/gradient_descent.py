@@ -26,7 +26,7 @@ from jaxopt._src import loop
 from jaxopt._src.proximal_gradient import ProximalGradient, ProxGradState
 
 
-@dataclass
+@dataclass(eq=False)
 class GradientDescent(ProximalGradient):
   """Gradient Descent solver.
 

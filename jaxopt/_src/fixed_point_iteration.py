@@ -40,7 +40,7 @@ class FixedPointState(NamedTuple):
   aux: Any
 
 
-@dataclass
+@dataclass(eq=False)
 class FixedPointIteration(base.IterativeSolver):
   """Fixed point iteration method.
   Attributes:
@@ -86,8 +86,8 @@ class FixedPointIteration(base.IterativeSolver):
     Returns:
       state
     """
-    return FixedPointState(iter_num=0,
-                           error=jnp.inf,
+    return FixedPointState(iter_num=jnp.asarray(0),
+                           error=jnp.asarray(jnp.inf),
                            aux=None)
 
   def update(self,

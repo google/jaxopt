@@ -43,7 +43,7 @@ class PolyakSGDState(NamedTuple):
   velocity: Optional[Any]
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(eq=True)
 class PolyakSGD(base.StochasticSolver):
   """SGD with Polyak step size.
 
@@ -126,8 +126,12 @@ class PolyakSGD(base.StochasticSolver):
     else:
       velocity = tree_zeros_like(init_params)
 
-    return PolyakSGDState(iter_num=0, error=jnp.inf, value=jnp.inf,
-                          stepsize=1.0, aux=None, velocity=velocity)
+    return PolyakSGDState(iter_num=jnp.asarray(0),
+                          error=jnp.asarray(jnp.inf),
+                          value=jnp.asarray(jnp.inf),
+                          stepsize=jnp.asarray(1.0),
+                          aux=None,
+                          velocity=velocity)
 
   def update(self,
              params: Any,
@@ -174,6 +178,10 @@ class PolyakSGD(base.StochasticSolver):
   def optimality_fun(self, params, *args, **kwargs):
     """Optimality function mapping compatible with ``@custom_root``."""
     return self._grad_fun(params, *args, **kwargs)[0]
+
+  def __hash__(self):
+    # We assume that the attribute values completely determine the solver.
+    return hash(self.attribute_values())
 
   def __post_init__(self):
     # Handle has_aux once for all.

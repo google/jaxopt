@@ -27,7 +27,7 @@ from jaxopt._src import prox
 from jaxopt._src.proximal_gradient import ProximalGradient, ProxGradState
 
 
-@dataclass
+@dataclass(eq=False)
 class ProjectedGradient(base.IterativeSolver):
   """Projected gradient solver.
 

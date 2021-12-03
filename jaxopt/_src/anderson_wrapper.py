@@ -52,7 +52,7 @@ class AndersonWrapperState(NamedTuple):
   residual_gram: jnp.array
 
 
-@dataclass
+@dataclass(eq=False)
 class AndersonWrapper(base.IterativeSolver):
   """Wrapper for accelerating JAXopt solvers.
 
@@ -94,7 +94,7 @@ class AndersonWrapper(base.IterativeSolver):
                               init_params)
     residuals_history = tree_map(jnp.zeros_like, params_history)
     residual_gram = jnp.zeros((m,m))
-    return AndersonWrapperState(iter_num=0,
+    return AndersonWrapperState(iter_num=jnp.asarray(0),
                                 solver_state=solver_state,
                                 error=solver_state.error,
                                 params_history=params_history,
@@ -148,7 +148,8 @@ class AndersonWrapper(base.IterativeSolver):
     residual_gram = state.residual_gram
     pos = jnp.mod(state.iter_num, self.history_size)
 
-    next_params, solver_state = self.solver.update(extrapolated, solver_state, *args, **kwargs)
+    next_params, solver_state = self.solver.update(extrapolated, solver_state,
+                                                   *args, **kwargs)
 
     residual = tree_sub(next_params, extrapolated)
     ret = update_history(pos, params_history, residuals_history,

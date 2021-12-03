@@ -52,7 +52,7 @@ def armijo_line_search(fun_with_aux, unroll, jit,
   Args:
     fun_with_aux: function to minimize.
     jit: whether to JIT-compile the line search loop (default: "auto").
-    unroll: whether to unroll the line search loop (default: "auto"). 
+    unroll: whether to unroll the line search loop (default: "auto").
     goldstein: boolean, whether to use Goldstein or not.
     maxls: maximum number of steps.
     params: current params to optimize.
@@ -87,15 +87,18 @@ def armijo_line_search(fun_with_aux, unroll, jit,
     stepsize, next_params, f_next, _ = t
 
     violated = wolfe_cond_violated(stepsize, coef, f_cur, f_next, grad_sqnorm)
-    stepsize, next_params, f_next = lax.cond(violated, update_stepsize,
-                                             lambda _: (stepsize, next_params, f_next),
-                                             operand=(stepsize, decrease_factor))
+    stepsize, next_params, f_next = lax.cond(
+      violated, update_stepsize,
+      lambda _: (stepsize, next_params, f_next),
+      operand=(stepsize, decrease_factor))
 
     if goldstein:
-      goldstein_violated = curvature_cond_violated(stepsize, coef, f_cur, f_next, grad_sqnorm)
-      stepsize, next_params, f_next = lax.cond(goldstein_violated, update_stepsize,
-                                               lambda _: (stepsize, next_params, f_next),
-                                               operand=(stepsize, increase_factor))
+      goldstein_violated = curvature_cond_violated(stepsize, coef, f_cur,
+                                                   f_next, grad_sqnorm)
+      stepsize, next_params, f_next = lax.cond(
+        goldstein_violated, update_stepsize,
+        lambda _: (stepsize, next_params, f_next),
+        operand=(stepsize, increase_factor))
       violated = jnp.logical_or(violated, goldstein_violated)
 
     return stepsize, next_params, f_next, violated
@@ -121,16 +124,16 @@ class ArmijoState(NamedTuple):
   iter_num: int
   error: float
   value: float
-  aux: Any
+  aux: Optional[Any]
   stepsize: float
   velocity: Optional[Any]
 
 
-@dataclass
+@dataclass(eq=False)
 class ArmijoSGD(base.StochasticSolver):
   """SGD with Armijo line search.
 
-  This implementation assumes that the interpolation property holds.  
+  This implementation assumes that the interpolation property holds.
   In practice this algorithm works well outside this setting.
 
   Attributes:
@@ -138,17 +141,24 @@ class ArmijoSGD(base.StochasticSolver):
       ``params`` are parameters of the model,
       ``*args`` and ``**kwargs`` are additional arguments.
     aggressiveness: controls "agressiveness" of optimizer. (default: 0.9)
-      Bigger values encourage bigger stepsize. Must belong to open interval (0,1).
-      If ``aggressiveness>0.5`` the learning_rate is guaranteed to be at least as big as ``min(1/L, max_stepsize)``
-      where ``L`` is the Lipschitz constant of the loss on the current batch.
-    decrease_factor: factor by which to decrease the stepsize during line search. (default: 0.8)
-    increase_factor: factor by which to increase the stepsize during line search. (default: 1.5)
-    reset_option: strategy to use for resetting the stepsize at each iteration. (default: "increase")  
-        
-      - "conservative": re-use previous stepsize, producing a non increasing sequence of stepsizes. Slow convergence.
-      - "increase": attempt to re-use previous stepsize multiplied by increase_factor. Cheap and efficient heuristic.
-      - "goldstein": re-use previous stepsize and increase until curvature condition is fulfilled.
-        Higher runtime cost than "increase" but better theoretical guarantees.
+      Bigger values encourage bigger stepsize. Must belong to open interval
+      (0,1).  If ``aggressiveness>0.5`` the learning_rate is guaranteed to be at
+      least as big as ``min(1/L, max_stepsize)`` where ``L`` is the Lipschitz
+      constant of the loss on the current batch.
+    decrease_factor: factor by which to decrease the stepsize during line search
+      (default: 0.8).
+    increase_factor: factor by which to increase the stepsize during line search
+      (default: 1.5).
+    reset_option: strategy to use for resetting the stepsize at each iteration
+      (default: "increase").
+
+      - "conservative": re-use previous stepsize, producing a non increasing
+        sequence of stepsizes. Slow convergence.
+      - "increase": attempt to re-use previous stepsize multiplied by
+        increase_factor. Cheap and efficient heuristic.
+      - "goldstein": re-use previous stepsize and increase until curvature
+        condition is fulfilled.  Higher runtime cost than "increase" but better
+        theoretical guarantees.
     momentum: momentum parameter, 0 corresponding to no momentum.
     max_stepsize: a maximum step size to use. (default: 1.)
     pre_update: a function to execute before the solver's update.
@@ -170,14 +180,16 @@ class ArmijoSGD(base.StochasticSolver):
     unroll: whether to unroll the optimization loop (default: "auto").
 
   References:
-    Vaswani, S., Mishkin, A., Laradji, I., Schmidt, M., Gidel, G. and Lacoste-Julien, S., 2019.
-    Painless stochastic gradient: Interpolation, line-search, and convergence rates.
+    Vaswani, S., Mishkin, A., Laradji, I., Schmidt, M., Gidel, G. and
+    Lacoste-Julien, S., 2019.
+    Painless stochastic gradient: Interpolation, line-search, and convergence
+    rates.
     Advances in neural information processing systems, 32, pp.3732-3745.
   """
   fun: Callable
-  aggressiveness: float = 0.9  # default value recommanded by authors in convex minimization
-  decrease_factor: float = 0.8  # default value recommanded by authors in convex minimization
-  increase_factor: float = 1.5  # default value recommanded by authors in convex minimization
+  aggressiveness: float = 0.9  # default value recommanded by authors
+  decrease_factor: float = 0.8  # default value recommanded by authors
+  increase_factor: float = 1.5  # default value recommanded by authors
   reset_option: str = "increase"
   momentum: float = 0.0
   max_stepsize: float = 1.0
@@ -208,14 +220,13 @@ class ArmijoSGD(base.StochasticSolver):
       velocity = None
     else:
       velocity = tree_zeros_like(init_params)
-    
-    state = ArmijoState(iter_num=0,
-                        error=jnp.inf,
-                        value=jnp.inf,
-                        aux=False,
-                        stepsize=jnp.asarray(self.max_stepsize),
-                        velocity=velocity)
-    return state
+
+    return ArmijoState(iter_num=jnp.asarray(0),
+                       error=jnp.asarray(jnp.inf),
+                       value=jnp.asarray(jnp.inf),
+                       aux=None,
+                       stepsize=jnp.asarray(self.max_stepsize),
+                       velocity=velocity)
 
   def reset_stepsize(self, stepsize):
     """Return new step size for current step, according to reset_option."""
@@ -239,16 +250,16 @@ class ArmijoSGD(base.StochasticSolver):
     """
     if self.pre_update:
       params, state = self.pre_update(params, state, *args, **kwargs)
-    
+
     stepsize = self.reset_stepsize(state.stepsize)
 
     (f_cur, aux), grad = self._value_and_grad_with_aux(params, *args, **kwargs)
-    
+
     goldstein = self.reset_option == 'goldstein'
-    stepsize, next_params, f_next = self._armijo_line_search(goldstein, self.maxls,
-                                                             params, f_cur, stepsize, grad, self._coef,
-                                                             self.decrease_factor, self.increase_factor,
-                                                             self.max_stepsize, args, kwargs)
+    stepsize, next_params, f_next = self._armijo_line_search(
+      goldstein, self.maxls, params, f_cur, stepsize, grad, self._coef,
+      self.decrease_factor, self.increase_factor, self.max_stepsize, args,
+      kwargs)
 
     if self.momentum == 0:
       next_velocity = None

@@ -40,7 +40,7 @@ class MirrorDescentState(NamedTuple):
   aux: Optional[Any] = None
 
 
-@dataclass
+@dataclass(eq=False)
 class MirrorDescent(base.IterativeSolver):
   """Mirror descent solver.
 
@@ -124,7 +124,8 @@ class MirrorDescent(base.IterativeSolver):
       state
     """
     del hyperparams_proj, args, kwargs  # Not used.
-    return MirrorDescentState(iter_num=0, error=jnp.inf)
+    return MirrorDescentState(iter_num=jnp.asarray(0),
+                              error=jnp.asarray(jnp.inf))
 
   def _error(self, x, x_fun_grad, hyperparams_proj):
     next_x = self.projection_grad(x, x_fun_grad, 1.0, hyperparams_proj)
