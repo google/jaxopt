@@ -134,4 +134,3 @@ class ProjectedGradient(base.IterativeSolver):
                                 has_aux=self.has_aux,
                                 jit=self.jit,
                                 unroll=self.unroll)
-

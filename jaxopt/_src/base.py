@@ -59,6 +59,13 @@ class Solver(abc.ABC):
 
   In addition, we will assume that the solver defines a notion of optimality:
     - `pytree = optimality_fun(params, *args, **kwargs)
+
+  Note: subclasses of `Solver` which are also Python dataclasses must disable
+  the generation of an `__eq__` method (`eq=False`) for compatibility with
+  Python 3.7. Not doing so results in the generation of a `__hash__` method
+  that clashes with JAX transformations when applied directly to methods of
+  the class. This restriction will be lifted in the future when support for
+  Python 3.7 is dropped and / or another solution is found.
   """
 
   @abc.abstractmethod
@@ -78,11 +85,6 @@ class Solver(abc.ABC):
 
   def attribute_values(self):
     return tuple(getattr(self, name) for name in self.attribute_names())
-
-  # Dataclasses need to set eq=False, otherwise inherited __hash__ is ignored.
-  def __hash__(self):
-    # We assume that the attribute values completely determine the solver.
-    return hash(self.attribute_values())
 
 
 class IterativeSolver(Solver):
@@ -135,21 +137,20 @@ class IterativeSolver(Solver):
 
     return jit, unroll
 
+  def _cond_fun(self, inputs):
+    _, state = inputs[0]
+    if self.verbose:
+      print(state.error)
+    return state.error > self.tol
+
+  def _body_fun(self, inputs):
+    (params, state), (args, kwargs) = inputs
+    return self.update(params, state, *args, **kwargs), (args, kwargs)
+
   def _run(self,
            init_params: Any,
            *args,
            **kwargs) -> OptStep:
-
-    def cond_fun(pair):
-      _, state = pair
-      if self.verbose:
-        print(state.error)
-      return state.error > self.tol
-
-    def body_fun(pair):
-      params, state = pair
-      return self.update(params, state, *args, **kwargs)
-
     state = self.init_state(init_params, *args, **kwargs)
 
     if self.maxiter == 0:
@@ -159,12 +160,13 @@ class IterativeSolver(Solver):
     # below to have the same output type, which is a requirement of
     # lax.while_loop and lax.scan.
     opt_step = self.update(init_params, state, *args, **kwargs)
+    init_val = (opt_step, (args, kwargs))
 
     jit, unroll = self._get_loop_options()
 
-    return loop.while_loop(cond_fun=cond_fun, body_fun=body_fun,
-                           init_val=opt_step, maxiter=self.maxiter - 1, jit=jit,
-                           unroll=unroll)
+    return loop.while_loop(cond_fun=self._cond_fun, body_fun=self._body_fun,
+                           init_val=init_val, maxiter=self.maxiter - 1, jit=jit,
+                           unroll=unroll)[0]
 
   def run(self,
           init_params: Any,

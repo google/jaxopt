@@ -62,8 +62,8 @@ def _make_eq_qp_optimality_fun(matvec_Q, matvec_A):
   return optimality_fun
 
 
-@dataclass
-class EqualityConstrainedQP():
+@dataclass(eq=False)
+class EqualityConstrainedQP(base.Solver):
   """Quadratic programming with equality constraints only.
 
   Supports implicit differentiation, matvec and pytrees.
