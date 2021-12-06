@@ -12,6 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from jaxopt import implicit_diff
+from jaxopt import loss
+from jaxopt import objective
+from jaxopt import projection
+from jaxopt import prox
+
 from jaxopt._src.anderson import AndersonAcceleration
 from jaxopt._src.anderson_wrapper import AndersonWrapper
 from jaxopt._src.armijo_sgd import ArmijoSGD
