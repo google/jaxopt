@@ -682,8 +682,7 @@ class OSQP_to_BoxOSQP:
     A_box = [A, G]
     if matvec_A_box is None:
       # no matvec: construct a pytree of matrices containing all constraints: A_box = [A; G].
-      if None in A_box:
-        A_box.remove(None)
+      A_box = [m for m in A_box if m is not None]
       A_box = OSQP_to_BoxOSQP._pytree_concat(A_box)
       l = OSQP_to_BoxOSQP._pytree_concat(l)
       u = OSQP_to_BoxOSQP._pytree_concat(u)

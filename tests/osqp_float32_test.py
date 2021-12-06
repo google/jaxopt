@@ -31,44 +31,12 @@ from jaxopt._src.osqp import BoxOSQP
 from jaxopt._src.osqp import OSQP
 from jaxopt._src.cvxpy_wrapper import CvxpyQP
 
-
-def get_random_osqp_problem(problem_size, eq_constraints, ineq_constraints):
-  assert problem_size >= eq_constraints  # very likely to be infeasible
-  onp.random.seed(problem_size + eq_constraints + ineq_constraints)
-  Q = onp.random.randn(problem_size, problem_size)
-  Q = Q.T.dot(Q)  # PSD matrix
-  c = onp.random.randn(problem_size)
-  A = onp.random.randn(ineq_constraints + eq_constraints, problem_size)
-  l = onp.random.randn(ineq_constraints)
-  u = l + jnp.abs(onp.random.randn(ineq_constraints))  # l < u
-  b = onp.random.randn(eq_constraints)  # Ax = b
-  l = jnp.concatenate([l, b])
-  u = jnp.concatenate([u, b])
-  return (Q, c), A, (l, u)
+import osqp_float64_test
+get_random_osqp_problem = osqp_float64_test.get_random_osqp_problem
+_from_boxosqp_to_osqp = osqp_float64_test._from_boxosqp_to_osqp
 
 
-def _from_osqp_form_to_boxosqp_form(Q, c, A, l, u):
-  """Return form used by CvxpyQP from BoxOSQP form (support only matrices)."""
-  is_eq = l == u
-  is_ineq_l = jnp.logical_and(l != u, l != -jnp.inf)
-  is_ineq_u = jnp.logical_and(l != u, u != jnp.inf)
-  if jnp.any(is_eq):
-    A_eq, b = A[is_eq,:], l[is_eq]
-  else:
-    A_eq, b = jnp.zeros((1,len(c))), jnp.zeros((1,))
-  if jnp.any(is_ineq_l) and jnp.any(is_ineq_u):
-    G = jnp.concatenate([-A[is_ineq_l,:],A[is_ineq_u,:]])
-    h = jnp.concatenate([-l[is_ineq_l],u[is_ineq_u]])
-  elif jnp.any(is_ineq_l):
-    G, h = -A[is_ineq_l,:], -l[is_ineq_l]
-  elif jnp.any(is_ineq_u):
-    G, h = A[is_ineq_u,:], u[is_ineq_u]
-  else:
-    return (Q, c), (A_eq, b), None
-  return (Q, c), (A_eq, b), (G, h)
-
-
-class BoxOSQPTest(jtu.JaxTestCase):
+class BoxOSQP32Test(jtu.JaxTestCase):
 
   def test_small_qp(self):  
     # Setup a random QP min_x 0.5*x'*Q*x + q'*x s.t. Ax = z; l <= z <= u;
@@ -76,6 +44,9 @@ class BoxOSQPTest(jtu.JaxTestCase):
     onp.random.seed(42)
     problem_size = 16
     params_obj, params_eq, params_ineq = get_random_osqp_problem(problem_size, eq_constraints, ineq_constraints)
+    params_obj = params_obj[0].astype(jnp.float32), params_obj[1].astype(jnp.float32)
+    params_eq = params_eq.astype(jnp.float32)
+    params_ineq = params_ineq[0].astype(jnp.float32), params_ineq[1].astype(jnp.float32)
     tol = 1e-5
     osqp = BoxOSQP(tol=tol)
     params, state = osqp.run(None, params_obj, params_eq, params_ineq)
@@ -84,9 +55,12 @@ class BoxOSQPTest(jtu.JaxTestCase):
     self.assertAllClose(opt_error, 0.0, atol=1e-4)
 
     def test_against_cvxpy(params_obj):
-      (Q, c), Ab, Gh = _from_osqp_form_to_boxosqp_form(params_obj[0], params_obj[1],
-                                                       params_eq, params_ineq[0], params_ineq[1])
+      (Q, c), Ab, Gh = _from_boxosqp_to_osqp(params_obj[0], params_obj[1],
+                                             params_eq, params_ineq[0], params_ineq[1])
       Q = 0.5 * (Q + Q.T)
+      Q, c = Q.astype(jnp.float32), c.astype(jnp.float32)
+      Ab = Ab[0].astype(jnp.float32), Ab[1].astype(jnp.float32)
+      Gh = Gh[0].astype(jnp.float32), Gh[1].astype(jnp.float32)
       qp = CvxpyQP()
       hyperparams = dict(params_obj=(Q, c), params_eq=Ab, params_ineq=Gh)
       sol = qp.run(None, **hyperparams).params
@@ -501,74 +475,6 @@ class BoxOSQPTest(jtu.JaxTestCase):
     self.assertArraysAllClose(jac_osqp, jac_prox, atol=1e-2)
 
 
-class OSQPTest(jtu.JaxTestCase):
-
-  def _check_derivative_A_b(self, solver, Q, c, A, b, params_ineq):
-    @jax.jit
-    def fun(Q, c, A, b):
-      Q = 0.5 * (Q + Q.T)
-      hyperparams = dict(params_obj=(Q, c),
-                         params_eq=(A, b),
-                         params_ineq=params_ineq)
-      # reduce the primal variables to a scalar value for test purpose.
-      return jnp.sum(solver.run(None, **hyperparams).params[0])
-
-    # Derivative w.r.t. A.
-    rng = onp.random.RandomState(0)
-    V = rng.rand(*A.shape)
-    V /= onp.sqrt(onp.sum(V ** 2))
-    eps = 1e-3
-    deriv_jax = jnp.vdot(V, jax.grad(fun, argnums=2)(Q, c, A, b))
-    deriv_num = (fun(Q, c, A + eps * V, b) - fun(Q, c, A - eps * V, b)) / (2 * eps)
-    self.assertAllClose(deriv_jax, deriv_num, rtol=1e-2)
-
-    # Derivative w.r.t. b.
-    v = rng.rand(*b.shape)
-    v /= onp.sqrt(onp.sum(v ** 2))
-    eps = 1e-3
-    deriv_jax = jnp.vdot(v, jax.grad(fun, argnums=3)(Q, c, A, b))
-    deriv_num = (fun(Q, c, A, b + eps * v) - fun(Q, c, A, b - eps * v)) / (2 * eps)
-    self.assertAllClose(deriv_jax, deriv_num, rtol=1e-2)
-
-  @parameterized.parameters((None, None), (jnp.dot, jnp.dot))
-  def test_qp_eq_and_ineq(self, matvec_A, matvec_G):
-    Q = 2 * jnp.array([[2.0, 0.5], [0.5, 1]])
-    c = jnp.array([1.0, 1.0])
-    A = jnp.array([[1.0, 1.0]])
-    b = jnp.array([1.0])
-    G = jnp.array([[-1.0, 0.0], [0.0, -1.0]])
-    h = jnp.array([0.0, 0.0])
-    qp = OSQP(matvec_Q=None, matvec_A=matvec_A, matvec_G=matvec_G, tol=1e-5)
-    hyperparams = dict(params_obj=(Q, c), params_eq=(A, b), params_ineq=(G, h))
-    sol = qp.run(None, **hyperparams).params
-    self.assertAllClose(qp.l2_optimality_error(sol, **hyperparams), 0.0, atol=1e-4)
-    self._check_derivative_A_b(qp, Q, c, A, b, (G, h))  # remark: slow.
-
-  def test_projection_simplex(self):
-    def _projection_simplex_qp(x, s=1.0):
-      Q = jnp.eye(len(x))
-      A = jnp.array([jnp.ones_like(x)])
-      b = jnp.array([s])
-      G = -jnp.eye(len(x))
-      h = jnp.zeros_like(x)
-      hyperparams = dict(params_obj=(Q, -x), params_eq=(A, b),
-                         params_ineq=(G, h))
-
-      qp = OSQP(tol=1e-5)
-      # Returns the primal solution only.
-      return qp.run(None, **hyperparams).params[0]
-
-    rng = onp.random.RandomState(0)
-    x = jnp.array(rng.randn(10))
-    p = projection.projection_simplex(x)
-    p2 = _projection_simplex_qp(x)
-    self.assertArraysAllClose(p, p2, atol=1e-4)
-
-    J = jax.jacrev(projection.projection_simplex)(x)
-    J2 = jax.jacrev(_projection_simplex_qp)(x)
-    self.assertArraysAllClose(J, J2, atol=1e-4)
-
-
 if __name__ == '__main__':
-  jax.config.update("jax_enable_x64", True)
+  jax.config.update("jax_enable_x64", False)
   absltest.main(testLoader=jtu.JaxTestLoader())
