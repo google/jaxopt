@@ -19,6 +19,7 @@ from absl.testing import parameterized
 import jax
 import jax.numpy as jnp
 from jax import test_util as jtu
+from jax import scipy as jsp
 from jax.tree_util import tree_map, tree_all
 from jax.test_util import check_grads
 
@@ -29,7 +30,6 @@ from jaxopt import objective
 from jaxopt import AndersonAcceleration
 
 import numpy as onp
-import scipy
 from sklearn import datasets
 
 
@@ -108,15 +108,12 @@ class AndersonAccelerationTest(jtu.JaxTestCase):
     """On this example Banach theorem does not hold. However Anderson works."""
     def rot(x, theta, c):
       n = theta.shape[0]
-      cosO, sinO = onp.cos(theta), onp.sin(theta)
-      first_row, second_row = onp.zeros(2*n), onp.zeros(2*n)
-      first_row[0::2] = cosO
-      first_row[1::2] = -sinO
-      second_row[0::2] = sinO
-      second_row[1::2] = cosO
-      blocks = onp.stack([first_row, second_row], axis=0)
-      blocks = onp.split(blocks, n, axis=1)
-      M = jnp.array(scipy.linalg.block_diag(*blocks))
+      cosO, sinO = jnp.cos(theta), jnp.sin(theta)
+      first_row = jnp.stack([cosO, -sinO], axis=-1).reshape([-1])
+      second_row = jnp.stack([sinO, cosO], axis=-1).reshape([-1])
+      blocks = jnp.stack([first_row, second_row], axis=0)
+      blocks = jnp.split(blocks, n, axis=1)
+      M = jnp.array(jsp.linalg.block_diag(*blocks))
       return M @ (x - c) + c
     theta = jnp.pi / jnp.array([2, 3, 4, 5, 6, 1.27, 1.73])  # rotation angles
     c = jnp.arange(1,2*theta.shape[0]+1)  # rotation center

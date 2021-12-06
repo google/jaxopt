@@ -169,7 +169,7 @@ class JacobiPreconditioner(BoxOSQPPreconditioner):
     return params_precond[:-1] + (rho_bar,)
 
 
-@dataclass
+@dataclass(eq=False)
 class BoxOSQP(base.IterativeSolver):
   """Operator Splitting Solver for Quadratic Programs.
 

@@ -80,7 +80,6 @@ def fista_line_search(
                          unroll=unroll, jit=jit)
 
 
-
 class ProxGradState(NamedTuple):
   """Named tuple containing state information."""
   iter_num: int

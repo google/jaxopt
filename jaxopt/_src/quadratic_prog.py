@@ -156,7 +156,7 @@ def _make_quadratic_prog_optimality_fun(matvec_Q, matvec_A):
   return idf.make_kkt_optimality_fun(obj_fun, eq_fun, ineq_fun)
 
 
-@dataclass
+@dataclass(eq=False)
 class QuadraticProgramming(base.Solver):
   """Quadratic programming solver (deprecated).
 

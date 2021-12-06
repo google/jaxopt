@@ -82,7 +82,7 @@ def _make_cvxpy_qp_optimality_fun():
   return idf.make_kkt_optimality_fun(obj_fun, eq_fun, ineq_fun)
 
 
-@dataclass
+@dataclass(eq=False)
 class CvxpyQP(base.Solver):
   """Wraps CVXPY's quadratic solver with implicit diff support.
 

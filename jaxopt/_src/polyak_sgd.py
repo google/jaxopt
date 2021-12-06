@@ -43,7 +43,7 @@ class PolyakSGDState(NamedTuple):
   velocity: Optional[Any]
 
 
-@dataclasses.dataclass(eq=True)
+@dataclasses.dataclass(eq=False)
 class PolyakSGD(base.StochasticSolver):
   """SGD with Polyak step size.
 

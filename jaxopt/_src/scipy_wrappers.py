@@ -194,7 +194,7 @@ def pytree_topology_from_example(x_jnp: Any) -> PyTreeTopology:
   return PyTreeTopology(treedef=treedef, shapes=shapes, dtypes=dtypes)
 
 
-@dataclass
+@dataclass(eq=False)
 class ScipyWrapper(base.Solver):
   """Wraps over `scipy.optimize` methods with PyTree and implicit diff support.
 
@@ -228,7 +228,7 @@ class ScipyWrapper(base.Solver):
     self.run = decorator(self.run)
 
 
-@dataclass
+@dataclass(eq=False)
 class ScipyMinimize(ScipyWrapper):
   """`scipy.optimize.minimize` wrapper
 
@@ -314,7 +314,7 @@ class ScipyMinimize(ScipyWrapper):
       self._value_and_grad_fun = jax.jit(self._value_and_grad_fun)
 
 
-@dataclass
+@dataclass(eq=False)
 class ScipyBoundedMinimize(ScipyMinimize):
   """`scipy.optimize.minimize` wrapper.
 
@@ -363,7 +363,7 @@ class ScipyBoundedMinimize(ScipyMinimize):
     return self._run(init_params, bounds, *args, **kwargs)
 
 
-@dataclass
+@dataclass(eq=False)
 class ScipyRootFinding(ScipyWrapper):
   """`scipy.optimize.root` wrapper.
 
@@ -468,7 +468,7 @@ LS_DEFAULT_OPTIONS = {
 }
 
 
-@dataclass
+@dataclass(eq=False)
 class ScipyLeastSquares(ScipyWrapper):
   """Wraps over `scipy.optimize.least_squares` with PyTree & imp. diff support.
 
@@ -601,7 +601,7 @@ class ScipyLeastSquares(ScipyWrapper):
       self._grad_cost_fun = jax.jit(self._grad_cost_fun)
 
 
-@dataclass
+@dataclass(eq=False)
 class ScipyBoundedLeastSquares(ScipyLeastSquares):
   """Wraps over `scipy.optimize.least_squares` with PyTree & imp. diff support.
 
