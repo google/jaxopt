@@ -21,8 +21,18 @@ Constrained
 
     jaxopt.ProjectedGradient
     jaxopt.MirrorDescent
-    jaxopt.QuadraticProgramming
     jaxopt.ScipyBoundedMinimize
+
+Quadratic programming
+~~~~~~~~~~~~~~~~~~~~~
+
+.. autosummary::
+  :toctree: _autosummary
+
+    jaxopt.EqualityConstrainedQP
+    jaxopt.CvxpyQP
+    jaxopt.BoxOSQP
+    jaxopt.OSQP
 
 Non-smooth
 ~~~~~~~~~~

@@ -11,6 +11,8 @@ New features
   :class:`jaxopt.ProximalGradient`, :class:`jaxopt.ProjectedGradient` and
   :class:`jaxopt.GradientDescent`.
 - Added example :ref:`sphx_glr_auto_examples_deep_learning_flax_resnet.py`
+- Solvers :class:`OSQP`, :class:`BoxOSQP` and :class:`EqualityConstrainedQP` for quadratic programming.
+- Partial deprecation of :class:`QuadraticProgramming`: documentation removed (docstring remains).
 
 Version 0.1.1
 -------------

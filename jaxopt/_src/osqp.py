@@ -176,13 +176,15 @@ class BoxOSQP(base.IterativeSolver):
   Jax implementation of the celebrated GPU-OSQP [1,3] based on ADMM.
   Suppports jit, vmap, matvecs and pytrees.
 
-  It solves convex problems of the form::
-  
-    \begin{aligned}
-      \min_{x,z} \quad & \frac{1}{2}xQx + c^Tx\\
-      \textrm{s.t.} \quad & Ax=z\\
-        &l\leq z\leq u    \\
-    \end{aligned}
+  It solves convex problems of the form
+
+  .. math::
+
+    \\begin{aligned}
+      \\min_{x,z} \\quad & \\frac{1}{2}xQx + c^Tx\\\\
+      \\textrm{s.t.} \\quad & Ax=z\\\\
+        & l\\leq z\\leq u    \\\\
+    \\end{aligned}
   
   Equality constraints are obtained by setting l = u.
   If the inequality is one-sided then ``jnp.inf can be used for u,
@@ -190,15 +192,21 @@ class BoxOSQP(base.IterativeSolver):
 
   P must be a positive semidefinite (PSD) matrix.
 
-  The Lagrangian is given by::
+  The Lagrangian is given by
 
-    \mathcal{L} = \frac{1}{2}x^TQx + c^Tx + y^T(Ax-z) + mu^T (z-u) + phi^T (l-z)
+  .. math::
+  
+    \\mathcal{L} = \\frac{1}{2}x^TQx + c^Tx + y^T(Ax-z) + \\mu^T (z-u) + \\phi^T (l-z)
 
-  Primal variables: x, z
-  Dual Eq   variables: y
-  Dual Ineq variables: mu, phi
+  Primal    variables: :math:`x, z`  
+    
+  Dual Eq   variables: :math:`y`  
+    
+  Dual Ineq variables: :math:`\mu, \phi`  
+    
 
-  ADMM computes y at each iteration. mu and phi can be deduced from z and y.
+  ADMM computes :math:`y` at each iteration. :math:`\mu` and :math:`\phi` can be deduced from :math:`y`.  
+    
   Defaults values for hyper-parameters come from: https://github.com/osqp/osqp/blob/master/include/constants.h
 
   Attributes:
@@ -213,23 +221,24 @@ class BoxOSQP(base.IterativeSolver):
       If "auto", it will be True if jit=False and False otherwise. (default: "auto")
     sigma: ridge regularization parameter in linear system.
     momentum: relaxation parameter (default: 1.6), must belong to the open interval (0,2).
-      momentum=1 => no relaxation.
-      momentum<1 => under-relaxation.
-      momentum>1 => over-relaxation.
+      ``momentum=1`` => no relaxation.
+      ``momentum<1`` => under-relaxation.
+      ``momentum>1`` => over-relaxation.
       Boyd [2, p21] suggests chosing momentum in [1.5, 1.8].
     eq_qp_preconditioner: (optional) a string specifying the pre-conditioner (default: None).
-    eq_qp_solve_tol: tolerance for linear solver in equality constrained QP. (default: 1e-5)
+      For now only ``"jacobi"`` is available, for pytree of matrices only (no matvec).
+    eq_qp_solve_tol: tolerance for linear solver in equality constrained QP (default: 1e-5).
       High tolerance may speedup each ADMM step but will slow down overall convergence. 
-    eq_qp_solve_maxiter: number of iterations for linear solver in equality constrained QP. (default: None)
+    eq_qp_solve_maxiter: number of iterations for linear solver in equality constrained QP (default: None).
       Low maxiter will speedup each ADMM step but may slow down overall convergence.
-    rho_start: initial learning rate. (default: 1e-1)
-    rho_min: minimum learning rate. (default: 1e-6)
-    rho_max: maximum learning rate. (default: 1e6)
-    stepsize_updates_frequency: frequency of stepsize updates. (default: 10).
+    rho_start: initial learning rate  (default: 1e-1).
+    rho_min: minimum learning rate  (default: 1e-6).
+    rho_max: maximum learning rate  (default: 1e6).
+    stepsize_updates_frequency: frequency of stepsize updates (default: 10).
       One every `stepsize_updates_frequency` updates computes a new stepsize.
-    primal_infeasible_tol: relative tolerance for primal infeasability detection. (default: 1e-4)
-    dual_infeasible_tol: relative tolerance for dual infeasability detection. (default: 1e-4)
-    maxiter: maximum number of iterations.  (default: 4000)
+    primal_infeasible_tol: relative tolerance for primal infeasability detection (default: 1e-3).
+    dual_infeasible_tol: relative tolerance for dual infeasability detection (default: 1e-3).
+    maxiter: maximum number of iterations (default: 4000).
     tol: absolute tolerance for stoping criterion (default: 1e-3).
     termination_check_frequency: frequency of termination check. (default: 5).
       One every `termination_check_frequency` the error is computed.
@@ -238,7 +247,7 @@ class BoxOSQP(base.IterativeSolver):
     implicit_diff: whether to enable implicit diff or autodiff of unrolled iterations.
     implicit_diff_solve: the linear system solver to use.
     jit: whether to JIT-compile the optimization loop (default: "auto").
-    unroll: whether to unroll the optimization loop (default: "auto")
+    unroll: whether to unroll the optimization loop (default: "auto").
 
   [1] Stellato, B., Banjac, G., Goulart, P., Bemporad, A. and Boyd, S., 2020.
   OSQP: An operator splitting solver for quadratic programs.
@@ -264,8 +273,8 @@ class BoxOSQP(base.IterativeSolver):
   rho_min: float = 1e-6
   rho_max: float = 1e6
   stepsize_updates_frequency: int = 10
-  primal_infeasible_tol: float = 1e-4
-  dual_infeasible_tol: float = 1e-4
+  primal_infeasible_tol: float = 1e-3
+  dual_infeasible_tol: float = 1e-3
   maxiter: int = 4000
   tol: float = 1e-3
   termination_check_frequency: int = 5
@@ -725,30 +734,30 @@ class OSQPState(NamedTuple):
 class OSQP(base.Solver):
   """OSQP solver for general quadratic programming.
 
-  Meant as drop-in replacement for CvxpyQP.
-  No support for matvec and pytrees. Supports jit and vmap.
+  Meant as drop-in replacement for CvxpyQP.  
+  No support for matvec and pytrees. Supports jit and vmap.  
   
-  CvxpyQP is more precised and should be preferred on CPU.
-  OSQP can be quicker than CvxpyQP when GPU/TPU are available.
-
+  CvxpyQP is more precised and should be preferred on CPU.  
+  OSQP can be quicker than CvxpyQP when GPU/TPU are available.  
+  
   The objective function is::
 
     0.5 * x^T Q x + c^T x subject to Gx <= h, Ax = b.
 
-  The attributes must be given as keyword arguments.
+  The attributes must be given as keyword arguments.  
 
   Attributes:
     check_primal_dual_infeasability: if True populates the ``status`` field of ``state``
-      with one of ``BoxOSQP.PRIMAL_INFEASIBLE``, ``BoxOSQP.DUAL_INFEASIBLE``. (default: True)
+      with one of ``BoxOSQP.PRIMAL_INFEASIBLE``, ``BoxOSQP.DUAL_INFEASIBLE``. (default: True).
       If False it improves speed but does not check feasability.
-      If True and the problem is primal or dual infeasible, then a ValueError exception is raised.
+      If jit=False, and if the problem is primal or dual infeasible, then a ValueError exception is raised.
     sigma: ridge regularization parameter in linear system.
-    momentum: relaxation parameter (default: 1.6), must belong to the open interval (0,2).
-      momentum=1 => no relaxation.
-      momentum<1 => under-relaxation.
-      momentum>1 => over-relaxation.
-      Boyd [2, p21] suggests chosing momentum in [1.5, 1.8].
-    eq_qp_preconditioner: (optional) a string specifying the pre-conditioner (default: 'jacobi').
+    momentum: relaxation parameter (default: 1.6), must belong to the open interval (0,2).  
+      momentum=1 => no relaxation.  
+      momentum<1 => under-relaxation.  
+      momentum>1 => over-relaxation.  
+      Boyd [2, p21] suggests chosing momentum in [1.5, 1.8].  
+    eq_qp_preconditioner: (optional) a string specifying the pre-conditioner (default: 'jacobi').  
     eq_qp_solve_tol: tolerance for linear solver in equality constrained QP. (default: 1e-5)
       High tolerance may speedup each ADMM step but will slow down overall convergence. 
     eq_qp_solve_maxiter: number of iterations for linear solver in equality constrained QP. (default: None)

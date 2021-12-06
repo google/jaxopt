@@ -17,10 +17,14 @@ from jaxopt._src.anderson_wrapper import AndersonWrapper
 from jaxopt._src.armijo_sgd import ArmijoSGD
 from jaxopt._src.bisection import Bisection
 from jaxopt._src.block_cd import BlockCoordinateDescent
+from jaxopt._src.cvxpy_wrapper import CvxpyQP
+from jaxopt._src.eq_qp import EqualityConstrainedQP
 from jaxopt._src.fixed_point_iteration import FixedPointIteration
 from jaxopt._src.gradient_descent import GradientDescent
 from jaxopt._src.mirror_descent import MirrorDescent
 from jaxopt._src.optax_wrapper import OptaxSolver
+from jaxopt._src.osqp import BoxOSQP
+from jaxopt._src.osqp import OSQP
 from jaxopt._src.polyak_sgd import PolyakSGD
 from jaxopt._src.projected_gradient import ProjectedGradient
 from jaxopt._src.proximal_gradient import ProximalGradient
