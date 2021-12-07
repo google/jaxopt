@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from absl.testing import absltest
+from functools import partial
 
 import jax
 from jax import test_util as jtu
@@ -20,6 +21,8 @@ import jax.numpy as jnp
 
 from jaxopt import projection
 from jaxopt._src.eq_qp import EqualityConstrainedQP 
+from jaxopt._src.iterative_refinement import IterativeRefinement
+from jaxopt.linear_solve import solve_gmres
 
 import numpy as onp
 
@@ -139,6 +142,29 @@ class EqualityConstrainedQPTest(jtu.JaxTestCase):
     self.assertArraysAllClose(jnp.concatenate(sol_pytree.primal), sol.primal,
                               atol=1e-4)
     self.assertArraysAllClose(sol_pytree.dual_eq, sol.dual_eq, atol=1e-4)
+
+  def test_challenging_problem(self):
+    size_prob = 100
+    size_eq = 98
+
+    onp.random.seed(511)
+    X = onp.random.rand(size_prob, size_prob)
+    Q = jnp.array(X @ X.T)
+    c = jnp.array(onp.random.rand(size_prob))
+
+    A = jnp.array(onp.random.rand(size_eq, size_prob))
+    b = jnp.array(onp.random.rand(size_eq))
+    
+    # The tolerance is low, but ordinarily this problem cannot be solved by
+    # EqualityConstrainedQP without refinement, because the matrix has a huge condition number.
+    low_tol = 1e-1 
+    qp = EqualityConstrainedQP(refine_regularization=1., refine_maxiter=3000,
+                               tol=low_tol, jit=True)
+
+    hyperparams = dict(params_obj=(Q, c), params_eq=(A, b))
+    sol, state = qp.run(**hyperparams)
+    error = qp.l2_optimality_error(sol, **hyperparams)
+    self.assertLess(error, low_tol)
 
 
 if __name__ == '__main__':

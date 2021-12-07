@@ -124,6 +124,7 @@ def _normal_matvec(matvec, x):
 def solve_normal_cg(matvec: Callable,
                     b: Any,
                     ridge: Optional[float] = None,
+                    init: Optional[Any] = None,
                     **kwargs) -> Any:
   """Solves the normal equation ``A^T A x = A^T b`` using conjugate gradient.
 
@@ -134,6 +135,7 @@ def solve_normal_cg(matvec: Callable,
     matvec: product between ``A`` and a vector.
     b: pytree.
     ridge: optional ridge regularization.
+    init: optional initialization to be used by normal conjugate gradient.
     **kwargs: additional keyword arguments for solver.
 
   Returns:
@@ -154,6 +156,7 @@ def solve_normal_cg(matvec: Callable,
 def solve_gmres(matvec: Callable,
                 b: Any,
                 ridge: Optional[float] = None,
+                init: Optional[Any] = None,
                 tol: float = 1e-5,
                 **kwargs) -> Any:
   """Solves ``A x = b`` using gmres.
@@ -162,6 +165,7 @@ def solve_gmres(matvec: Callable,
     matvec: product between ``A`` and a vector.
     b: pytree.
     ridge: optional ridge regularization.
+    init: optional initialization to be used by gmres.
     **kwargs: additional keyword arguments for solver.
 
   Returns:
@@ -175,6 +179,7 @@ def solve_gmres(matvec: Callable,
 def solve_bicgstab(matvec: Callable,
                    b: Any,
                    ridge: Optional[float] = None,
+                   init: Optional[Any] = None,
                    **kwargs) -> Any:
   """Solves ``A x = b`` using bicgstab.
 
@@ -182,6 +187,7 @@ def solve_bicgstab(matvec: Callable,
     matvec: product between ``A`` and a vector.
     b: pytree.
     ridge: optional ridge regularization.
+    init: optional initialization to be used by bicgstab.
     **kwargs: additional keyword arguments for solver.
 
   Returns:

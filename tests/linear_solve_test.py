@@ -66,7 +66,9 @@ class LinearSolveTest(jtu.JaxTestCase):
     matvec = lambda x: jnp.dot(A, x)
     x = linear_solve.solve_lu(matvec, b)
     x2 = jax.numpy.linalg.solve(A, b)
+    x3 = linear_solve.solve_iterative_refinement(matvec, b)
     self.assertArraysAllClose(x, x2)
+    self.assertArraysAllClose(x, x3)
 
     # Tensor case.
     A = rng.randn(5, 3, 5, 3)
@@ -78,7 +80,9 @@ class LinearSolveTest(jtu.JaxTestCase):
 
     x = linear_solve.solve_lu(matvec, b)
     x2 = linear_solve.solve_gmres(matvec, b)
+    x3 = linear_solve.solve_iterative_refinement(matvec, b)
     self.assertArraysAllClose(x, x2, atol=1e-4)
+    self.assertArraysAllClose(x, x3, atol=1e-4)
 
   def test_solve_dense_psd(self):
     rng = onp.random.RandomState(0)
@@ -104,9 +108,11 @@ class LinearSolveTest(jtu.JaxTestCase):
     x2 = linear_solve.solve_normal_cg(matvec, b)
     x3 = linear_solve.solve_gmres(matvec, b)
     x4 = linear_solve.solve_bicgstab(matvec, b)
+    x5 = linear_solve.solve_iterative_refinement(matvec, b)
     self.assertArraysAllClose(x, x2, atol=1e-4)
     self.assertArraysAllClose(x, x3, atol=1e-4)
     self.assertArraysAllClose(x, x4, atol=1e-4)
+    self.assertArraysAllClose(x, x5, atol=1e-4)
 
   def test_solve_sparse_ridge(self):
     rng = onp.random.RandomState(0)

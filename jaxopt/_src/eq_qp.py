@@ -19,17 +19,22 @@ from typing import Callable
 from typing import Optional
 from typing import Tuple
 
+from functools import partial
 from dataclasses import dataclass
 
 import jax
 import jax.numpy as jnp 
 
+from jaxopt._src import loop
 from jaxopt._src import base
 from jaxopt._src import implicit_diff as idf
-from jaxopt._src import linear_solve
-from jaxopt._src import tree_util
+from jaxopt._src.tree_util import tree_zeros_like, tree_add, tree_sub
+from jaxopt._src.tree_util import tree_add_scalar_mul, tree_scalar_mul 
+from jaxopt._src.tree_util import tree_vdot, tree_negative, tree_l2_norm
 from jaxopt._src.linear_operator import _make_linear_operator
 from jaxopt._src.cvxpy_wrapper import _check_params
+import jaxopt._src.linear_solve as linear_solve
+from jaxopt._src.iterative_refinement import IterativeRefinement
 
 
 def _make_eq_qp_optimality_fun(matvec_Q, matvec_A):
@@ -44,13 +49,13 @@ def _make_eq_qp_optimality_fun(matvec_Q, matvec_A):
   def obj_fun(primal_var, params_obj):
     params_Q, c = params_obj
     Q = matvec_Q(params_Q)
-    return (0.5 * tree_util.tree_vdot(primal_var, Q(primal_var)) +
-            tree_util.tree_vdot(primal_var, c))
+    return (0.5 * tree_vdot(primal_var, Q(primal_var)) +
+            tree_vdot(primal_var, c))
 
   def eq_fun(primal_var, params_eq):
     params_A, b = params_eq
     A = matvec_A(params_A)
-    return tree_util.tree_sub(A(primal_var), b)
+    return tree_sub(A(primal_var), b)
 
   optimality_fun_with_ineq =  idf.make_kkt_optimality_fun(obj_fun, eq_fun, ineq_fun=None)
 
@@ -69,7 +74,8 @@ class EqualityConstrainedQP(base.Solver):
   Supports implicit differentiation, matvec and pytrees.
   Can benefit from GPU/TPU acceleration.
 
-  Not as precise as CVXPY_QP.
+  Not as precise as CvxpyQP. If the algorithm diverges on some instances,
+  it might be useful to tweak the ``refine_regularization`` parameter.
 
   Attributes:
     matvec_Q: a Callable matvec_Q(params_Q, u).
@@ -77,6 +83,10 @@ class EqualityConstrainedQP(base.Solver):
     matvec_A: a Callable matvec_A(params_A, u).
       By default, matvec_A(A, u) = dot(A, u), where A = params_A.
     solve: a Callable to solve linear systems, that accepts matvecs (default: linear_solve.solve_gmres).
+    refine_regularization: a float (default: 0.) used to regularize the system.
+      Useful for badly conditioned problems that lead to divergence.
+      ``IterativeRefinement`` is used to correct the error introduced.
+    refine_maxiter: maximum number of refinement steps, when refine_regularization is not 0.
     maxiter: maximum number of iterations.
     tol: tolerance (stoping criterion).
     implicit_diff: whether to enable implicit diff or autodiff of unrolled
@@ -87,13 +97,62 @@ class EqualityConstrainedQP(base.Solver):
   matvec_Q: Optional[Callable] = None
   matvec_A: Optional[Callable] = None
   solve: Callable = linear_solve.solve_gmres
+  refine_regularization: float = 0.0
+  refine_maxiter: int = 10
   maxiter: int = 1000
   tol: float = 1e-5
   implicit_diff_solve: Optional[Callable] = None
   jit: bool = True
 
+  def _refined_solve(self, matvec, b, init, maxiter, tol):
+    # Instead of solving S x = b
+    # We solve     \bar{S} x = b
+    #
+    # S = [[  Q   A^T  
+    #         A    0 ]]
+    #
+    # \bar{S} = [[ Q + delta      A^T
+    #                A         - delta ]]
+    #
+    # Since Q is PSD, and delta a diagonal matrix,
+    # this makes \bar{S} a quasi-definite matrix.
+    #
+    # Quasi-Definite matrices are indefinite,
+    # but they are never singular (when delta > 0).
+    #
+    # This guarantees that the system is well posed in every case,
+    # even if some constraints of A are redundant.
+    #
+    # The particular form of this system is inspired by [2].
+    # Quasi-Definite matrices are a known tool in the literature on Interior Point methods [1].
+    #
+    # References:  
+    #  
+    #  [1] Vanderbei, R.J., 1995. Symmetric quasidefinite matrices.
+    #      SIAM Journal on Optimization, 5(1), pp.100-113.  
+    #  
+    #  [2] Stellato, B., Banjac, G., Goulart, P., Bemporad, A. and Boyd, S., 2020.
+    #      OSQP: An operator splitting solver for quadratic programs.
+    #      Mathematical Programming Computation, 12(4), pp.637-672.  
+
+    def matvec_qp(_, x):
+      return matvec(x)
+
+    ridge = self.refine_regularization
+
+    def matvec_regularized_qp(_, x):
+      primal, dual_eq = x
+      Stop, Sbottom = matvec(x)
+      return Stop + ridge * primal, Sbottom - ridge * dual_eq
+
+    solver = IterativeRefinement(matvec_A=matvec_qp,
+                                 matvec_A_bar=matvec_regularized_qp,
+                                 solve=partial(self.solve, maxiter=maxiter, tol=tol),
+                                 maxiter=self.refine_maxiter, tol=tol)
+    return solver.run(init_params=init, params_A=None, b=b)[0]
+
   def run(self,
-          init_params: Optional[Any] = None,
+          init_params: Optional[base.KKTSolution] = None,
           params_obj: Optional[Any] = None,
           params_eq: Optional[Any] = None) -> base.OptStep:
     """Solves 0.5 * x^T Q x + c^T x subject to Ax = b.
@@ -107,7 +166,6 @@ class EqualityConstrainedQP(base.Solver):
     Returns:
       (params, state),  where params = (primal_var, dual_var_eq, None)
     """
-    del init_params  # no warm start
     if self._check_params:
       _check_params(params_obj, params_eq)
 
@@ -118,25 +176,34 @@ class EqualityConstrainedQP(base.Solver):
     A = self.matvec_A(params_A)
 
     def matvec(u):
-        primal_u, dual_u = u
-        mv_A, rmv_A = A.matvec_and_rmatvec(primal_u, dual_u)
-        return (tree_util.tree_add(Q(primal_u), rmv_A), mv_A)
+      primal_u, dual_u = u
+      mv_A, rmv_A = A.matvec_and_rmatvec(primal_u, dual_u)
+      return (tree_add(Q(primal_u), rmv_A), mv_A)
 
-    minus_c = tree_util.tree_negative(c)
+    target = (tree_negative(c), b)
 
+    if init_params is not None:
+      init_params = (init_params.primal, init_params.dual_eq)
+    
     # Solves the following linear system:
     # [[Q A^T]  [primal_var = [-c
     #  [A 0  ]]  dual_var  ]    b]
-    primal, dual_eq = self.solve(matvec, (minus_c, b), tol=self.tol, maxiter=self.maxiter)
+    if self.refine_regularization == 0.:
+      primal, dual_eq = self.solve(matvec, target, init_params,
+                                   tol=self.tol, maxiter=self.maxiter)
+    else:
+      primal, dual_eq = self._refined_solve(matvec, target, init_params,
+                                            tol=self.tol, maxiter=self.maxiter)
+    
     return base.OptStep(params=base.KKTSolution(primal, dual_eq, None), state=None)
 
   def l2_optimality_error(self,
-    params: jnp.array,
-    params_obj: Any,
-    params_eq: Any):
+    params: base.KKTSolution,
+    params_obj: Optional[Any],
+    params_eq: Optional[Any]):
     """Computes the L2 norm of the KKT residuals."""
     tree = self.optimality_fun(params, params_obj, params_eq)
-    return tree_util.tree_l2_norm(tree)
+    return tree_l2_norm(tree)
 
   def __post_init__(self):
     self._check_params = self.matvec_Q is None and self.matvec_A is None

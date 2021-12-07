@@ -31,13 +31,11 @@ from jaxopt._src import base
 from jaxopt._src import implicit_diff as idf
 from jaxopt._src.tree_util import tree_add, tree_sub, tree_mul
 from jaxopt._src.tree_util import tree_scalar_mul, tree_add_scalar_mul
-from jaxopt._src.tree_util import tree_map, tree_vdot, tree_l2_norm, tree_inf_norm
+from jaxopt._src.tree_util import tree_map, tree_vdot, tree_dot
 from jaxopt._src.tree_util import tree_ones_like, tree_zeros_like, tree_where
-from jaxopt._src.tree_util import tree_negative
+from jaxopt._src.tree_util import tree_negative, tree_l2_norm, tree_inf_norm
 from jaxopt._src.linear_operator import DenseLinearOperator, _make_linear_operator
-from jaxopt._src.linear_solve import solve_cg
 from jaxopt.projection import projection_box
-from jaxopt import loop
 
 
 def _make_osqp_optimality_fun(matvec_Q, matvec_A):
@@ -89,11 +87,11 @@ class BoxOSQPState(NamedTuple):
   """Named tuple containing state information.
 
   Attributes:
-    iter_num: iteration number
-    error: error used as stop criterion, deduced from residuals
+    iter_num: iteration number.
+    error: error used as stop criterion, deduced from residuals.
     status: integer, one of ``[BoxOSQP.UNSOLVED, BoxOSQP.SOLVED, BoxOSQP.PRIMAL_INFEASIBLE, BoxOSQP.DUAL_INFEASIBLE]``.
-    primal_residuals: residuals of constraints of primal problem
-    dual_residuals: residuals of constraints of dual problem
+    primal_residuals: residuals of constraints of primal problem.
+    dual_residuals: residuals of constraints of dual problem.
     rho_bar: current stepsize.
     eq_qp_last_sol: solution of equality constrained QP. Useful for warm start.
     params_precond: parameters for preconditioner of equality constrained QP.
@@ -169,9 +167,16 @@ class JacobiPreconditioner(BoxOSQPPreconditioner):
     return params_precond[:-1] + (rho_bar,)
 
 
+def ifelse_cond(cond, if_fun, else_fun, operand, jit):
+  if not jit:
+    with jax.disable_jit():
+      return jax.lax.cond(cond, if_fun, else_fun, operand)
+  return jax.lax.cond(cond, if_fun, else_fun, operand)
+
+
 @dataclass(eq=False)
 class BoxOSQP(base.IterativeSolver):
-  """Operator Splitting Solver for Quadratic Programs.
+  """Operator Splitting Solver for Quadratic Programs.  
 
   Jax implementation of the celebrated GPU-OSQP [1,3] based on ADMM.
   Suppports jit, vmap, matvecs and pytrees.
@@ -211,7 +216,7 @@ class BoxOSQP(base.IterativeSolver):
 
   Attributes:
     matvec_Q: (optional) a Callable matvec_Q(params_Q, x).
-      By default, matvec_Q(P, x) = tree_dot(P, x), where the pytree P = params_Q matches x structure.
+      By default, matvec_Q(P, x) = tree_dot(P, x), where the pytree Q = params_Q matches x structure.
     matvec_A: (optional) a Callable matvec_A(params_A, x).
       By default, matvec_A(A, x) = tree_dot(A, x), where tree pytree A = params_A matches x structure.
     check_primal_dual_infeasability: if True populates the ``status`` field of ``state``
@@ -249,23 +254,26 @@ class BoxOSQP(base.IterativeSolver):
     jit: whether to JIT-compile the optimization loop (default: "auto").
     unroll: whether to unroll the optimization loop (default: "auto").
 
-  [1] Stellato, B., Banjac, G., Goulart, P., Bemporad, A. and Boyd, S., 2020.
-  OSQP: An operator splitting solver for quadratic programs.
-  Mathematical Programming Computation, 12(4), pp.637-672.
+  References:  
+    
+    [1] Stellato, B., Banjac, G., Goulart, P., Bemporad, A. and Boyd, S., 2020.
+    OSQP: An operator splitting solver for quadratic programs.
+    Mathematical Programming Computation, 12(4), pp.637-672.
 
-  [2] Boyd, S., Parikh, N., Chu, E., Peleato, B. and Eckstein, J., 2010.
-  Distributed Optimization and Statistical Learning via the Alternating Direction Method of Multipliers.
-  Machine Learning, 3(1), pp.1-122.
+    [2] Boyd, S., Parikh, N., Chu, E., Peleato, B. and Eckstein, J., 2010.
+    Distributed Optimization and Statistical Learning via the Alternating Direction Method of Multipliers.
+    Machine Learning, 3(1), pp.1-122.
 
-  [3] Schubiger, M., Banjac, G. and Lygeros, J., 2020.
-  GPU acceleration of ADMM for large-scale quadratic programming.
-  Journal of Parallel and Distributed Computing, 144, pp.55-67.
+    [3] Schubiger, M., Banjac, G. and Lygeros, J., 2020.
+    GPU acceleration of ADMM for large-scale quadratic programming.
+    Journal of Parallel and Distributed Computing, 144, pp.55-67.
   """
   matvec_Q: Optional[Callable] = None
   matvec_A: Optional[Callable] = None
   check_primal_dual_infeasability: base.AutoOrBoolean = "auto"
   sigma: float = 1e-6
   momentum: float = 1.6
+  eq_qp_solver: Callable = jax.scipy.sparse.linalg.cg
   eq_qp_preconditioner: Optional[str] = None
   eq_qp_solve_tol: float = 1e-7
   eq_qp_solve_maxiter: Optional[int] = None
@@ -315,7 +323,7 @@ class BoxOSQP(base.IterativeSolver):
     """Return defaults params for initialization."""
     if init_x is None:
       init_x = tree_zeros_like(params_obj[1])
-    init_z = self.matvec_A(params_eq)(init_x)
+    init_z = projection_box(self.matvec_A(params_eq)(init_x), params_ineq)
     init_y = tree_zeros_like(init_z)
     return base.KKTSolution((init_x, init_z), init_y, (init_y, init_y))
 
@@ -444,10 +452,16 @@ class BoxOSQP(base.IterativeSolver):
     x, z = params.primal
     y    = params.dual_eq  # dual variables for constraints z_bar = z;
 
-    def matvec(x_bar):
-      Qx_sigmax = tree_add_scalar_mul(Q(x_bar), self.sigma, x_bar)
-      ATAx = A.normal_matvec(x_bar)
-      return tree_add_scalar_mul(Qx_sigmax, rho_bar, ATAx)
+    if isinstance(Q, DenseLinearOperator) and isinstance(A, DenseLinearOperator):
+      eyes = tree_map(lambda qi: jnp.eye(len(qi)), Q.pytree)
+      matvec_A = tree_add_scalar_mul(Q.pytree, self.sigma, eyes)
+      ATA = tree_map(lambda ai: jnp.dot(ai.T, ai), A.pytree)
+      matvec_A = tree_add_scalar_mul(matvec_A, rho_bar, ATA)
+    else:
+      def matvec_A(x_bar):
+        Qx_sigmax = tree_add_scalar_mul(Q(x_bar), self.sigma, x_bar)
+        ATAx = A.normal_matvec(x_bar)
+        return tree_add_scalar_mul(Qx_sigmax, rho_bar, ATAx)
     
     bxq = tree_sub(tree_scalar_mul(self.sigma, x), c)
     byz = tree_add_scalar_mul(y, -rho_bar, z)
@@ -455,15 +469,17 @@ class BoxOSQP(base.IterativeSolver):
 
     primal_res_inf = tree_inf_norm(state.primal_residuals)
     dual_res_inf = tree_inf_norm(state.dual_residuals)
-    atol = 0.15 * jnp.sqrt(primal_res_inf * dual_res_inf)
-    # 0.15 < 1 implies that atol is slower than geometric mean of primal_res_inf and dual_res_inf.
+    lam = 0.15
+    atol = lam * jnp.sqrt(primal_res_inf * dual_res_inf)
+    # lam < 1 implies that atol is slower than geometric mean of primal_res_inf and dual_res_inf.
 
-    x_bar = solve_cg(matvec, b,
-                     init=state.eq_qp_last_sol,
-                     M=lambda x: self._eq_qp_preconditioner_impl(state.params_precond, x),
-                     maxiter=self.eq_qp_solve_maxiter,
-                     atol=atol,
-                     tol=self.eq_qp_solve_tol * self.tol)  # adaptive threshold.
+    x_bar, _ = self.eq_qp_solver(
+                A=matvec_A, b=b,
+                x0=state.eq_qp_last_sol,
+                M=lambda x: self._eq_qp_preconditioner_impl(state.params_precond, x),
+                maxiter=self.eq_qp_solve_maxiter,
+                atol=atol,
+                tol=self.eq_qp_solve_tol * self.tol)  # adaptive threshold.
     
     return x_bar
 
@@ -513,6 +529,8 @@ class BoxOSQP(base.IterativeSolver):
     #
     # z = argmin_z L(x_bar, z_bar, x, z, y)
     # for equality constraint z = z_bar the associated dual variable is y
+    jit, _ = self._get_loop_options()
+
     Q    = self.matvec_Q(params_obj[0])
     c    = params_obj[1]
     A    = self.matvec_A(params_eq)
@@ -531,18 +549,24 @@ class BoxOSQP(base.IterativeSolver):
     if self.verbose >= 3:
       print(f"primal_residuals={primal_residuals}, dual_residuals={dual_residuals}")
 
-    rho_bar, params_precond = jax.lax.cond(jnp.mod(state.iter_num, self.stepsize_updates_frequency) == 0,
+    # We need our own ifelse_cond because automatic jitting of jax.lax.cond branches
+    # could pose problems with non jittable matvecs, or prevent printing when verbose > 0.
+    rho_bar, params_precond = ifelse_cond(
+      jnp.mod(state.iter_num, self.stepsize_updates_frequency) == 0,
       lambda _: self._update_stepsize(rho_bar, state.params_precond, primal_residuals, dual_residuals, Q, c, A, x, y),
-      lambda _: (rho_bar, state.params_precond), operand=None)
+      lambda _: (rho_bar, state.params_precond),
+      operand=None, jit=jit)
 
     sol = BoxOSQP._get_full_KKT_solution(primal=(x, z), y=y)
 
-    error, status = jax.lax.cond(jnp.mod(state.iter_num, self.termination_check_frequency) == 0,
+    # Same remark as above for ifelse_cond.
+    error, status = ifelse_cond(
+      jnp.mod(state.iter_num, self.termination_check_frequency) == 0,
       lambda _: self._check_termination_conditions(primal_residuals, dual_residuals,
                                                    params, sol, Q, c, A, l, u),
-      lambda s: (state.error, s), operand=(state.status))
-
-    jit, _ = self._get_loop_options()
+      lambda s: (state.error, s),
+      operand=(state.status), jit=jit)
+    
     if not jit:
       if status == BoxOSQP.PRIMAL_INFEASIBLE:
         raise ValueError(f"Primal infeasible.")
@@ -550,13 +574,13 @@ class BoxOSQP(base.IterativeSolver):
         raise ValueError(f"Dual infeasible.")
 
     state = BoxOSQPState(iter_num=state.iter_num+1,
-                      error=error,
-                      status=status,
-                      primal_residuals=primal_residuals,
-                      dual_residuals=dual_residuals,
-                      rho_bar=rho_bar,
-                      eq_qp_last_sol=eq_qp_last_sol,
-                      params_precond=params_precond)
+                         error=error,
+                         status=status,
+                         primal_residuals=primal_residuals,
+                         dual_residuals=dual_residuals,
+                         rho_bar=rho_bar,
+                         eq_qp_last_sol=eq_qp_last_sol,
+                         params_precond=params_precond)
     return base.OptStep(params=sol, state=state)
 
   def run(self,

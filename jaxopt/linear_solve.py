@@ -18,3 +18,4 @@ from jaxopt._src.linear_solve import solve_cg
 from jaxopt._src.linear_solve import solve_normal_cg
 from jaxopt._src.linear_solve import solve_gmres
 from jaxopt._src.linear_solve import solve_bicgstab
+from jaxopt._src.iterative_refinement import solve_iterative_refinement

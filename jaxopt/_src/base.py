@@ -30,7 +30,13 @@ import jax
 import jax.numpy as jnp
 
 from jaxopt import implicit_diff as idf
-from jaxopt import linear_solve
+
+# Do not use jaxopt.linear_solve to avoid circular imports: use
+# jaxopt._src.linear_solve instead.
+# This allows to define linear solver with base.Solver interface,
+# and then exporting them in jaxopt.linear_solve.
+from jaxopt._src import linear_solve 
+
 from jaxopt import loop
 from jaxopt import tree_util
 
