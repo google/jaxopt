@@ -23,13 +23,13 @@ from functools import partial
 from dataclasses import dataclass
 
 import jax
-import jax.numpy as jnp 
+import jax.numpy as jnp
 
 from jaxopt._src import loop
 from jaxopt._src import base
 from jaxopt._src import implicit_diff as idf
 from jaxopt._src.tree_util import tree_zeros_like, tree_add, tree_sub
-from jaxopt._src.tree_util import tree_add_scalar_mul, tree_scalar_mul 
+from jaxopt._src.tree_util import tree_add_scalar_mul, tree_scalar_mul
 from jaxopt._src.tree_util import tree_vdot, tree_negative, tree_l2_norm
 from jaxopt._src.linear_operator import _make_linear_operator
 from jaxopt._src.cvxpy_wrapper import _check_params
@@ -57,13 +57,15 @@ def _make_eq_qp_optimality_fun(matvec_Q, matvec_A):
     A = matvec_A(params_A)
     return tree_sub(A(primal_var), b)
 
-  optimality_fun_with_ineq =  idf.make_kkt_optimality_fun(obj_fun, eq_fun, ineq_fun=None)
+  optimality_fun_with_ineq =  idf.make_kkt_optimality_fun(obj_fun,
+                                                          eq_fun,
+                                                          ineq_fun=None)
 
   # It is required to post_process the output of `idf.make_kkt_optimality_fun`
   # to make the signatures of optimality_fun() and run() agree.
   def optimality_fun(params, params_obj, params_eq):
     return optimality_fun_with_ineq(params, params_obj, params_eq, None)
-  
+
   return optimality_fun
 
 
@@ -74,19 +76,21 @@ class EqualityConstrainedQP(base.Solver):
   Supports implicit differentiation, matvec and pytrees.
   Can benefit from GPU/TPU acceleration.
 
-  Not as precise as CvxpyQP. If the algorithm diverges on some instances,
-  it might be useful to tweak the ``refine_regularization`` parameter.
+  If the algorithm diverges on some instances, it might be useful to tweak the
+  ``refine_regularization`` parameter.
 
   Attributes:
     matvec_Q: a Callable matvec_Q(params_Q, u).
       By default, matvec_Q(Q, u) = dot(Q, u), where Q = params_Q.
     matvec_A: a Callable matvec_A(params_A, u).
       By default, matvec_A(A, u) = dot(A, u), where A = params_A.
-    solve: a Callable to solve linear systems, that accepts matvecs (default: linear_solve.solve_gmres).
+    solve: a Callable to solve linear systems, that accepts matvecs
+      (default: linear_solve.solve_gmres).
     refine_regularization: a float (default: 0.) used to regularize the system.
       Useful for badly conditioned problems that lead to divergence.
       ``IterativeRefinement`` is used to correct the error introduced.
-    refine_maxiter: maximum number of refinement steps, when refine_regularization is not 0.
+    refine_maxiter: maximum number of refinement steps, when
+      refine_regularization is not 0.
     maxiter: maximum number of iterations.
     tol: tolerance (stoping criterion).
     implicit_diff: whether to enable implicit diff or autodiff of unrolled
@@ -108,7 +112,7 @@ class EqualityConstrainedQP(base.Solver):
     # Instead of solving S x = b
     # We solve     \bar{S} x = b
     #
-    # S = [[  Q   A^T  
+    # S = [[  Q   A^T
     #         A    0 ]]
     #
     # \bar{S} = [[ Q + delta      A^T
@@ -124,16 +128,17 @@ class EqualityConstrainedQP(base.Solver):
     # even if some constraints of A are redundant.
     #
     # The particular form of this system is inspired by [2].
-    # Quasi-Definite matrices are a known tool in the literature on Interior Point methods [1].
+    # Quasi-Definite matrices are a known tool in the literature on
+    # Interior Point methods [1].
     #
-    # References:  
-    #  
+    # References:
+    #
     #  [1] Vanderbei, R.J., 1995. Symmetric quasidefinite matrices.
-    #      SIAM Journal on Optimization, 5(1), pp.100-113.  
-    #  
+    #      SIAM Journal on Optimization, 5(1), pp.100-113.
+    #
     #  [2] Stellato, B., Banjac, G., Goulart, P., Bemporad, A. and Boyd, S., 2020.
     #      OSQP: An operator splitting solver for quadratic programs.
-    #      Mathematical Programming Computation, 12(4), pp.637-672.  
+    #      Mathematical Programming Computation, 12(4), pp.637-672.
 
     def matvec_qp(_, x):
       return matvec(x)
@@ -147,7 +152,8 @@ class EqualityConstrainedQP(base.Solver):
 
     solver = IterativeRefinement(matvec_A=matvec_qp,
                                  matvec_A_bar=matvec_regularized_qp,
-                                 solve=partial(self.solve, maxiter=maxiter, tol=tol),
+                                 solve=partial(self.solve, maxiter=maxiter,
+                                               tol=tol),
                                  maxiter=self.refine_maxiter, tol=tol)
     return solver.run(init_params=init, params_A=None, b=b)[0]
 
@@ -184,7 +190,7 @@ class EqualityConstrainedQP(base.Solver):
 
     if init_params is not None:
       init_params = (init_params.primal, init_params.dual_eq)
-    
+
     # Solves the following linear system:
     # [[Q A^T]  [primal_var = [-c
     #  [A 0  ]]  dual_var  ]    b]
@@ -194,8 +200,9 @@ class EqualityConstrainedQP(base.Solver):
     else:
       primal, dual_eq = self._refined_solve(matvec, target, init_params,
                                             tol=self.tol, maxiter=self.maxiter)
-    
-    return base.OptStep(params=base.KKTSolution(primal, dual_eq, None), state=None)
+
+    return base.OptStep(params=base.KKTSolution(primal, dual_eq, None),
+                        state=None)
 
   def l2_optimality_error(self,
     params: base.KKTSolution,
@@ -211,7 +218,8 @@ class EqualityConstrainedQP(base.Solver):
     self.matvec_Q = _make_linear_operator(self.matvec_Q)
     self.matvec_A = _make_linear_operator(self.matvec_A)
 
-    self.optimality_fun = _make_eq_qp_optimality_fun(self.matvec_Q, self.matvec_A)
+    self.optimality_fun = _make_eq_qp_optimality_fun(self.matvec_Q,
+                                                     self.matvec_A)
 
     # Set up implicit diff.
     decorator = idf.custom_root(self.optimality_fun, has_aux=True,

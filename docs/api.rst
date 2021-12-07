@@ -64,6 +64,14 @@ Loss functions
     jaxopt.loss.multiclass_logistic_loss
     jaxopt.loss.multiclass_sparsemax_loss
 
+Linear system solvers
+---------------------
+
+.. autosummary::
+  :toctree: _autosummary
+
+    jaxopt.IterativeRefinement
+
 Root finding
 ------------
 

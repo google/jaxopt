@@ -158,7 +158,10 @@ def _make_quadratic_prog_optimality_fun(matvec_Q, matvec_A):
 
 @dataclass(eq=False)
 class QuadraticProgramming(base.Solver):
-  """Quadratic programming solver (deprecated).
+  """Deprecated: will be removed in v0.3.
+
+  Use :class:`jaxopt.CvxpyQP`, :class:`jaxopt.OSQP`, :class:`jaxopt.BoxOSQP` and
+  :class:`jaxopt.EqualityConstrainedQP` instead.
 
   The objective function is::
 
@@ -237,7 +240,7 @@ class QuadraticProgramming(base.Solver):
                   "'QuadraticProgramming' for QPs with inequality constraints. "
                   "Use 'OSQP' if you want a solver that supports pytrees, matvec, jit and vmap "
                   "for QPs with inequality constraints.", FutureWarning)
-    
+
     self.optimality_fun = _make_quadratic_prog_optimality_fun(self.matvec_Q,
                                                               self.matvec_A)
 
