@@ -1,18 +1,46 @@
 Changelog
 =========
 
-Version 0.1.2 (development)
----------------------------
+Version 0.2
+-----------
 
 New features
 ~~~~~~~~~~~~
 
+- Quadratic programming solvers :class:`jaxopt.CvxpyQP`, :class:`jaxopt.OSQP`, :class:`jaxopt.BoxOSQP` and
+  :class:`jaxopt.EqualityConstrainedQP`.
+- :class:`jaxopt.IterativeRefinement`.
+
+New examples
+~~~~~~~~~~~~
+
+- :ref:`sphx_glr_auto_examples_deep_learning_flax_resnet.py`
+
+Bug fixes and enhancements
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- `Prevent recompilation of loops in solver.run if executing without jit
+  <https://github.com/google/jaxopt/pull/113>`_.
+- `Prevents recomputation of gradient in OptaxSolver
+  <https://github.com/google/jaxopt/pull/107>`_.
+- `Make solver.update jittable and ensure output states are consistent
+  <https://github.com/google/jaxopt/pull/106>`_.
 - Allow ``Callable`` for the ``stepsize`` argument in
   :class:`jaxopt.ProximalGradient`, :class:`jaxopt.ProjectedGradient` and
   :class:`jaxopt.GradientDescent`.
-- Added example :ref:`sphx_glr_auto_examples_deep_learning_flax_resnet.py`
-- Solvers :class:`OSQP`, :class:`BoxOSQP` and :class:`EqualityConstrainedQP` for quadratic programming.
-- Partial deprecation of :class:`QuadraticProgramming`: documentation removed (docstring remains).
+
+Deprecated features
+~~~~~~~~~~~~~~~~~~~
+
+- :class:`jaxopt.QuadraticProgramming` is deprecated and will be removed in v0.3. Use
+  :class:`jaxopt.CvxpyQP`, :class:`jaxopt.OSQP`, :class:`jaxopt.BoxOSQP` and
+  :class:`jaxopt.EqualityConstrainedQP` instead.
+
+Contributors
+~~~~~~~~~~~~
+
+Fabian Pedregosa, Felipe Llinares, Geoffrey Negiar, Louis Bethune, Mathieu
+Blondel, Vikas Sindhwani.
 
 Version 0.1.1
 -------------

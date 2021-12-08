@@ -2,17 +2,12 @@ Quadratic programming
 =====================
 
 This section is concerned with minimizing quadratic functions subject
-to equality and/or inequality constraints, also known as quadratic programming.
+to equality and/or inequality constraints, also known as
+`quadratic programming <https://en.wikipedia.org/wiki/Quadratic_programming>`_.
 
-The different specificities of the solvers are summarized in the table below.  
-The best choice will depend on the usage.  
-  
-- *jit*: the algorithm can be used with jit or vmap, on GPU/TPU.
-- *matvec*: the input can be given as matvec instead of dense matrices.
-- *precision*: accuracy expected when the solver succeeds to converge.
-- *stability*: capacity to handle badly scaled problems and matrices with poor conditioning.  
-- *speed*: typical speed on big instances to each its maximum accuracy.
-- *input format*: see subsections below.
+JAXopt supports several solvers for quadratic programming.
+The solver specificities are summarized in the table below.
+The best choice will depend on the usage.
 
 .. list-table:: Quadratic Solvers
    :widths: 45, 15, 20, 15, 15, 15, 22
@@ -53,24 +48,24 @@ The best choice will depend on the usage.
      - ++
      - ++
      - (Q, c), A, (l, u)
-   * - :func:`linear_solve.solve_cg`
-     - yes
-     - yes
-     - +++
-     - +++
-     - +++
-     - Q, c
+
+- *jit*: the algorithm can be used with jit or vmap, on GPU/TPU.
+- *matvec*: the input can be given as matvec instead of dense matrices.
+- *precision*: accuracy expected when the solver succeeds to converge.
+- *stability*: capacity to handle badly scaled problems and matrices with poor conditioning.
+- *speed*: typical speed on big instances to each its maximum accuracy.
+- *input format*: see subsections below.
 
 
 This table is given as rule of thumb only; on some particular instances
 some solvers may behave unexpectedly better than others.
 In case of difficulties, we suggest to test different combinations of
-algorithms, ``maxiter`` and ``tol`` values.  
-  
+algorithms, ``maxiter`` and ``tol`` values.
+
 .. warning::
 
   Those algorithms are guaranteed to converge on **convex problems** only.
-  Hence, the matrix :math:`Q` *must* be positive semi-definite (PSD)
+  Hence, the matrix :math:`Q` *must* be positive semi-definite (PSD).
 
 Equality-constrained QPs
 ------------------------
@@ -81,12 +76,12 @@ The problem takes the form:
 
     \min_{x} \frac{1}{2} x^\top Q x + c^\top x \textrm{ subject to } A x = b
 
-This class is optimized for QPs with equality constraints only: it supports jit, pytrees and matvec.
-
 .. autosummary::
   :toctree: _autosummary
 
     jaxopt.EqualityConstrainedQP
+
+This class is optimized for QPs with equality constraints only: it supports jit, pytrees and matvec.
 
 Example::
 
@@ -106,10 +101,13 @@ Example::
 Ill-posed problems
 ~~~~~~~~~~~~~~~~~~
 
-This solver is the fastest for well posed problems, but can behave poorly on badly scaled matrices,
+This solver is the fastest for well-posed problems, but can behave poorly on badly scaled matrices,
 or with redundant constraints.
 
-If the solver struggles to converge, set ``refine_regularization`` and ``refine_maxiter``::
+If the solver struggles to converge,
+it is possible to enable
+`iterative refinement <https://en.wikipedia.org/wiki/Iterative_refinement>`_.
+This can be done by setting ``refine_regularization`` and ``refine_maxiter``::
 
   from jaxopt._src.eq_qp import EqualityConstrainedQP
 
@@ -125,7 +123,6 @@ If the solver struggles to converge, set ``refine_regularization`` and ``refine_
   print(sol.dual_eq)
   print(qp.l2_optimality_error(sol, params_obj=(Q, c), params_eq=(A, b)))
 
-`Iterative refinement <https://en.wikipedia.org/wiki/Iterative_refinement>`_ is used for stabilization.
 
 General QPs
 -----------
@@ -139,8 +136,10 @@ The problem takes the form:
 CvxpyQP
 ~~~~~~~
 
-The wrapper over Cvxpy is a high precision solver that runs in ``float64``.
-However it is not jittable, and does not support matvec and pytrees.
+The wrapper over
+`CVXPY <https://www.cvxpy.org>`_
+is a solver that runs in ``float64`` precision.
+However, it is not jittable, and does not support matvec and pytrees.
 
 .. autosummary::
   :toctree: _autosummary
@@ -172,7 +171,7 @@ OSQP
 ~~~~
 
 This solver is a pure JAX re-implementation of the OSQP algorithm.
-It is jittable, supports pytrees and matvecs, but the precision is usually 
+It is jittable, supports pytrees and matvecs, but the precision is usually
 lower than :class:`CvxpyQP` when run in float32 precision.
 
 .. autosummary::
@@ -198,9 +197,9 @@ Example::
   print(sol.dual_eq)
   print(sol.dual_ineq)
 
-See :class:`BoxOSQP` for a full description of parameters.
+See :class:`BoxOSQP` for a full description of the parameters.
 
-Box constraints QPs
+Box-constrained QPs
 -------------------
 
 The problem takes the form:
@@ -234,34 +233,39 @@ Example::
   print(sol.dual_eq)
   print(sol.dual_ineq)
 
-If required the algorithm can be speed up by setting ``check_primal_dual_infeasability`` to ``False``,
-by setting ``eq_qp_preconditioner`` to ``"jacobi"`` (when possible).  
-  
+If required the algorithm can be sped up by setting
+``check_primal_dual_infeasability`` to ``False``, and by setting
+``eq_qp_preconditioner`` to ``"jacobi"`` (when possible).
+
 .. note::
 
-  The ``tol`` parameter is used as stopping criterion when compared to primal and dual residuals.
-  For over constrained problems, or badly scaled matrices, the residuals can be high, and the solver might
-  never converge up to the desired accuracy.
-  In this case it is better to reduce ``maxiter``.  
+  The ``tol`` parameter controls the tolerance of the stopping criterion, which
+  is based on the primal and dual residuals.  For over-constrained problems, or
+  badly-scaled matrices, the residuals can be high, and it may be difficult to
+  set ``tol`` appropriately.  In this case, it is better to tune ``maxiter``
+  instead.
 
 Unconstrained QPs
 -----------------
 
-The problem takes the form:
+For completeness, we also briefly describe how to solve unconstrained
+quadratics of the form:
 
 .. math::
 
     \min_{x} \frac{1}{2} x^\top Q x + c^\top x
 
-The optimality condition rewrites :math:`\nabla_x \frac{1}{2} x^\top Q x + c^\top x=Qx+c=0`.  
-  
-Since the matrix :math:`Q` is assumed PSD, the best algorithm to solve :math:`Qx=-c` is *conjugate gradient*::
+The optimality condition rewrites :math:`\nabla \frac{1}{2} x^\top Q x + c^\top
+x=Qx+c=0`.  Therefore, this is equivalent to solving the linear system
+:math:`Qx=-c`.  Since the matrix :math:`Q` is assumed PSD, one of the best
+algorithms is *conjugate gradient*.  In JAXopt, this can be done as follows::
 
   from jaxopt.linear_solve import solve_cg
 
   Q = 2 * jnp.array([[2.0, 0.5], [0.5, 1]])
   c = jnp.array([1.0, 1.0])
+  matvec = lambda x: jnp.dot(Q, x)
 
-  sol = solve_cg(matvec=lambda x: jnp.dot(Q, x), b=-c)
+  sol = solve_cg(matvec, b=-c)
 
   print(sol)

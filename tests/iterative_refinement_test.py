@@ -23,9 +23,9 @@ from jax.test_util import check_grads
 
 from jaxopt._src import linear_solve as _linear_solve
 from jaxopt import linear_solve
+from jaxopt import IterativeRefinement
 
 import numpy as onp
-from jaxopt._src.iterative_refinement import IterativeRefinement
 
 
 class IterativeRefinementTest(jtu.JaxTestCase):
@@ -86,7 +86,7 @@ class IterativeRefinementTest(jtu.JaxTestCase):
     noise = onp.random.randn(n, n)
     sigma = 0.05
     A_bar = A + sigma * noise  # perturbed system.
-    
+
     expected = onp.random.randn(n)
     b = A @ expected  # unperturbed target.
 
