@@ -570,5 +570,5 @@ class OSQPTest(jtu.JaxTestCase):
 
 
 if __name__ == '__main__':
-  jax.config.update("jax_enable_x64", True)
+  jax.config.update("jax_enable_x64", False)
   absltest.main(testLoader=jtu.JaxTestLoader())
