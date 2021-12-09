@@ -155,7 +155,7 @@ class EqualityConstrainedQP(base.Solver):
                                  solve=partial(self.solve, maxiter=maxiter,
                                                tol=tol),
                                  maxiter=self.refine_maxiter, tol=tol)
-    return solver.run(init_params=init, params_A=None, b=b)[0]
+    return solver.run(init_params=init, A=None, b=b)[0]
 
   def run(self,
           init_params: Optional[base.KKTSolution] = None,

@@ -21,7 +21,6 @@ from jax import test_util as jtu
 import jax.numpy as jnp
 from jax.test_util import check_grads
 
-from jaxopt._src import linear_solve as _linear_solve
 from jaxopt import linear_solve
 from jaxopt import IterativeRefinement
 
@@ -40,7 +39,7 @@ class IterativeRefinementTest(jtu.JaxTestCase):
     high_acc = 1e-5
 
     # Heavily regularized low acuracy solver.
-    inner_solver = partial(_linear_solve.solve_gmres, tol=low_acc, ridge=1e-3)
+    inner_solver = partial(linear_solve.solve_gmres, tol=low_acc, ridge=1e-3)
 
     solver = IterativeRefinement(solve=inner_solver, tol=high_acc, maxiter=10)
     x, state = solver.run(None, A, b)
@@ -66,10 +65,10 @@ class IterativeRefinementTest(jtu.JaxTestCase):
     high_acc = 1e-3
 
     # Heavily regularized low acuracy solver.
-    inner_solver = partial(_linear_solve.solve_gmres, tol=low_acc, ridge=5e-2)
+    inner_solver = partial(linear_solve.solve_gmres, tol=low_acc, ridge=5e-2)
 
     solver = IterativeRefinement(solve=inner_solver, tol=high_acc, maxiter=30)
-    x, state = solver.run(init_params=None, params_A=A, b=b)
+    x, state = solver.run(init_params=None, A=A, b=b)
     self.assertLess(state.error, high_acc)
 
     x_approx = inner_solver(lambda x: jnp.dot(A, x), b)
@@ -93,7 +92,7 @@ class IterativeRefinementTest(jtu.JaxTestCase):
     high_acc = 1e-3
     solver = IterativeRefinement(matvec_A=None, matvec_A_bar=jnp.dot,
                                  tol=high_acc, maxiter=100)
-    x, state = solver.run(init_params=None, params_A=A, b=b, params_A_bar=A_bar)
+    x, state = solver.run(init_params=None, A=A, b=b, A_bar=A_bar)
     self.assertLess(state.error, high_acc)
     self.assertArraysAllClose(x, expected, rtol=5e-2)
 
@@ -107,14 +106,28 @@ class IterativeRefinementTest(jtu.JaxTestCase):
     high_acc = 1e-5
 
     # Heavily regularized low acuracy solver.
-    inner_solver = partial(_linear_solve.solve_gmres, tol=low_acc, ridge=1e-3)
+    inner_solver = partial(linear_solve.solve_gmres, tol=low_acc, ridge=1e-3)
     solver = IterativeRefinement(solve=inner_solver, tol=high_acc, maxiter=10)
 
     def solve_run(A, b):
-      x, state = solver.run(init_params=None, params_A=A, b=b)
+      x, state = solver.run(init_params=None, A=A, b=b)
       return x
 
     check_grads(solve_run, args=(A, b), order=1, modes=['rev'], eps=1e-3)
+
+  def test_warm_start(self):
+    onp.random.seed(0)
+    n = 20
+    A = onp.random.rand(n, n)
+    b = onp.random.randn(n)
+
+    init_x = onp.random.randn()
+
+    high_acc = 1e-5
+
+    solver = IterativeRefinement(tol=high_acc, maxiter=10)
+    x, state = solver.run(init_x, A, b)
+    self.assertLess(state.error, high_acc)
 
 
 if __name__ == "__main__":

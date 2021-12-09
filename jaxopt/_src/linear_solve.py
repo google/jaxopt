@@ -116,7 +116,7 @@ def _rmatvec(matvec, x):
 
 
 def _normal_matvec(matvec, x):
-  """Computes A^T A x from matvec(x) = A x, where A is square."""
+  """Computes A^T A x from matvec(x) = A x."""
   matvec_x, vjp = jax.vjp(matvec, x)
   return vjp(matvec_x)[0]
 
