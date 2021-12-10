@@ -13,14 +13,14 @@
 # limitations under the License.
 """GPU-friendly implementation of OSQP."""
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from functools import partial
 
 from typing import Any
 from typing import Callable
 from typing import NamedTuple
 from typing import Optional
 from typing import Tuple
-
-from dataclasses import dataclass
 
 import jax
 import jax.nn as nn
@@ -35,6 +35,7 @@ from jaxopt._src.tree_util import tree_map, tree_vdot, tree_dot
 from jaxopt._src.tree_util import tree_ones_like, tree_zeros_like, tree_where
 from jaxopt._src.tree_util import tree_negative, tree_l2_norm, tree_inf_norm
 from jaxopt._src.linear_operator import DenseLinearOperator, _make_linear_operator
+import jaxopt.linear_solve as linear_solve
 from jaxopt.projection import projection_box
 
 
@@ -79,7 +80,7 @@ def _make_osqp_optimality_fun(matvec_Q, matvec_A):
     upper = tree_where(u_inf, tree_sub(z, u), 0)  # mu in dual
     lower = tree_where(l_inf, tree_sub(l, z), 0)  # phi in dual
     return upper, lower
-  
+
   return idf.make_kkt_optimality_fun(obj_fun, eq_fun, ineq_fun)
 
 
@@ -93,8 +94,8 @@ class BoxOSQPState(NamedTuple):
     primal_residuals: residuals of constraints of primal problem.
     dual_residuals: residuals of constraints of dual problem.
     rho_bar: current stepsize.
-    eq_qp_last_sol: solution of equality constrained QP. Useful for warm start.
-    params_precond: parameters for preconditioner of equality constrained QP.
+    solver_state: state of linear solver in the equality constrained QP
+      that arises in ADMM iterations.
   """
   iter_num: int
   error: float
@@ -102,69 +103,149 @@ class BoxOSQPState(NamedTuple):
   primal_residuals: Any
   dual_residuals: Any
   rho_bar: Any
-  eq_qp_last_sol: Tuple[Any, Any]
-  params_precond: Any
+  solver_state: Any
 
 
-@dataclass
-class BoxOSQPPreconditioner(ABC):
-  """Abstract class for BoxOSQP preconditioners.
-  
-  Must approximate the inverse of Mx = Px + sigma x + rho_bar A^T A x.
-  
-  Attributes:
-    matvec_Q: (optional) a Callable matvec_Q(params_Q, x).
-    matvec_A: (optional) a Callable matvec_A(params_A, x).
+class OSQPLinearSolver:
+  """Solve the linear system in OSQP.
+
+    (Q + sigma I + rho_bar A^T A) x = b
+
+  The system is solved repeatedly for different values of
+  b or rho_bar during the execution of the algorithm.
+
+  We leverage this property by carrying a state_linear_solver
+  in BoxOSQPState that can be easily updated when rho_bar changes.
   """
-  matvec_Q: Optional[Callable] = None
-  matvec_A: Optional[Callable] = None
 
   @abstractmethod
-  def __call__(self, precond_params, x):
-    """Computes M^{-1}x."""
-    pass
-  
-  @abstractmethod
-  def init_params_precond(self, params_Q, params_A, sigma, rho_bar):
-    """Get initial parameters for preconditioner."""
+  def init_state(self, init_params, params_Q, params_A, sigma, rho_bar):
     pass
 
   @abstractmethod
-  def update_stepsize(self, precond_params, rho_bar):
-    """Update preconditioner parameters when rho_bar changes; should be efficient."""
+  def update_stepsize(self, solver_state, rho_bar):
+    pass
+
+  @abstractmethod
+  def run(self, b, osqp_state):
     pass
 
 
-class NoPreconditioner(BoxOSQPPreconditioner):
-  """Dummy class for no-preconditioning."""
+@dataclass(eq=False)
+class OSQPIndirectSolver:
+  """Indirect solver for Equality Constrained linear system in OSQP.
 
-  def __call__(self, params_precond, x):
-    return x
-  
-  def init_params_precond(self, params_Q, params_A, sigma, rho_bar):
-    return None
+  Uses an indirect solver with warm start, with optional support for Jacobi preconditioning.
+  Defaults to conjugate gradient descent.
 
-  def update_stepsize(self, params_precond, rho_bar):
-    return None
+  Attributes:
+    solve: linear system solver to use (default: jax.scipy.sparse.linalg.cg).
+    tol: tolerance of solver (default: 1e-7).
+    maxiter: maximum number of iterations (default: None).
+    jacobi_preconditioner: whether to use Jacobi preconditioning (default: False).
+      Only available for pytree of matrices. Can significantly speed up the solver.
+  """
+  matvec_Q: Callable
+  matvec_A: Callable
+  solve: Callable = linear_solve.solve_cg
+  tol: float = 1e-7
+  maxiter: Optional[int] = None
+  jacobi_preconditioner: bool = False
 
+  def _init_state_precond(self, params_Q, params_A, sigma, rho_bar):
+    if not self.jacobi_preconditioner:
+      return None
 
-class JacobiPreconditioner(BoxOSQPPreconditioner):
-  """Jacobi preconditioner (only available for pytree of matrices)."""
+    Q = self.matvec_Q(params_Q)
+    A = self.matvec_A(params_A)
+    if not isinstance(Q, DenseLinearOperator) or not isinstance(A, DenseLinearOperator):
+      raise ValueError('Jacobi Preconditioning is only available for pytree of matrices.')
 
-  def __call__(self, params_precond, x):
-    precond_Q, precond_A, sigma, rho_bar = params_precond
+    precond_Q = Q.diag()
+    precond_A = A.columns_l2_norms(squared=True)
+    return precond_Q, precond_A
+
+  def _matvec_precond(self, solver_state, x):
+    if not self.jacobi_preconditioner:
+      return x
+
+    _, (_, _, sigma, rho_bar), (precond_Q, precond_A) = solver_state
+
     diag_precond = tree_add_scalar_mul(precond_Q, rho_bar, precond_A)
     diag_precond = tree_add(diag_precond, sigma)
     inv_diag = tree_map(lambda m_diag: 1/m_diag, diag_precond)
     return tree_mul(inv_diag, x)
 
-  def init_params_precond(self, params_Q, params_A, sigma, rho_bar):
-    precond_Q = DenseLinearOperator(params_Q).diag()
-    precond_A = DenseLinearOperator(params_A).columns_l2_norms(squared=True)
-    return precond_Q, precond_A, sigma, rho_bar
+  def init_state(self, init_params, params_Q, params_A, sigma, rho_bar):
+    state_precond = self._init_state_precond(params_Q, params_A, sigma, rho_bar)
+    return init_params, (params_Q, params_A, sigma, rho_bar), state_precond
 
-  def update_stepsize(self, params_precond, rho_bar):
-    return params_precond[:-1] + (rho_bar,)
+  def update_stepsize(self, solver_state, rho_bar):
+    prev_sol, (params_Q, params_A, sigma, _), state_precond = solver_state
+    return prev_sol, (params_Q, params_A, sigma, rho_bar), state_precond
+
+  def run(self, b, osqp_state):
+    solver_state = osqp_state.solver_state
+    prev_sol, (params_Q, params_A, sigma, rho_bar), state_precond = solver_state
+
+    Q = self.matvec_Q(params_Q)
+    A = self.matvec_A(params_A)
+
+    primal_res_inf = tree_inf_norm(osqp_state.primal_residuals)
+    dual_res_inf = tree_inf_norm(osqp_state.dual_residuals)
+    lam = 0.15
+    atol = lam * jnp.sqrt(primal_res_inf * dual_res_inf)
+    # lam < 1 implies that atol is slower than geometric mean of primal_res_inf and dual_res_inf.
+
+    def matvec_A(x_bar):
+      Qx_sigmax = tree_add_scalar_mul(Q(x_bar), sigma, x_bar)
+      ATAx = A.normal_matvec(x_bar)
+      return tree_add_scalar_mul(Qx_sigmax, rho_bar, ATAx)
+
+    sol = self.solve(matvec=matvec_A, b=b,
+                     init=prev_sol,
+                     M=lambda x: self._matvec_precond(solver_state, x),
+                     maxiter=self.maxiter,
+                     atol=atol,
+                     tol=self.tol)
+    solver_state = (sol, (params_Q, params_A, sigma, rho_bar), state_precond)
+    return sol, solver_state
+
+
+@dataclass(eq=False)
+class OSQPLUSolver:
+  """Solver based on LU factorization in OSQP.
+
+  Updates LU factors when stepsize rho_bar changes."""
+
+  def _lu_factor_dense(self, Q, A, sigma, rho_bar):
+    dense = Q + sigma * jnp.eye(len(Q)) + rho_bar * A.T @ A
+    return jax.scipy.linalg.lu_factor(dense)
+
+  def _lu_factor_pytree(self, params_Q, params_A, sigma, rho_bar):
+    lu_factor_dense = partial(self._lu_factor_dense, sigma=sigma, rho_bar=rho_bar)
+    return tree_map(lu_factor_dense, params_Q, params_A)
+
+  def init_state(self, init_params, params_Q, params_A, sigma, rho_bar):
+    lu_factors = self._lu_factor_pytree(params_Q, params_A, sigma, rho_bar)
+    return (params_Q, params_A, sigma), lu_factors
+
+  def update_stepsize(self, solver_state, rho_bar):
+    (params_Q, params_A, sigma), _ = solver_state
+    lu_factors = self._lu_factor_pytree(params_Q, params_A, sigma, rho_bar)
+    return (params_Q, params_A, sigma), lu_factors
+
+  def run(self, b, osqp_state):
+    _, lu_factors = osqp_state.solver_state
+
+    # Switch order of b and lu_factors in call to lu_solve
+    # to account for the fact that b is a prefix tree of lu_factors.
+    def lu_solve(b, lu_factors):
+      return jax.scipy.linalg.lu_solve(lu_factors, b, check_finite=False)
+
+    sol = tree_map(lu_solve, b, lu_factors)
+
+    return sol, osqp_state.solver_state
 
 
 def ifelse_cond(cond, if_fun, else_fun, operand, jit):
@@ -176,7 +257,7 @@ def ifelse_cond(cond, if_fun, else_fun, operand, jit):
 
 @dataclass(eq=False)
 class BoxOSQP(base.IterativeSolver):
-  """Operator Splitting Solver for Quadratic Programs.  
+  """Operator Splitting Solver for Quadratic Programs.
 
   Jax implementation of the celebrated GPU-OSQP [1,3] based on ADMM.
   Suppports jit, vmap, matvecs and pytrees.
@@ -190,7 +271,7 @@ class BoxOSQP(base.IterativeSolver):
       \\textrm{s.t.} \\quad & Ax=z\\\\
         & l\\leq z\\leq u    \\\\
     \\end{aligned}
-  
+
   Equality constraints are obtained by setting l = u.
   If the inequality is one-sided then ``jnp.inf can be used for u,
   and ``-jnp.inf`` for l.
@@ -200,18 +281,18 @@ class BoxOSQP(base.IterativeSolver):
   The Lagrangian is given by
 
   .. math::
-  
+
     \\mathcal{L} = \\frac{1}{2}x^TQx + c^Tx + y^T(Ax-z) + \\mu^T (z-u) + \\phi^T (l-z)
 
-  Primal    variables: :math:`x, z`  
-    
-  Dual Eq   variables: :math:`y`  
-    
-  Dual Ineq variables: :math:`\mu, \phi`  
-    
+  Primal    variables: :math:`x, z`
 
-  ADMM computes :math:`y` at each iteration. :math:`\mu` and :math:`\phi` can be deduced from :math:`y`.  
-    
+  Dual Eq   variables: :math:`y`
+
+  Dual Ineq variables: :math:`\mu, \phi`
+
+
+  ADMM computes :math:`y` at each iteration. :math:`\mu` and :math:`\phi` can be deduced from :math:`y`.
+
   Defaults values for hyper-parameters come from: https://github.com/osqp/osqp/blob/master/include/constants.h
 
   Attributes:
@@ -230,12 +311,11 @@ class BoxOSQP(base.IterativeSolver):
       ``momentum<1`` => under-relaxation.
       ``momentum>1`` => over-relaxation.
       Boyd [2, p21] suggests chosing momentum in [1.5, 1.8].
-    eq_qp_preconditioner: (optional) a string specifying the pre-conditioner (default: None).
-      For now only ``"jacobi"`` is available, for pytree of matrices only (no matvec).
-    eq_qp_solve_tol: tolerance for linear solver in equality constrained QP (default: 1e-5).
-      High tolerance may speedup each ADMM step but will slow down overall convergence. 
-    eq_qp_solve_maxiter: number of iterations for linear solver in equality constrained QP (default: None).
-      Low maxiter will speedup each ADMM step but may slow down overall convergence.
+    eq_qp_solve: 'cg', 'cg+jacobi' or 'lu' (default: 'cg').
+      'cg' is conjugate gradient: an indirect solver that works with matvecs or pytree of matrices.
+      'cg+jacobi' is conjugate gradient with Jacobi preconditioning: only works on pytree of matrices
+        but can provide speedup.
+      'lu' is LU factorization: a direct solver that only work on pytree of matrices.
     rho_start: initial learning rate  (default: 1e-1).
     rho_min: minimum learning rate  (default: 1e-6).
     rho_max: maximum learning rate  (default: 1e6).
@@ -254,8 +334,8 @@ class BoxOSQP(base.IterativeSolver):
     jit: whether to JIT-compile the optimization loop (default: "auto").
     unroll: whether to unroll the optimization loop (default: "auto").
 
-  References:  
-    
+  References:
+
     [1] Stellato, B., Banjac, G., Goulart, P., Bemporad, A. and Boyd, S., 2020.
     OSQP: An operator splitting solver for quadratic programs.
     Mathematical Programming Computation, 12(4), pp.637-672.
@@ -273,10 +353,7 @@ class BoxOSQP(base.IterativeSolver):
   check_primal_dual_infeasability: base.AutoOrBoolean = "auto"
   sigma: float = 1e-6
   momentum: float = 1.6
-  eq_qp_solver: Callable = jax.scipy.sparse.linalg.cg
-  eq_qp_preconditioner: Optional[str] = None
-  eq_qp_solve_tol: float = 1e-7
-  eq_qp_solve_maxiter: Optional[int] = None
+  eq_qp_solve: str = 'cg'
   rho_start: float = 0.1
   rho_min: float = 1e-6
   rho_max: float = 1e6
@@ -307,8 +384,8 @@ class BoxOSQP(base.IterativeSolver):
     A    = self.matvec_A(params_eq)
 
     primal_residuals, dual_residuals = self._compute_residuals(Q, c, A, x, z, y)
-    params_precond = self._eq_qp_preconditioner_impl.init_params_precond(params_obj[0], params_obj[1],
-                                                                         self.sigma, self.rho_start)
+    solver_state = self._eq_qp_solve_impl.init_state(x, params_obj[0], params_eq,
+                                                     self.sigma, self.rho_start)
 
     return BoxOSQPState(iter_num=0,
                         error=jnp.inf,
@@ -316,9 +393,8 @@ class BoxOSQP(base.IterativeSolver):
                         primal_residuals=primal_residuals,
                         dual_residuals=dual_residuals,
                         rho_bar=self.rho_start,
-                        eq_qp_last_sol=x,
-                        params_precond=params_precond)
-  
+                        solver_state=solver_state)
+
   def init_params(self, init_x, params_obj, params_eq, params_ineq):
     """Return defaults params for initialization."""
     if init_x is None:
@@ -347,7 +423,7 @@ class BoxOSQP(base.IterativeSolver):
     # d_y = d_mu - d_phi = 1 (everywhere; including in zero)
     return base.KKTSolution(primal=primal, dual_eq=y, dual_ineq=(mu, phi))
 
-  def _update_stepsize(self, rho_bar, params_precond, primal_residuals, dual_residuals, Q, c, A, x, y):
+  def _update_stepsize(self, rho_bar, solver_state, primal_residuals, dual_residuals, Q, c, A, x, y):
     """Update stepsize based on the ratio between primal and dual residuals."""
     Ax, ATy     = A.matvec_and_rmatvec(x, y)
     primal_coef = tree_inf_norm(primal_residuals) / tree_inf_norm(Ax)
@@ -356,8 +432,8 @@ class BoxOSQP(base.IterativeSolver):
     eps_div     = jnp.finfo(dual_coef.dtype).eps
     coef        = jnp.sqrt(primal_coef / (dual_coef + eps_div))
     rho_bar     = jnp.clip(rho_bar * coef, self.rho_min, self.rho_max)
-    params_precond = self._eq_qp_preconditioner_impl.update_stepsize(params_precond, rho_bar)
-    return rho_bar, params_precond
+    solver_state = self._eq_qp_solve_impl.update_stepsize(solver_state, rho_bar)
+    return rho_bar, solver_state
 
   def _compute_residuals(self, Q, c, A, x, z, y):
     """Compute residuals of constraints for primal and dual, as defined in paper."""
@@ -412,9 +488,9 @@ class BoxOSQP(base.IterativeSolver):
 
     return jax.lax.cond(certif_primal_infeasible,
       lambda _: (0.,  # primal unfeasible; exit the main loop with error = 0.
-                BoxOSQP.PRIMAL_INFEASIBLE),  
+                BoxOSQP.PRIMAL_INFEASIBLE),
       lambda _: (error, status),  # primal feasible or unbounded (depends of dual feasability).
-      operand=None)  
+      operand=None)
 
   def _check_infeasability(self, prev_sol, sol, error, status, Q, c, A, l, u):
     delta_x = tree_sub(sol.primal[0], prev_sol.primal[0])
@@ -437,7 +513,7 @@ class BoxOSQP(base.IterativeSolver):
     """ Solve equality constrained QP in ADMM split."""
     # solve the "augmented" equality constrained QP:
     #
-    #     minimize 0.5x_bar Q x_bar + c x_bar 
+    #     minimize 0.5x_bar Q x_bar + c x_bar
     #     (1)        + (sigma/2) \|x_bar - x\|^2_2
     #     (2)        + (rho/2)   \|z_bar - z + rho^{-1} y\|^2_2
     #     under    A x_bar = z_bar; x_bar = x
@@ -445,43 +521,20 @@ class BoxOSQP(base.IterativeSolver):
     #        (1) and (2) come from the augmented Lagrangian
     #
     # This problem is easy to solve by writing the KKT optimality conditions.
-    # By construction the solution is unique without imposing strict convexity of objective nor 
+    # By construction the solution is unique without imposing strict convexity of objective nor
     # independance of the constraints.
     # The primal feasability conditions are used to eliminate z_bar from the system (which simplifies it).
     # Note that here we use rho_bar: we do not make use of per-constraint learning rate.
     x, z = params.primal
     y    = params.dual_eq  # dual variables for constraints z_bar = z;
 
-    if isinstance(Q, DenseLinearOperator) and isinstance(A, DenseLinearOperator):
-      eyes = tree_map(lambda qi: jnp.eye(len(qi)), Q.pytree)
-      matvec_A = tree_add_scalar_mul(Q.pytree, self.sigma, eyes)
-      ATA = tree_map(lambda ai: jnp.dot(ai.T, ai), A.pytree)
-      matvec_A = tree_add_scalar_mul(matvec_A, rho_bar, ATA)
-    else:
-      def matvec_A(x_bar):
-        Qx_sigmax = tree_add_scalar_mul(Q(x_bar), self.sigma, x_bar)
-        ATAx = A.normal_matvec(x_bar)
-        return tree_add_scalar_mul(Qx_sigmax, rho_bar, ATAx)
-    
     bxq = tree_sub(tree_scalar_mul(self.sigma, x), c)
     byz = tree_add_scalar_mul(y, -rho_bar, z)
     b = tree_sub(bxq, A.rmatvec(bxq, byz))
 
-    primal_res_inf = tree_inf_norm(state.primal_residuals)
-    dual_res_inf = tree_inf_norm(state.dual_residuals)
-    lam = 0.15
-    atol = lam * jnp.sqrt(primal_res_inf * dual_res_inf)
-    # lam < 1 implies that atol is slower than geometric mean of primal_res_inf and dual_res_inf.
+    x_bar, solver_state = self._eq_qp_solve_impl.run(b, state)
 
-    x_bar, _ = self.eq_qp_solver(
-                A=matvec_A, b=b,
-                x0=state.eq_qp_last_sol,
-                M=lambda x: self._eq_qp_preconditioner_impl(state.params_precond, x),
-                maxiter=self.eq_qp_solve_maxiter,
-                atol=atol,
-                tol=self.eq_qp_solve_tol * self.tol)  # adaptive threshold.
-    
-    return x_bar
+    return x_bar, solver_state
 
   def _admm_step(self, params, Q, c, A, box, rho_bar, state):
     """Performs one atomic step of the ADMM algorithm."""
@@ -494,7 +547,7 @@ class BoxOSQP(base.IterativeSolver):
     # line 3: optimization step for (x_bar, z_bar)
     # this equality constrained QP is solved by writing KKT conditions
     # which reduce to a well-posed linear system.
-    x_bar = self._solve_linear_system(params, Q, c, A, rho_bar, state)
+    x_bar, solver_state = self._solve_linear_system(params, Q, c, A, rho_bar, state)
     z_bar = A(x_bar)  # line 4
 
     # line 5: optimization step for x with relaxation parameter momentum (smooth updates)
@@ -512,13 +565,13 @@ class BoxOSQP(base.IterativeSolver):
     y_step = tree_sub(z_momentum, z_next)
     y_next = tree_add(y, tree_scalar_mul(rho_bar, y_step))
 
-    return (x_next, z_next), y_next, x_bar
+    return (x_next, z_next), y_next, solver_state
 
   def update(self, params, state, params_obj, params_eq, params_ineq):
     """Perform BoxOSQP step."""
     # The original problem on variables (x,z) is split into TWO problems
     # with variables (x, z) and (x_bar, z_bar)
-    # 
+    #
     # (x_bar, z_bar) is NOT part of the state because it is recomputed at each step:
     #    (x_bar, z_bar) = argmin_{x_bar, z_bar} L(x_bar, z_bar, x, z, y)
     # with L the augmented Lagrangian
@@ -541,7 +594,7 @@ class BoxOSQP(base.IterativeSolver):
     if self.verbose >= 2:
       print(f"rho_bar={rho_bar}")
 
-    (x, z), y, eq_qp_last_sol = self._admm_step(params, Q, c, A, (l, u), rho_bar, state)
+    (x, z), y, solver_state = self._admm_step(params, Q, c, A, (l, u), rho_bar, state)
     if self.verbose >= 3:
       print(f"x={x}\nz={z}\ny={y}")
 
@@ -551,10 +604,10 @@ class BoxOSQP(base.IterativeSolver):
 
     # We need our own ifelse_cond because automatic jitting of jax.lax.cond branches
     # could pose problems with non jittable matvecs, or prevent printing when verbose > 0.
-    rho_bar, params_precond = ifelse_cond(
+    rho_bar, solver_state = ifelse_cond(
       jnp.mod(state.iter_num, self.stepsize_updates_frequency) == 0,
-      lambda _: self._update_stepsize(rho_bar, state.params_precond, primal_residuals, dual_residuals, Q, c, A, x, y),
-      lambda _: (rho_bar, state.params_precond),
+      lambda _: self._update_stepsize(rho_bar, solver_state, primal_residuals, dual_residuals, Q, c, A, x, y),
+      lambda _: (rho_bar, solver_state),
       operand=None, jit=jit)
 
     sol = BoxOSQP._get_full_KKT_solution(primal=(x, z), y=y)
@@ -566,7 +619,7 @@ class BoxOSQP(base.IterativeSolver):
                                                    params, sol, Q, c, A, l, u),
       lambda s: (state.error, s),
       operand=(state.status), jit=jit)
-    
+
     if not jit:
       if status == BoxOSQP.PRIMAL_INFEASIBLE:
         raise ValueError(f"Primal infeasible.")
@@ -579,8 +632,7 @@ class BoxOSQP(base.IterativeSolver):
                          primal_residuals=primal_residuals,
                          dual_residuals=dual_residuals,
                          rho_bar=rho_bar,
-                         eq_qp_last_sol=eq_qp_last_sol,
-                         params_precond=params_precond)
+                         solver_state=solver_state)
     return base.OptStep(params=sol, state=state)
 
   def run(self,
@@ -589,7 +641,7 @@ class BoxOSQP(base.IterativeSolver):
           params_eq: Optional[Any],  # A can be params_A or None
           params_ineq: Tuple[Optional[Any], Any]) -> base.OptStep:
     """Return primal/dual variables.
-    
+
     Args:
       init_params: initial KKTSolution (can be None).
       params_obj: pair (params_Q, c).
@@ -598,7 +650,7 @@ class BoxOSQP(base.IterativeSolver):
     """
     if init_params is None:
       init_params = self.init_params(None, params_obj, params_eq, params_ineq)
-    
+
     return super().run(init_params, params_obj, params_eq, params_ineq)
 
   def l2_optimality_error(
@@ -612,18 +664,21 @@ class BoxOSQP(base.IterativeSolver):
     return tree_l2_norm(pytree)
 
   def __post_init__(self):
-    if self.eq_qp_preconditioner is None:
-      self._eq_qp_preconditioner_impl = NoPreconditioner()
-    elif self.eq_qp_preconditioner == 'jacobi':
-      if self.matvec_Q is not None or self.matvec_A is not None:
-        raise ValueError("'jacobi' preconditioner is only available for pytree of matrices (no support for matvec).")
-      self._eq_qp_preconditioner_impl = JacobiPreconditioner()
-    else:
-      raise ValueError(f"Invalid argument eq_qp_preconditioner={self.eq_qp_preconditioner}, expected None or 'jacobi'.")
-
     self.matvec_Q = _make_linear_operator(self.matvec_Q)
     self.matvec_A = _make_linear_operator(self.matvec_A)
-    
+
+    if self.eq_qp_solve.lower() == 'cg':
+      self._eq_qp_solve_impl = OSQPIndirectSolver(self.matvec_Q, self.matvec_A,
+                                                  tol=1e-7 * self.tol)
+    elif self.eq_qp_solve.lower() == 'cg+jacobi':
+      self._eq_qp_solve_impl = OSQPIndirectSolver(self.matvec_Q, self.matvec_A,
+                                                  tol=1e-7 * self.tol,
+                                                  jacobi_preconditioner=True)
+    elif self.eq_qp_solve.lower() == 'lu':
+      self._eq_qp_solve_impl = OSQPLUSolver()
+    else:
+      raise ValueError(f"Unknown solver '{self.eq_qp_solve}'.")
+
     if self.check_primal_dual_infeasability == "auto":
       jit, _ = self._get_loop_options()
       self.check_primal_dual_infeasability = not jit
@@ -661,7 +716,7 @@ class OSQP_to_BoxOSQP:
     def concat(*leaves):
       return jnp.concatenate(leaves, axis=axis)
     return tree_map(concat, *pytrees)
-  
+
   @staticmethod
   def transform(matvec_A_box: Optional[Callable],
                 params: Optional[jnp.ndarray],
@@ -679,14 +734,14 @@ class OSQP_to_BoxOSQP:
     # that pre-conditioning is still possible.
 
     # TODO(lbethune): does it make sense to support QP without constraints ?
-    # should the user switch to another solver instead ? (e.g order 2 methods... )
+    # should the user switch to another solver instead ? (e.g conjugate gradient... )
     if params_eq is None and params_ineq is None:
       raise ValueError("At least one of params_eq or params_ineq must be not None.")
-    
+
     eq_size, ineq_neg_size = None, None
     A, G = None, None
     l, u, y = [], [], []
-    
+
     if params_eq is not None:
       A, b = params_eq
       l.append(b)
@@ -729,7 +784,7 @@ class OSQP_to_BoxOSQP:
       return None
     _signed_slice = lambda leaf,slice: (leaf[:slice] if slice > 0 else leaf[slice:])
     return tree_map(_signed_slice, pytree, slice_sizes)
-  
+
   @staticmethod
   def inverse_transform(matvec_A_box, eq_ineq_size, kkt_solution):
     """Inverse transform the KKT solution returned by run()"""
@@ -758,17 +813,17 @@ class OSQPState(NamedTuple):
 class OSQP(base.Solver):
   """OSQP solver for general quadratic programming.
 
-  Meant as drop-in replacement for CvxpyQP.  
-  No support for matvec and pytrees. Supports jit and vmap.  
-  
-  CvxpyQP is more precised and should be preferred on CPU.  
-  OSQP can be quicker than CvxpyQP when GPU/TPU are available.  
-  
+  Meant as drop-in replacement for CvxpyQP.
+  No support for matvec and pytrees. Supports jit and vmap.
+
+  CvxpyQP is more precise and should be preferred on CPU.
+  OSQP can be quicker than CvxpyQP when GPU/TPU are available.
+
   The objective function is::
 
     0.5 * x^T Q x + c^T x subject to Gx <= h, Ax = b.
 
-  The attributes must be given as keyword arguments.  
+  The attributes must be given as keyword arguments.
 
   Attributes:
     check_primal_dual_infeasability: if True populates the ``status`` field of ``state``
@@ -776,16 +831,16 @@ class OSQP(base.Solver):
       If False it improves speed but does not check feasability.
       If jit=False, and if the problem is primal or dual infeasible, then a ValueError exception is raised.
     sigma: ridge regularization parameter in linear system.
-    momentum: relaxation parameter (default: 1.6), must belong to the open interval (0,2).  
-      momentum=1 => no relaxation.  
-      momentum<1 => under-relaxation.  
-      momentum>1 => over-relaxation.  
-      Boyd [2, p21] suggests chosing momentum in [1.5, 1.8].  
-    eq_qp_preconditioner: (optional) a string specifying the pre-conditioner (default: 'jacobi').  
-    eq_qp_solve_tol: tolerance for linear solver in equality constrained QP. (default: 1e-5)
-      High tolerance may speedup each ADMM step but will slow down overall convergence. 
-    eq_qp_solve_maxiter: number of iterations for linear solver in equality constrained QP. (default: None)
-      Low maxiter will speedup each ADMM step but may slow down overall convergence.
+    momentum: relaxation parameter (default: 1.6), must belong to the open interval (0,2).
+      momentum=1 => no relaxation.
+      momentum<1 => under-relaxation.
+      momentum>1 => over-relaxation.
+      Boyd [2, p21] suggests chosing momentum in [1.5, 1.8].
+    eq_qp_solve: 'cg', 'cg+jacobi' or 'lu' (default: 'cg').
+      'cg' is conjugate gradient: an indirect solver that works with matvecs or pytree of matrices.
+      'cg+jacobi' is conjugate gradient with Jacobi preconditioning: only works on pytree of matrices
+        but can provide speedup.
+      'lu' is LU factorization: a direct solver that only work on pytree of matrices.
     rho_start: initial learning rate. (default: 1e-1)
     rho_min: minimum learning rate. (default: 1e-6)
     rho_max: maximum learning rate. (default: 1e6)
@@ -806,15 +861,12 @@ class OSQP(base.Solver):
     matvec_A: Optional[Callable] = None,
     matvec_G: Optional[Callable] = None,
     **kwargs):
-    if 'eq_qp_preconditioner' not in kwargs and matvec_A is None and matvec_G is None:
-      kwargs['eq_qp_preconditioner'] = 'jacobi'  # available for matrices.
-
     matvec_Q, matvec_A_box = OSQP_to_BoxOSQP.transform_matvec(matvec_Q, matvec_A, matvec_G)
     self.matvec_A_box = matvec_A_box
 
     self._box_osqp = BoxOSQP(matvec_Q=matvec_Q, matvec_A=matvec_A_box,
                              implicit_diff=True, **kwargs)
-  
+
   def run(self,
           init_params: Any,
           params_obj: Tuple[Optional[Any], Any],
