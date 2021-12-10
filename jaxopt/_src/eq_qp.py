@@ -17,19 +17,15 @@
 from typing import Any
 from typing import Callable
 from typing import Optional
-from typing import Tuple
 
 from functools import partial
 from dataclasses import dataclass
 
 import jax
-import jax.numpy as jnp
 
-from jaxopt._src import loop
 from jaxopt._src import base
 from jaxopt._src import implicit_diff as idf
-from jaxopt._src.tree_util import tree_zeros_like, tree_add, tree_sub
-from jaxopt._src.tree_util import tree_add_scalar_mul, tree_scalar_mul
+from jaxopt._src.tree_util import tree_add, tree_sub
 from jaxopt._src.tree_util import tree_vdot, tree_negative, tree_l2_norm
 from jaxopt._src.linear_operator import _make_linear_operator
 from jaxopt._src.cvxpy_wrapper import _check_params
@@ -46,20 +42,18 @@ def _make_eq_qp_optimality_fun(matvec_Q, matvec_A):
       params_obj = (params_Q, c)
       params_eq = (params_A, b)
   """
+
   def obj_fun(primal_var, params_obj):
     params_Q, c = params_obj
     Q = matvec_Q(params_Q)
-    return (0.5 * tree_vdot(primal_var, Q(primal_var)) +
-            tree_vdot(primal_var, c))
+    return 0.5 * tree_vdot(primal_var, Q(primal_var)) + tree_vdot(primal_var, c)
 
   def eq_fun(primal_var, params_eq):
     params_A, b = params_eq
     A = matvec_A(params_A)
     return tree_sub(A(primal_var), b)
 
-  optimality_fun_with_ineq =  idf.make_kkt_optimality_fun(obj_fun,
-                                                          eq_fun,
-                                                          ineq_fun=None)
+  optimality_fun_with_ineq = idf.make_kkt_optimality_fun(obj_fun, eq_fun, ineq_fun=None)
 
   # It is required to post_process the output of `idf.make_kkt_optimality_fun`
   # to make the signatures of optimality_fun() and run() agree.
@@ -98,6 +92,7 @@ class EqualityConstrainedQP(base.Solver):
     implicit_diff_solve: the linear system solver to use.
     jit: whether to JIT-compile the optimization loop (default: "auto").
   """
+
   matvec_Q: Optional[Callable] = None
   matvec_A: Optional[Callable] = None
   solve: Callable = linear_solve.solve_gmres
@@ -150,17 +145,21 @@ class EqualityConstrainedQP(base.Solver):
       Stop, Sbottom = matvec(x)
       return Stop + ridge * primal, Sbottom - ridge * dual_eq
 
-    solver = IterativeRefinement(matvec_A=matvec_qp,
-                                 matvec_A_bar=matvec_regularized_qp,
-                                 solve=partial(self.solve, maxiter=maxiter,
-                                               tol=tol),
-                                 maxiter=self.refine_maxiter, tol=tol)
+    solver = IterativeRefinement(
+      matvec_A=matvec_qp,
+      matvec_A_bar=matvec_regularized_qp,
+      solve=partial(self.solve, maxiter=maxiter, tol=tol),
+      maxiter=self.refine_maxiter,
+      tol=tol,
+    )
     return solver.run(init_params=init, A=None, b=b)[0]
 
-  def run(self,
-          init_params: Optional[base.KKTSolution] = None,
-          params_obj: Optional[Any] = None,
-          params_eq: Optional[Any] = None) -> base.OptStep:
+  def run(
+    self,
+    init_params: Optional[base.KKTSolution] = None,
+    params_obj: Optional[Any] = None,
+    params_eq: Optional[Any] = None,
+  ) -> base.OptStep:
     """Solves 0.5 * x^T Q x + c^T x subject to Ax = b.
 
     This solver returns both the primal solution (x) and the dual solution.
@@ -194,20 +193,27 @@ class EqualityConstrainedQP(base.Solver):
     # Solves the following linear system:
     # [[Q A^T]  [primal_var = [-c
     #  [A 0  ]]  dual_var  ]    b]
-    if self.refine_regularization == 0.:
-      primal, dual_eq = self.solve(matvec, target, init_params,
-                                   tol=self.tol, maxiter=self.maxiter)
+    if self.refine_regularization == 0.0:
+      primal, dual_eq = self.solve(
+        matvec,
+        target,
+        init=init_params,
+        tol=self.tol,
+        maxiter=self.maxiter,
+      )
     else:
-      primal, dual_eq = self._refined_solve(matvec, target, init_params,
-                                            tol=self.tol, maxiter=self.maxiter)
+      primal, dual_eq = self._refined_solve(
+        matvec, target, init_params, tol=self.tol, maxiter=self.maxiter
+      )
 
-    return base.OptStep(params=base.KKTSolution(primal, dual_eq, None),
-                        state=None)
+    return base.OptStep(params=base.KKTSolution(primal, dual_eq, None), state=None)
 
-  def l2_optimality_error(self,
+  def l2_optimality_error(
+    self,
     params: base.KKTSolution,
     params_obj: Optional[Any],
-    params_eq: Optional[Any]):
+    params_eq: Optional[Any],
+  ):
     """Computes the L2 norm of the KKT residuals."""
     tree = self.optimality_fun(params, params_obj, params_eq)
     return tree_l2_norm(tree)
@@ -218,12 +224,12 @@ class EqualityConstrainedQP(base.Solver):
     self.matvec_Q = _make_linear_operator(self.matvec_Q)
     self.matvec_A = _make_linear_operator(self.matvec_A)
 
-    self.optimality_fun = _make_eq_qp_optimality_fun(self.matvec_Q,
-                                                     self.matvec_A)
+    self.optimality_fun = _make_eq_qp_optimality_fun(self.matvec_Q, self.matvec_A)
 
     # Set up implicit diff.
-    decorator = idf.custom_root(self.optimality_fun, has_aux=True,
-                                solve=self.implicit_diff_solve)
+    decorator = idf.custom_root(
+      self.optimality_fun, has_aux=True, solve=self.implicit_diff_solve
+    )
     # pylint: disable=g-missing-from-attributes
     self.run = decorator(self.run)
 

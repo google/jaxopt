@@ -16,3 +16,4 @@ from jaxopt._src.base import IterativeSolver
 from jaxopt._src.base import LinearOperator
 from jaxopt._src.base import OptStep
 from jaxopt._src.base import StochasticSolver
+from jaxopt._src.base import KKTSolution
