@@ -195,7 +195,7 @@ class EqualityConstrainedQP(base.Solver):
     # [[Q A^T]  [primal_var = [-c
     #  [A 0  ]]  dual_var  ]    b]
     if self.refine_regularization == 0.:
-      primal, dual_eq = self.solve(matvec, target, init_params,
+      primal, dual_eq = self.solve(matvec, target, init=init_params,
                                    tol=self.tol, maxiter=self.maxiter)
     else:
       primal, dual_eq = self._refined_solve(matvec, target, init_params,
