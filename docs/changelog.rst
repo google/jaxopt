@@ -4,6 +4,12 @@ Changelog
 Version 0.3
 -----------
 
+New features
+~~~~~~~~~~~~
+
+- :class:`jaxopt.LBFGS`.
+- :class:`jaxopt.BacktrackingLineSearch`.
+
 Bug fixes and enhancements
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 

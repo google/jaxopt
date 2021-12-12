@@ -22,7 +22,6 @@ from typing import Union
 from dataclasses import dataclass
 
 from jaxopt._src import base
-from jaxopt._src import loop
 from jaxopt._src.proximal_gradient import ProximalGradient, ProxGradState
 
 

@@ -16,7 +16,7 @@ are the parameters with respect to which the function is minimized and
 Defining an objective function
 ------------------------------
 
-Objective functions must always include as first argument the variable with
+Objective functions must always include as first argument the variables with
 respect to which the function is minimized. The function can also contain extra
 arguments.
 
@@ -37,6 +37,7 @@ Solvers
   :toctree: _autosummary
 
     jaxopt.GradientDescent
+    jaxopt.LBFGS
     jaxopt.ScipyMinimize
 
 Instantiating and running the solver
@@ -45,8 +46,12 @@ Instantiating and running the solver
 Continuing the ridge regression example above, gradient descent can be
 instantiated and run as follows::
 
-  gd = jaxopt.GradientDescent(fun=ridge_reg_objective, maxiter=500)
-  res = gd.run(init_params, l2reg=l2reg, X=X, y=y)
+  solver = jaxopt.LBFGS(fun=ridge_reg_objective, maxiter=maxiter)
+  res = solver.run(init_params, l2reg=l2reg, X=X, y=y)
+
+  # Alternatively, we could have used one of these solvers as well:
+  # solver = jaxopt.GradientDescent(fun=ridge_reg_objective, maxiter=500)
+  # solver = jaxopt.ScipyMinimize(fun=ridge_reg_objective, method="L-BFGS-B", maxiter=500)
 
 Unpacking results
 ~~~~~~~~~~~~~~~~~

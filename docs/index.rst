@@ -44,6 +44,7 @@ Alternatively, it can be be installed from sources with the following command::
    root_finding
    fixed_point
    implicit_diff
+   line_search
 
 .. toctree::
    :maxdepth: 1

@@ -288,3 +288,23 @@ class LinearOperator(object):
   def tree_unflatten(cls, aux_data, children):
     del aux_data
     return cls(*children)
+
+
+class LineSearchStep(NamedTuple):
+  stepsize: float
+  state: Any
+
+
+class IterativeLineSearch(IterativeSolver):
+
+  def run(self,
+          init_stepsize: float,
+          params: Any,
+          value: Optional[float] = None,
+          grad: Optional[Any] = None,
+          descent_direction: Optional[Any] = None,
+          *args,
+          **kwargs) -> LineSearchStep:
+
+    return super()._run(init_stepsize, params, value, grad, descent_direction,
+                        *args, **kwargs)
