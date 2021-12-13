@@ -39,6 +39,7 @@ Alternatively, it can be be installed from sources with the following command::
    non_smooth
    stochastic
    objective_and_loss
+   linear_system_solvers
    root_finding
    fixed_point
    implicit_diff

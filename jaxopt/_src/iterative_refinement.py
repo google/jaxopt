@@ -48,12 +48,12 @@ class IterativeRefinementState(NamedTuple):
     iter_num: iteration number.
     error: error used as stop criterion, deduced from residuals b - Ax.
     target_residuals: residuals of the current target.
-    init: (optional) params to warm start the inner solver at next iteration.
+    init: init params for warm start.
   """
   iter_num: int
   error: float
   target_residuals: Any
-  init: Optional[Any]
+  init: Any
   # TODO(lbethune): in the future return the state of the internal
   # solver (iter_num, error) as part of the current state.
 
@@ -84,9 +84,9 @@ class IterativeRefinement(base.IterativeSolver):
   inaccurate.  This is particularly useful for ill-posed problems.
 
   Attributes:
-    matvec_A: (optional) a Callable matvec_A(params_A, x).
-      By default, matvec_A(A, x) = tree_dot(A, x), where tree pytree
-      A = params_A matches x structure.
+    matvec_A: (optional) a Callable matvec_A(A, x).
+      By default, matvec_A(A, x) = tree_dot(A, x), where pytree
+      A matches x structure.
     matvec_A_bar: (optional) a Callable.
       If None, then :math:`\bar{A}=A`. Otherwise, a Callable matvec_A_bar(x).
     solve: a Callable that accepts A as first argument, b as second,
@@ -120,10 +120,10 @@ class IterativeRefinement(base.IterativeSolver):
   unroll: base.AutoOrBoolean = "auto"
 
   def init_state(self,
-                 init_params: Any,
-                 params_A: Any,
+                 init_params,
+                 A: Any,
                  b: Any,
-                 params_A_bar: Any = None):
+                 A_bar: Any = None):
     return IterativeRefinementState(
       iter_num=jnp.asarray(0),
       error=jnp.asarray(jnp.inf),
@@ -131,75 +131,84 @@ class IterativeRefinement(base.IterativeSolver):
       init=init_params)
 
   def init_params(self,
-                  params_A: Any,
+                  A: Any,
                   b: Any,
-                  params_A_bar: Any = None):
+                  A_bar: Any = None):
     return tree_zeros_like(b)
 
   def update(self,
              params: Any,
              state: IterativeRefinementState,
-             params_A: Any,
+             A: Any,
              b: Any,
-             params_A_bar: Optional[Any] = None):
+             A_bar: Optional[Any] = None):
 
-    if self._copy_params_A:
-      params_A_bar = params_A
+    if self._copy_A:
+      A_bar = A
 
-    A = self.matvec_A(params_A)
-    A_bar = self.matvec_A_bar(params_A_bar)
+    matvec_A = self.matvec_A(A)
+    matvec_A_bar = self.matvec_A_bar(A_bar)
 
     # TODO(lbethune): support preconditioners ?
     # Could it be done by user with partial(solver, M=precond) ?
-    residual_sol = self.solve(A_bar, state.target_residuals, init=state.init)
+    residual_sol = self.solve(matvec_A_bar, state.target_residuals, init=state.init)
 
     params = tree_add(params, residual_sol)
 
-    target_residuals = tree_sub(b, A(params))
+    target_residuals = tree_sub(b, matvec_A(params))
     error = tree_l2_norm(target_residuals)
 
     state = IterativeRefinementState(
       iter_num=state.iter_num+1,
       error=error,
       target_residuals=target_residuals,
-      init=None)
+      init=self.init_params(A, b, A_bar))
 
     return base.OptStep(params, state)
 
   def run(self,
-          init_params: Optional[Any],
-          params_A: Any,
+          init_params,
+          A: Any,
           b: Any,
-          params_A_bar: Optional[Any] = None):
+          A_bar: Optional[Any] = None):
+    """Runs the iterative refinement.
 
+    Args:
+      init_params: init_params for warm start.
+      A: params for ``self.matvec_A``.
+      b: vector ``b`` in ``Ax=b``.
+      A_bar: optional parameters for ``matvec_A_bar``.
+    Returns:
+      (params, state), ``params = (primal_var, dual_var_eq, dual_var_ineq)``
+    """
     if init_params is None:
-      init_params = self.init_params(params_A, b, params_A_bar)
+      init_params = self.init_params(A, b, A_bar)
 
-    return super().run(init_params, params_A, b, params_A_bar)
+    return super().run(init_params, A, b, A_bar)
 
   def optimality_fun(self,
                      params: Any,
-                     params_A: Any,
+                     A: Any,
                      b: Any,
-                     params_A_bar: Optional[Any] = None):
-    del params_A_bar  # unused
-    A = self.matvec_A(params_A)
+                     A_bar: Optional[Any] = None):
+    del A_bar  # unused
+    A = self.matvec_A(A)
     return tree_sub(b, A(params))
 
   def l2_optimality_error(self,
                           params: Any,
-                          params_A: Any,
+                          A: Any,
                           b: Any,
-                          params_A_bar: Optional[Any] = None):
-    del params_A_bar  # unused
-    return tree_l2_norm(self.optimality_fun(params, params_A, b))
+                          A_bar: Optional[Any] = None):
+    del A_bar  # unused
+    return tree_l2_norm(self.optimality_fun(params, A, b))
 
   def __post_init__(self):
-    self._copy_params_A = False
+    self._copy_A = False
 
     if self.matvec_A_bar is None:
       self.matvec_A_bar = self.matvec_A
-      self._copy_params_A = True
+      self._copy_A = True
 
     self.matvec_A = _make_linear_operator(self.matvec_A)
     self.matvec_A_bar = _make_linear_operator(self.matvec_A_bar)
@@ -230,5 +239,5 @@ def solve_iterative_refinement(matvec: Callable,
                                              maxiter=maxiter,
                                              tol=tol,
                                              **kwargs)
-  return iterative_refinement.run(init, params_A=None, b=b)[0]
+  return iterative_refinement.run(init, A=None, b=b)[0]
 
