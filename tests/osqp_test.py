@@ -70,7 +70,7 @@ def _from_osqp_form_to_boxosqp_form(Q, c, A, l, u):
 
 class BoxOSQPTest(jtu.JaxTestCase):
 
-  def test_small_qp(self):  
+  def test_small_qp(self):
     # Setup a random QP min_x 0.5*x'*Q*x + q'*x s.t. Ax = z; l <= z <= u;
     eq_constraints, ineq_constraints = 2, 4
     onp.random.seed(42)
@@ -349,7 +349,7 @@ class BoxOSQPTest(jtu.JaxTestCase):
       return x[0], x[1], x[0] + x[1]
     l = 6., 6., -jnp.inf
     u = jnp.inf, jnp.inf, 11.
-    
+
     hyper_params = dict(params_obj=(Q, c), params_eq=None, params_ineq=(l, u))
     osqp = BoxOSQP(matvec_A=matvec_A, check_primal_dual_infeasability=True)
     sol, state = osqp.run(None, **hyper_params)
@@ -387,7 +387,7 @@ class BoxOSQPTest(jtu.JaxTestCase):
     onp.random.seed(0)
     assets, factors = 10, 3
     gamma = 1
-    F = onp.random.randn(assets, factors) 
+    F = onp.random.randn(assets, factors)
     D = jnp.diag(onp.random.uniform(0., factors ** 0.5, assets))
     Cov = 2*gamma*(F @ F.T + D)   # minimize risk
     mu = onp.random.randn(assets)   # maximize gain
@@ -400,7 +400,7 @@ class BoxOSQPTest(jtu.JaxTestCase):
     atol = 1e-3
 
     hyper_params = dict(params_obj=(Cov, mu), params_eq=A, params_ineq=(l, u))
-    osqp = BoxOSQP(tol=tol, eq_qp_preconditioner='jacobi')
+    osqp = BoxOSQP(tol=tol, eq_qp_solve='cg+jacobi')
     sol, state = osqp.run(None, **hyper_params)
     self.assertLessEqual(state.error, tol)
     assert state.status == BoxOSQP.SOLVED
@@ -415,12 +415,12 @@ class BoxOSQPTest(jtu.JaxTestCase):
     # Error for Jacobi preconditioner:     M@J@x - x
     # The error of Jacobi is expected to be lower.
     sigma = 1e-6
-    J = osqp._eq_qp_preconditioner_impl
+    J = osqp._eq_qp_solve_impl
     x = sol.primal[0]
     for rho_bar in [1e-4, 0.001, 0.01, 0.1, 1., 10., 100., 1000, 1e4]:
-      params_precond = J.init_params_precond(Cov, A, sigma, rho_bar)
+      solver_state = J.init_state(x, Cov, A, sigma, rho_bar)
       M = Cov + sigma * jnp.eye(assets) + rho_bar * A.T @ A
-      approx_x = M @ J(params_precond, x)
+      approx_x = M @ J._matvec_precond(solver_state, x)
       diff = jnp.sum((approx_x - x)**2)**0.5
       no_precond_approx = M @ x
       no_precond_diff = jnp.sum((no_precond_approx - x)**2)**0.5
@@ -452,7 +452,7 @@ class BoxOSQPTest(jtu.JaxTestCase):
     def matvec_Q(_, xyt):
       x, y, t = xyt
       return jnp.zeros_like(x), 2 * y, jnp.zeros_like(t)
-    
+
     c = jnp.zeros(data.shape[1]), jnp.zeros(data.shape[0]), 2*n*lam * jnp.ones(data.shape[1])
 
     def matvec_A(data, xyt):
@@ -499,6 +499,18 @@ class BoxOSQPTest(jtu.JaxTestCase):
     jac_osqp = jax.jacrev(run_osqp)(data)
     jac_prox = jax.jacrev(run_prox)(data)
     self.assertArraysAllClose(jac_osqp, jac_prox, atol=1e-2)
+
+  def test_lu_factorization(self):
+    problem_size = 200
+    eq_constraints = 30
+    ineq_constraints = 70
+    params_obj, params_eq, params_ineq = get_random_osqp_problem(problem_size, eq_constraints, ineq_constraints)
+    tol = 1e-4
+    osqp = BoxOSQP(tol=tol, eq_qp_solve='lu', stepsize_updates_frequency=20)
+    params, state = osqp.run(None, params_obj, params_eq, params_ineq)
+    self.assertLessEqual(state.error, tol)
+    opt_error = osqp.l2_optimality_error(params, params_obj, params_eq, params_ineq)
+    self.assertAllClose(opt_error, 0.0, atol=1e-2)
 
 
 class OSQPTest(jtu.JaxTestCase):
