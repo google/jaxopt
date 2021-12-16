@@ -47,13 +47,15 @@ dataset_names = [
 flags.DEFINE_float("l2reg", 1e-4, "L2 regularization.")
 flags.DEFINE_float("learning_rate", 0.001, "Learning rate (used in adam).")
 flags.DEFINE_bool("manual_loop", False, "Whether to use a manual training loop.")
-flags.DEFINE_integer("maxiter", 100, "Maximum number of iterations.")
+flags.DEFINE_integer("epochs", 5, "Number of passes over the dataset.")
 flags.DEFINE_float("max_stepsize", 0.1, "Maximum step size (used in polyak-sgd, armijo-sgd).")
 flags.DEFINE_float("aggressiveness", 0.5, "Aggressiveness of line search in armijo-sgd.")
 flags.DEFINE_float("momentum", 0.9, "Momentum strength (used in adam, polyak-sgd, armijo-sgd).")
 flags.DEFINE_enum("dataset", "mnist", dataset_names, "Dataset to train on.")
 flags.DEFINE_enum("model", "cnn", ["cnn", "mlp"], "Model architecture.")
 flags.DEFINE_enum("solver", "adam", ["adam", "sgd", "polyak-sgd", "armijo-sgd"], "Solver to use.")
+flags.DEFINE_integer("train_batch_size", 256, "Batch size at train time.")
+flags.DEFINE_integer("test_batch_size", 1024, "Batch size at test time.")
 FLAGS = flags.FLAGS
 
 
@@ -108,9 +110,10 @@ def main(argv):
   # it unavailable to JAX.
   tf.config.experimental.set_visible_devices([], 'GPU')
 
-  train_ds, ds_info = load_dataset("train", is_training=True, batch_size=256)
-  test_ds, _ = load_dataset("test", is_training=False, batch_size=1024)
+  train_ds, ds_info = load_dataset("train", is_training=True, batch_size=FLAGS.train_batch_size)
+  test_ds, _ = load_dataset("test", is_training=False, batch_size=FLAGS.test_batch_size)
   num_classes = ds_info.features["label"].num_classes
+  maxiter = FLAGS.epochs * ds_info.splits['train'].num_examples // FLAGS.train_batch_size
 
   # Initialize parameters.
   net = functools.partial(net_fun, num_classes=num_classes)
@@ -147,24 +150,24 @@ def main(argv):
     # opt = optax.chain(optax.scale_by_adam(b1=0.9, b2=0.999, eps=1e-8),
     #                   optax.scale(-FLAGS.learning_rate))
     opt = optax.adam(FLAGS.learning_rate)
-    solver = OptaxSolver(opt=opt, fun=loss_fun, maxiter=FLAGS.maxiter,
+    solver = OptaxSolver(opt=opt, fun=loss_fun, maxiter=maxiter,
                          pre_update=print_accuracy)
 
   elif FLAGS.solver == "sgd":
     opt = optax.sgd(FLAGS.learning_rate, FLAGS.momentum)
-    solver = OptaxSolver(opt=opt, fun=loss_fun, maxiter=FLAGS.maxiter,
+    solver = OptaxSolver(opt=opt, fun=loss_fun, maxiter=maxiter,
                          pre_update=print_accuracy)
 
 
   elif FLAGS.solver == "polyak-sgd":
-    solver = PolyakSGD(fun=loss_fun, maxiter=FLAGS.maxiter,
+    solver = PolyakSGD(fun=loss_fun, maxiter=maxiter,
                        momentum=FLAGS.momentum,
                        max_stepsize=FLAGS.max_stepsize,
                        pre_update=print_accuracy)
 
 
   elif FLAGS.solver == "armijo-sgd":
-    solver = ArmijoSGD(fun=loss_fun, maxiter=FLAGS.maxiter,
+    solver = ArmijoSGD(fun=loss_fun, maxiter=maxiter,
                        aggressiveness=FLAGS.aggressiveness,
                        momentum=FLAGS.momentum,
                        max_stepsize=FLAGS.max_stepsize,
@@ -182,7 +185,7 @@ def main(argv):
   if FLAGS.manual_loop:
     state = solver.init_state(params)
 
-    for _ in range(FLAGS.maxiter):
+    for _ in range(maxiter):
       params, state = solver.update(params=params, state=state,
                                     l2reg=FLAGS.l2reg,
                                     data=next(train_ds))
