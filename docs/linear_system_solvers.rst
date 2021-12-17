@@ -21,35 +21,31 @@ Indirect solvers
     jaxopt.linear_solve.solve_bicgstab
 
 
-Indirect solvers are wrappers on top of ``jax.scipy.sparse.linalg`` that support
-ridge regularization wirth ``ridge`` hyper-parameter.
-They can be *warm started* using optional ``init`` parameter.
-Other hyper-parameters (such as ``tol`` or ``maxiter``) are forwarded::
+Indirect solvers iteratively solve the linear system up to some precision.
+Example::
 
-
-  import jaxopt.linear_solve as linear_solve
+  from jaxopt import linear_solve
   import numpy as onp
 
   onp.random.seed(42)
   A = onp.random.randn(3, 3)
   b = onp.random.randn(3)
 
-  ridge = 0.5
-  init = onp.random.randn(3)
-  tol = 1e-5
-
   def matvec_A(x):
     return  jnp.dot(A, x)
 
-  sol = linear_solve.solve_normal_cg(matvec_A, b, ridge=ridge, init=init, tol=tol)
+  sol = linear_solve.solve_normal_cg(matvec_A, b, tol=1e-5)
   print(sol)
 
-  sol = linear_solve.solve_gmres(matvec_A, b, ridge=ridge, init=init, tol=tol)
+  sol = linear_solve.solve_gmres(matvec_A, b, tol=1e-5)
   print(sol)
 
-  sol = linear_solve.solve_bicgstab(matvec_A, b, ridge=ridge, init=init, tol=tol)
+  sol = linear_solve.solve_bicgstab(matvec_A, b, tol=1e-5)
   print(sol)
 
+The above solvers support ridge regularization with the ``ridge`` option.
+They can be *warm-started* using the ``init`` option.
+Other options, such as ``tol`` or ``maxiter``, are also supported.
 
 Direct solvers
 --------------
@@ -61,19 +57,17 @@ Direct solvers
     jaxopt.linear_solve.solve_cholesky
 
 
-Direct solvers are wrappers over ``jax.scipy.linalg``.
-They support matvecs (but not pytrees).
+Direct solvers are based on matrix decompositions.
+They need to materialize the matrix in memory.
 
-Example of usage::
+Example::
 
-  import jaxopt.linear_solve as linear_solve
+  from jaxopt import linear_solve
   import numpy as onp
 
   onp.random.seed(42)
   A = onp.random.randn(3, 3)
   b = onp.random.randn(3)
-
-  init = onp.random.randn(3)
 
   def matvec_A(x):
     return jnp.dot(A, x)
@@ -90,17 +84,10 @@ Iterative refinement
 
     jaxopt.IterativeRefinement
 
-
-Instantiating and running the solver
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-The class :class:`IterativeRefinement` aims to improve accuracy of linear solvers
-from ``jaxopt.linear_solve``.
-
-This is a meta-algorithm for solving the linear system ``Ax = b`` based on
+`Iterative refinement <https://en.wikipedia.org/wiki/Iterative_refinement>`_
+is a meta-algorithm for solving the linear system ``Ax = b`` based on
 a provided linear system solver. Our implementation is a slight generalization
-of the `standard algorithm <https://en.wikipedia.org/wiki/Iterative_refinement>`_.
-It starts with :math:`(r_0, x_0) = (b, 0)` and
+of the standard algorithm. It starts with :math:`(r_0, x_0) = (b, 0)` and
 iterates
 
 .. math::
@@ -114,9 +101,9 @@ iterates
 where :math:`\bar{A}` is some approximation of A, with preferably
 better preconditonning than A. By default, we use
 :math:`\bar{A} = A`, which is the standard iterative refinement algorithm.
-
 This method has the advantage of converging even if the solve step is
-inaccurate.  This is particularly useful for ill-posed problems::
+inaccurate.  This is particularly useful for ill-posed problems.
+Example::
 
   from functools import partial
   import jax.numpy as jnp

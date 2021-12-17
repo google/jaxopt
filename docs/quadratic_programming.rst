@@ -9,7 +9,7 @@ JAXopt supports several solvers for quadratic programming.
 The solver specificities are summarized in the table below.
 The best choice will depend on the usage.
 
-.. list-table:: Quadratic Solvers
+.. list-table:: Quadratic programming solvers
    :widths: 45, 15, 20, 15, 15, 15, 22
    :header-rows: 1
 
@@ -20,28 +20,28 @@ The best choice will depend on the usage.
      - stability
      - speed
      - input format
-   * - :class:`EqualityConstrainedQP`
+   * - :class:`jaxopt.EqualityConstrainedQP`
      - yes
      - yes
      - ++
      - \+
      - +++
      - (Q, c), (A, b)
-   * - :class:`CvxpyQP`
+   * - :class:`jaxopt.CvxpyQP`
      - no
      - no
      - +++
      - +++
      - \+
      - (Q, c), (A, b), (G, h)
-   * - :class:`OSQP`
+   * - :class:`jaxopt.OSQP`
      - yes
      - yes
      - \+
      - ++
      - ++
      - (Q, c), (A, b), (G, h)
-   * - :class:`BoxOSQP`
+   * - :class:`jaxopt.BoxOSQP`
      - yes
      - yes
      - \+
@@ -53,7 +53,7 @@ The best choice will depend on the usage.
 - *matvec*: the input can be given as matvec instead of dense matrices.
 - *precision*: accuracy expected when the solver succeeds to converge.
 - *stability*: capacity to handle badly scaled problems and matrices with poor conditioning.
-- *speed*: typical speed on big instances to each its maximum accuracy.
+- *speed*: typical speed on big instances to reach its maximum accuracy.
 - *input format*: see subsections below.
 
 
@@ -64,7 +64,7 @@ algorithms, ``maxiter`` and ``tol`` values.
 
 .. warning::
 
-  Those algorithms are guaranteed to converge on **convex problems** only.
+  These algorithms are guaranteed to converge on **convex problems** only.
   Hence, the matrix :math:`Q` *must* be positive semi-definite (PSD).
 
 Equality-constrained QPs
@@ -197,7 +197,11 @@ Example::
   print(sol.dual_eq)
   print(sol.dual_ineq)
 
-See :class:`BoxOSQP` for a full description of the parameters.
+See :class:`jaxopt.BoxOSQP` for a full description of the parameters.
+
+.. topic:: Example
+
+   * :ref:`sphx_glr_auto_examples_constrained_multiclass_linear_svm.py`
 
 Box-constrained QPs
 -------------------
@@ -213,8 +217,9 @@ The problem takes the form:
 
     jaxopt.BoxOSQP
 
-:class:`BoxOSQP` is similar to :class:`OSQP` but accepts problems in the above box-constrained format instead.
-The bounds ``u`` (resp. ``l``) can be set to ``inf`` (resp. ``-inf``) if required.
+:class:`jaxopt.BoxOSQP` uses the same underlying solver as :class:`jaxopt.OSQP`
+but accepts problems in the above box-constrained format instead.  The bounds
+``u`` (resp. ``l``) can be set to ``inf`` (resp. ``-inf``) if required.
 
 Example::
 
@@ -244,6 +249,10 @@ If required the algorithm can be sped up by setting
   badly-scaled matrices, the residuals can be high, and it may be difficult to
   set ``tol`` appropriately.  In this case, it is better to tune ``maxiter``
   instead.
+
+.. topic:: Example
+
+  * :ref:`sphx_glr_auto_examples_constrained_binary_kernel_svm_with_intercept.py`
 
 Unconstrained QPs
 -----------------
