@@ -17,7 +17,6 @@
 import abc
 import dataclasses
 import itertools
-import warnings
 
 from typing import Any
 from typing import Callable
@@ -35,7 +34,7 @@ from jaxopt import implicit_diff as idf
 # jaxopt._src.linear_solve instead.
 # This allows to define linear solver with base.Solver interface,
 # and then exporting them in jaxopt.linear_solve.
-from jaxopt._src import linear_solve 
+from jaxopt._src import linear_solve
 
 from jaxopt import loop
 from jaxopt import tree_util
@@ -116,15 +115,6 @@ class IterativeSolver(Solver):
   The following attribute is needed in the state:
     - `error`
   """
-
-  def init(self,
-           init_params: Any,
-           *args,
-           **kwargs) -> OptStep:
-    warnings.warn("Method 'init' will be removed in v0.2. "
-                  "Use 'init_state' instead.", FutureWarning)
-    state = self.init_state(init_params, *args, **kwargs)
-    return OptStep(params=init_params, state=state)
 
   def _get_loop_options(self):
     """Returns jit and unroll options based on user-provided attributes."""
