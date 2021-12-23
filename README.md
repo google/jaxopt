@@ -5,7 +5,8 @@
 | [**Examples**](https://github.com/google/jaxopt/tree/main/examples)
 | [**Cite us**](#citeus)
 
-Hardware accelerated, batchable and differentiable optimizers in JAX.
+Hardware accelerated, batchable and differentiable optimizers in
+[JAX](https://github.com/google/jax).
 
 - **Hardware accelerated:** our implementations run on GPU and TPU, in addition
   to CPU.

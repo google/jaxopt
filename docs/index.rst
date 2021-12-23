@@ -3,7 +3,8 @@
 JAXopt Documentation
 ====================
 
-Hardware accelerated, batchable and differentiable optimizers in JAX.
+Hardware accelerated, batchable and differentiable optimizers in
+`JAX <https://github.com/google/jax>`_.
 
 - **Hardware accelerated:** our implementations run on GPU and TPU, in addition
   to CPU.
@@ -80,7 +81,7 @@ JAXopt is licensed under the Apache 2.0 License.
 Citing
 ------
 
-If this software is useful for you, please consider citing 
+If this software is useful for you, please consider citing
 `the paper <https://arxiv.org/abs/2105.15183>`_ that describes
 its implicit differentiation framework:
 
@@ -88,8 +89,8 @@ its implicit differentiation framework:
 
    @article{jaxopt_implicit_diff,
    title={Efficient and Modular Implicit Differentiation},
-   author={Blondel, Mathieu and Berthet, Quentin and Cuturi, Marco and Frostig, Roy 
-      and Hoyer, Stephan and Llinares-L{\'o}pez, Felipe and Pedregosa, Fabian 
+   author={Blondel, Mathieu and Berthet, Quentin and Cuturi, Marco and Frostig, Roy
+      and Hoyer, Stephan and Llinares-L{\'o}pez, Felipe and Pedregosa, Fabian
       and Vert, Jean-Philippe},
    journal={arXiv preprint arXiv:2105.15183},
    year={2021}
