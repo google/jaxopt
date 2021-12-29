@@ -4,6 +4,12 @@ Changelog
 Version 0.3
 -----------
 
+Bug fixes and enhancements
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- `Support implicit AD in higher-order differentiation
+  <https://github.com/google/jaxopt/pull/143>`_.
+
 Version 0.2
 -----------
 
