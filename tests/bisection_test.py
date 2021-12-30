@@ -93,5 +93,21 @@ class BisectionTest(jtu.JaxTestCase):
                        lower=lower, upper=lower)
     self.assertRaises(ValueError, bisect.run, None, x, s)
 
+  def test_grad_of_value_and_grad(self):
+    # See https://github.com/google/jaxopt/issues/141
+
+    bisect = lambda x: _projection_simplex_bisect(x)[0]
+
+    def bisect_val(x):
+      val, _ = jax.value_and_grad(bisect)(x)
+      return val
+
+    rng = onp.random.RandomState(0)
+    x = jnp.array(rng.randn(5).astype(onp.float32))
+    g1 = jax.grad(bisect)(x)
+    g2 = jax.grad(bisect_val)(x)
+    self.assertArraysAllClose(g1, g2)
+
+
 if __name__ == '__main__':
   absltest.main(testLoader=jtu.JaxTestLoader())

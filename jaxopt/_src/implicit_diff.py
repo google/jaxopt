@@ -201,9 +201,13 @@ def _custom_root(solver_fun, optimality_fun, solve, has_aux,
     reference_signature = inspect.signature(fun)
 
   def make_custom_vjp_solver_fun(solver_fun, kwarg_keys):
-    def solver_fun_fwd(*flat_args):
+    @jax.custom_vjp
+    def solver_fun_flat(*flat_args):
       args, kwargs = _extract_kwargs(kwarg_keys, flat_args)
-      res = solver_fun(*args, **kwargs)
+      return solver_fun(*args, **kwargs)
+
+    def solver_fun_fwd(*flat_args):
+      res = solver_fun_flat(*flat_args)
       return res, (res, flat_args)
 
     def solver_fun_bwd(tup, cotangent):
@@ -237,11 +241,6 @@ def _custom_root(solver_fun, optimality_fun, solve, has_aux,
       arg_vjps, kws_vjps = map_back(vjps)
       ordered_vjps = tuple(arg_vjps) + tuple(kws_vjps[k] for k in kwargs.keys())
       return ordered_vjps
-
-    @jax.custom_vjp
-    def solver_fun_flat(*flat_args):
-      args, kwargs = _extract_kwargs(kwarg_keys, flat_args)
-      return solver_fun(*args, **kwargs)
 
     solver_fun_flat.defvjp(solver_fun_fwd, solver_fun_bwd)
     return solver_fun_flat
