@@ -150,7 +150,7 @@ def solve_normal_cg(matvec: Callable,
 
   Ab = _rmatvec(matvec, b)
 
-  return jax.scipy.sparse.linalg.cg(_matvec, Ab, **kwargs)[0]
+  return jax.scipy.sparse.linalg.cg(_matvec, Ab, x0=init, **kwargs)[0]
 
 
 def solve_gmres(matvec: Callable,
@@ -173,7 +173,7 @@ def solve_gmres(matvec: Callable,
   """
   if ridge is not None:
     matvec = _make_ridge_matvec(matvec, ridge=ridge)
-  return jax.scipy.sparse.linalg.gmres(matvec, b, tol=tol, **kwargs)[0]
+  return jax.scipy.sparse.linalg.gmres(matvec, b, tol=tol, x0=init, **kwargs)[0]
 
 
 def solve_bicgstab(matvec: Callable,
@@ -195,4 +195,4 @@ def solve_bicgstab(matvec: Callable,
   """
   if ridge is not None:
     matvec = _make_ridge_matvec(matvec, ridge=ridge)
-  return jax.scipy.sparse.linalg.bicgstab(matvec, b, **kwargs)[0]
+  return jax.scipy.sparse.linalg.bicgstab(matvec, b, x0=init, **kwargs)[0]

@@ -121,7 +121,7 @@ class IterativeRefinementTest(jtu.JaxTestCase):
     A = onp.random.rand(n, n)
     b = onp.random.randn(n)
 
-    init_x = onp.random.randn()
+    init_x = onp.random.randn(n)
 
     high_acc = 1e-5
 
