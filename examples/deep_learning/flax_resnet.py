@@ -152,6 +152,7 @@ def main(argv):
   input_shape = (1,) + ds_info.features["image"].shape
   num_classes = ds_info.features["label"].num_classes
   iter_per_epoch = ds_info.splits['train'].num_examples // FLAGS.train_batch_size
+  iter_per_epoch_test = ds_info.splits['test'].num_examples // FLAGS.test_batch_size
 
   # Set up model.
   if FLAGS.model == "resnet1":
@@ -219,7 +220,12 @@ def main(argv):
     if state.iter_num % iter_per_epoch == iter_per_epoch - 1:
       # Once per epoch evaluate the model on the train and test sets.
       train_acc, train_loss = accuracy_and_loss(params, FLAGS.l2reg, train_minibatch, batch_stats)
-      test_acc, test_loss = accuracy_and_loss(params, FLAGS.l2reg, next(test_ds), batch_stats)
+      test_acc, test_loss = 0., 0.
+      # make a pass over test set to compute test accuracy
+      for _ in range(iter_per_epoch_test):
+          tmp = accuracy_and_loss(params, FLAGS.l2reg, next(test_ds), batch_stats)
+          test_acc += tmp[0] / iter_per_epoch_test
+          test_loss += tmp[1] / iter_per_epoch_test
 
       train_acc = jax.device_get(train_acc)
       train_loss = jax.device_get(train_loss)
