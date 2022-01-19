@@ -238,6 +238,21 @@ class ScipyMinimize(ScipyWrapper):
   Attributes:
     fun: a smooth function of the form `fun(x, *args, **kwargs)`.
     method: the `method` argument for `scipy.optimize.minimize`.
+      Should be one of
+        * 'Nelder-Mead'
+        * 'Powell'
+        * 'CG'
+        * 'BFGS'
+        * 'Newton-CG'
+        * 'L-BFGS-B'
+        * 'TNC'
+        * 'COBYLA'
+        * 'SLSQP'
+        * 'trust-constr'
+        * 'dogleg'
+        * 'trust-ncg'
+        * 'trust-exact'
+        * 'trust-krylov'
     tol: the `tol` argument for `scipy.optimize.minimize`.
     options: the `options` argument for `scipy.optimize.minimize`.
     dtype: if not None, cast all NumPy arrays to this dtype. Note that some
@@ -374,6 +389,17 @@ class ScipyRootFinding(ScipyWrapper):
       `optimality_fun(x, *args, **kwargs)` whose root is to be found. It must
       return as output a PyTree with structure identical to x.
     method: the `method` argument for `scipy.optimize.root`.
+      Should be one of
+        * 'hybr'
+        * 'lm'
+        * 'broyden1'
+        * 'broyden2'
+        * 'anderson'
+        * 'linearmixing'
+        * 'diagbroyden'
+        * 'excitingmixing'
+        * 'krylov'
+        * 'df-sane'
     tol: the `tol` argument for `scipy.optimize.root`.
     options: the `options` argument for `scipy.optimize.root`.
     dtype: if not None, cast all NumPy arrays to this dtype. Note that some

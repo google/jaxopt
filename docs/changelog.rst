@@ -9,6 +9,7 @@ New features
 
 - :class:`jaxopt.LBFGS`.
 - :class:`jaxopt.BacktrackingLineSearch`.
+- :class:`jaxopt.GaussNewton`.
 
 Bug fixes and enhancements
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
