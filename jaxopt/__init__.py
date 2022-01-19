@@ -27,6 +27,7 @@ from jaxopt._src.block_cd import BlockCoordinateDescent
 from jaxopt._src.cvxpy_wrapper import CvxpyQP
 from jaxopt._src.eq_qp import EqualityConstrainedQP
 from jaxopt._src.fixed_point_iteration import FixedPointIteration
+from jaxopt._src.gauss_newton import GaussNewton
 from jaxopt._src.gradient_descent import GradientDescent
 from jaxopt._src.iterative_refinement import IterativeRefinement
 from jaxopt._src.lbfgs import LBFGS
