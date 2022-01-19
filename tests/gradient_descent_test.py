@@ -24,7 +24,6 @@ from jaxopt import objective
 from jaxopt._src import test_util
 
 from sklearn import datasets
-from sklearn import preprocessing
 
 
 class GradientDescentTest(jtu.JaxTestCase):
