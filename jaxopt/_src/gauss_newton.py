@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""GaussNewton algorithm in JAX."""
+"""Gauss-Newton algorithm in JAX."""
 
 from typing import Any
 from typing import Callable
@@ -38,22 +38,18 @@ class GaussNewtonState(NamedTuple):
   gradient: Any
   aux: Optional[Any] = None
 
+
 @dataclass(eq=False)
 class GaussNewton(base.IterativeSolver):
   """Gauss-Newton nonlinear least-squares solver.
 
-  This solver finds the optimal parameters via a least-squares optimization
-
-    Given the residual function f(x): R^m -> R^n, `gauss_newton` finds a
-    local minimum of the cost function F(x):
-
-    ```
-    argmin_x F(x) = 0.5 * sum(f_i(x)**2), i = 0, ..., m - 1
-    f(x) = func(x, *args, **kwargs)
-    ```
+  Given the residual function ``f(x): R^m -> R^n``, where ``f(x) =
+  residual_fun(x, *args, **kwargs)``, ``GaussNewton`` finds a local minimum of
+  the cost function ``argmin_x 0.5 * sum(f(x) ** 2)``.
 
   Attributes:
-    residual_fun: a smooth function of the form ``residual_fun(x, *args, **kwargs)``.
+    residual_fun: a smooth function of the form
+      ``residual_fun(x, *args, **kwargs)``.
     maxiter: maximum number of iterations.
     tol: tolerance.
     implicit_diff: whether to enable implicit diff or autodiff of unrolled
@@ -130,7 +126,6 @@ class GaussNewton(base.IterativeSolver):
     return base.OptStep(params=params, state=state)
 
   def __post_init__(self):
-
     if self.has_aux:
       self._fun = lambda *a, **kw: self.residual_fun(*a, **kw)[0]
       self._fun_with_aux = self.fun
