@@ -32,8 +32,13 @@ from jaxopt._src import test_util
 from sklearn import datasets
 
 
-def materialize_inv_hessian(s_history, y_history, rho_history):
+def materialize_inv_hessian(s_history, y_history, rho_history, start):
   history_size, n_dim = s_history.shape
+
+  s_history = jnp.roll(s_history, -start, axis=0)
+  y_history = jnp.roll(y_history, -start, axis=0)
+  rho_history = jnp.roll(rho_history, -start, axis=0)
+
   I = jnp.eye(n_dim, n_dim)
   H = I
 
@@ -47,7 +52,8 @@ def materialize_inv_hessian(s_history, y_history, rho_history):
 
 class LbfgsTest(jtu.JaxTestCase):
 
-  def test_inv_hessian_product(self):
+  @parameterized.product(start=[0, 1, 2, 3])
+  def test_inv_hessian_product(self, start):
     """Test inverse Hessian product with pytrees."""
 
     rng = onp.random.RandomState(0)
@@ -55,16 +61,16 @@ class LbfgsTest(jtu.JaxTestCase):
     shape1 = (3, 2)
     shape2 = (5,)
 
-    s_history1 = rng.randn(history_size, *shape1)
-    y_history1 = rng.randn(history_size, *shape1)
+    s_history1 = jnp.array(rng.randn(history_size, *shape1))
+    y_history1 = jnp.array(rng.randn(history_size, *shape1))
 
-    s_history2 = rng.randn(history_size, *shape2)
-    y_history2 = rng.randn(history_size, *shape2)
+    s_history2 = jnp.array(rng.randn(history_size, *shape2))
+    y_history2 = jnp.array(rng.randn(history_size, *shape2))
     rho_history2 = jnp.array([1./ jnp.vdot(s_history2[i], y_history2[i])
                               for i in range(history_size)])
 
-    v1 = rng.randn(*shape1)
-    v2 = rng.randn(*shape2)
+    v1 = jnp.array(rng.randn(*shape1))
+    v2 = jnp.array(rng.randn(*shape2))
     pytree = (v1, v2)
 
     s_history = (s_history1, s_history2)
@@ -77,72 +83,15 @@ class LbfgsTest(jtu.JaxTestCase):
 
     H1 = materialize_inv_hessian(s_history1.reshape(history_size, -1),
                                  y_history1.reshape(history_size, -1),
-                                 rho_history)
-    H2 = materialize_inv_hessian(s_history2, y_history2, rho_history)
+                                 rho_history, start)
+    H2 = materialize_inv_hessian(s_history2, y_history2, rho_history, start)
     Hv1 = jnp.dot(H1, v1.reshape(-1)).reshape(shape1)
     Hv2 = jnp.dot(H2, v2)
 
-    Hv = inv_hessian_product(pytree, s_history, y_history, rho_history)
+    Hv = inv_hessian_product(pytree, s_history, y_history, rho_history,
+                             start=start)
     self.assertArraysAllClose(Hv[0], Hv1, atol=1e-2)
     self.assertArraysAllClose(Hv[1], Hv2, atol=1e-2)
-
-  def test_init_history(self):
-    # Check 1d array case.
-    arr1 = jnp.zeros(5)
-    history = init_history(pytree=arr1, history_size=3)
-    self.assertEqual(history.shape, (3, 5))
-
-    # Check 2d array case.
-    arr2 = jnp.zeros((5, 6))
-    history = init_history(pytree=arr2, history_size=3)
-    self.assertEqual(history.shape, (3, 5, 6))
-
-    # Check pytree case.
-    pytree = (arr1, arr2)
-    history = init_history(pytree=pytree, history_size=3)
-    self.assertEqual(history[0].shape, (3, 5))
-    self.assertEqual(history[1].shape, (3, 5, 6))
-
-  def test_update_history(self):
-    n_data = 4
-    n_dim = 5
-    history_size = 3
-
-    # Check array case.
-    rng = onp.random.RandomState(0)
-    s = rng.randn(n_data, n_dim)
-    s_history = init_history(s[0], history_size)
-
-    s_history = update_history(s_history, s[0])
-    self.assertArraysAllClose(s_history[-1:], s[:1])
-
-    s_history = update_history(s_history, s[1])
-    self.assertArraysAllClose(s_history[-2:], s[:2])
-
-    s_history = update_history(s_history, s[2])
-    self.assertArraysAllClose(s_history, s[:3])
-
-    s_history = update_history(s_history, s[3])
-    self.assertArraysAllClose(s_history, s[1:4])
-
-    # Check pytree case.
-    s_history_pytree = init_history((s[0], s[0]), history_size)
-
-    s_history_pytree = update_history(s_history_pytree, (s[0], s[0]))
-    self.assertArraysAllClose(s_history_pytree[0][-1:], s[:1])
-    self.assertArraysAllClose(s_history_pytree[1][-1:], s[:1])
-
-    s_history_pytree = update_history(s_history_pytree, (s[1], s[1]))
-    self.assertArraysAllClose(s_history_pytree[0][-2:], s[:2])
-    self.assertArraysAllClose(s_history_pytree[1][-2:], s[:2])
-
-    s_history_pytree = update_history(s_history_pytree, (s[2], s[2]))
-    self.assertArraysAllClose(s_history_pytree[0], s[:3])
-    self.assertArraysAllClose(s_history_pytree[1], s[:3])
-
-    s_history_pytree = update_history(s_history_pytree, (s[3], s[3]))
-    self.assertArraysAllClose(s_history_pytree[0], s[1:4])
-    self.assertArraysAllClose(s_history_pytree[1], s[1:4])
 
   @parameterized.product(use_gamma=[True, False])
   def test_binary_logreg(self, use_gamma):

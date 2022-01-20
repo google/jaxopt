@@ -38,48 +38,56 @@ from jaxopt.tree_util import tree_sum
 from jaxopt.tree_util import tree_l2_norm
 
 
-def ihp_body_right(q, tup):
-  s, y, rho = tup
-  alpha = rho * tree_vdot(s, q)
-  q = tree_add_scalar_mul(q, -alpha, y)  # q = q - alpha * y
-  return q, alpha
-
-
-def ihp_body_left(r, tup):
-  s, y, rho, alpha = tup
-  beta = rho * tree_vdot(y, r)
-  r = tree_add_scalar_mul(r, alpha - beta, s)  # r = r + (alpha - beta) * s
-  return r, beta
-
-
 def inv_hessian_product_leaf(v: jnp.ndarray,
                              s_history: jnp.ndarray,
                              y_history: jnp.ndarray,
                              rho_history: jnp.ndarray,
-                             gamma: float = 1.0):
+                             gamma: float = 1.0,
+                             start: int = 0):
 
-  # Compute right part.
-  q, alpha = jax.lax.scan(ihp_body_right,
-                          v,
-                          (s_history, y_history, rho_history),
-                          reverse=True)
+  history_size = len(s_history)
+
+  # Compute right product.
+  def body_right(j, args):
+    alpha, r = args
+
+    # We loop from history_size - 1 down to 0.
+    i = history_size - j - 1
+
+    # Index in circular buffer.
+    i = (i + start) % history_size
+
+    # alpha[i] = rho[i] * vdot(s[i] * r)
+    alpha_i = rho_history[i] * jnp.vdot(s_history[i], r)
+    alpha = alpha.at[i].set(alpha_i)
+
+    r = r - alpha[i] * y_history[i]
+
+    return alpha, r
+
+  alpha = jnp.zeros(history_size)
+  alpha, r = jax.lax.fori_loop(0, history_size, body_right, (alpha, v))
 
   # Compute center.
-  r = q * gamma
+  r = r * gamma
 
-  # Compute left part.
-  r, beta = jax.lax.scan(ihp_body_left,
-                         r,
-                         (s_history, y_history, rho_history, alpha))
+  # Compute left product.
+  def body_left(i, r):
+    # Index in circular buffer.
+    i = (i + start) % history_size
 
-  return r
+    beta = rho_history[i] * jnp.vdot(y_history[i], r)
+    return r + s_history[i] * (alpha[i] - beta)
+
+  return jax.lax.fori_loop(0, history_size, body_left, r)
 
 
 def inv_hessian_product(pytree: Any,
                         s_history: Any,
                         y_history: Any,
                         rho_history: jnp.ndarray,
-                        gamma: float = 1.0):
+                        gamma: float = 1.0,
+                        start: int = 0):
   """Product between an approximate Hessian inverse and a pytree.
 
   Histories are pytrees of the same structure as `pytree`.
@@ -97,26 +105,30 @@ def inv_hessian_product(pytree: Any,
     rho_history: array containing `rho[k] = 1. / vdot(s[k], y[k])`.
     gamma: scalar to use for the initial inverse Hessian approximation,
       i.e., `gamma * I`.
+    start: starting index in the circular buffer.
 
   Reference:
     Jorge Nocedal and Stephen Wright.
     Numerical Optimization, second edition.
     Algorithm 7.4 (page 178).
   """
-  fun = partial(inv_hessian_product_leaf, rho_history=rho_history, gamma=gamma)
+  fun = partial(inv_hessian_product_leaf,
+                rho_history=rho_history,
+                gamma=gamma,
+                start=start)
   return tree_map(fun, pytree, s_history, y_history)
 
 
-def compute_gamma(s_history: Any, y_history: Any):
-  # Let gamma = vdot(y_history[-1], s_history[-1]) / sqnorm(y_history[-1]).
+def compute_gamma(s_history: Any, y_history: Any, last: int):
+  # Let gamma = vdot(y_history[last], s_history[last]) / sqnorm(y_history[last]).
   # The initial inverse Hessian approximation can be set to gamma * I.
   # See Numerical Optimization, second edition, equation (7.20).
   # Note that unlike BFGS, the initialization can change on every iteration.
 
-  fun = lambda s_history, y_history: tree_vdot(y_history[-1], s_history[-1])
+  fun = lambda s_history, y_history: tree_vdot(y_history[last], s_history[last])
   num = tree_sum(tree_map(fun, s_history, y_history))
 
-  fun = lambda y_history: tree_vdot(y_history[-1], y_history[-1])
+  fun = lambda y_history: tree_vdot(y_history[last], y_history[last])
   denom = tree_sum(tree_map(fun, y_history))
 
   return jnp.where(denom > 0, num / denom, 1.0)
@@ -127,15 +139,9 @@ def init_history(pytree, history_size):
   return tree_map(fun, pytree)
 
 
-def _update_history(history_array, new_value):
-  """Shift past elements to the left and add new elements at the end."""
-  # TODO: to avoid memory copies, it would be more efficient to treat history as
-  # a rolling buffer, and only set a single vector.
-  return jnp.roll(history_array, -1, axis=0).at[-1].set(new_value)
-
-
-def update_history(history_pytree, new_pytree):
-  return tree_map(_update_history, history_pytree, new_pytree)
+def update_history(history_pytree, new_pytree, last):
+  fun = lambda history_array, new_value: history_array.at[last].set(new_value)
+  return tree_map(fun, history_pytree, new_pytree)
 
 
 class LbfgsState(NamedTuple):
@@ -246,13 +252,18 @@ class LBFGS(base.IterativeSolver):
     """
     (value, aux), grad = self._value_and_grad_with_aux(params, *args, **kwargs)
 
+    start = state.iter_num % self.history_size
+    last = (start + self.history_size) % self.history_size
+
     if self.use_gamma:
-      gamma = compute_gamma(state.s_history, state.y_history)
+      gamma = compute_gamma(state.s_history, state.y_history, last)
     else:
       gamma = 1.0
 
-    product = inv_hessian_product(grad, state.s_history, state.y_history,
-                                  state.rho_history, gamma)
+    product = inv_hessian_product(pytree=grad, s_history=state.s_history,
+                                  y_history=state.y_history,
+                                  rho_history=state.rho_history, gamma=gamma,
+                                  start=start)
     descent_direction = tree_scalar_mul(-1, product)
 
     ls = BacktrackingLineSearch(fun=self._value_and_grad_fun,
@@ -273,9 +284,9 @@ class LBFGS(base.IterativeSolver):
     vdot_sy = tree_vdot(s, y)
     rho = jnp.where(vdot_sy == 0, 0, 1. / vdot_sy)
 
-    s_history = update_history(state.s_history, s)
-    y_history = update_history(state.y_history, y)
-    rho_history = _update_history(state.rho_history, rho)
+    s_history = update_history(state.s_history, s, last)
+    y_history = update_history(state.y_history, y, last)
+    rho_history = update_history(state.rho_history, rho, last)
 
     new_state = LbfgsState(iter_num=state.iter_num + 1,
                            stepsize=jnp.asarray(new_stepsize),
