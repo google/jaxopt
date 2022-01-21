@@ -47,39 +47,26 @@ def inv_hessian_product_leaf(v: jnp.ndarray,
 
   history_size = len(s_history)
 
-  # Compute right product.
-  def body_right(j, args):
-    alpha, r = args
+  indices = (start + jnp.arange(history_size)) % history_size
 
-    # We loop from history_size - 1 down to 0.
-    i = history_size - j - 1
+  def body_right(r, i):
+    alpha = rho_history[i] * jnp.vdot(s_history[i], r)
+    r = r - alpha * y_history[i]
+    return r, alpha
 
-    # Index in circular buffer.
-    i = (i + start) % history_size
+  r, alpha = jax.lax.scan(body_right, v, indices, reverse=True)
 
-    # alpha[i] = rho[i] * vdot(s[i] * r)
-    alpha_i = rho_history[i] * jnp.vdot(s_history[i], r)
-    alpha = alpha.at[i].set(alpha_i)
-
-    r = r - alpha[i] * y_history[i]
-
-    return alpha, r
-
-  alpha = jnp.zeros(history_size)
-  alpha, r = jax.lax.fori_loop(0, history_size, body_right, (alpha, v))
-
-  # Compute center.
   r = r * gamma
 
-  # Compute left product.
-  def body_left(i, r):
-    # Index in circular buffer.
-    i = (i + start) % history_size
-
+  def body_left(r, args):
+    i, alpha = args
     beta = rho_history[i] * jnp.vdot(y_history[i], r)
-    return r + s_history[i] * (alpha[i] - beta)
+    r = r + s_history[i] * (alpha - beta)
+    return r, beta
 
-  return jax.lax.fori_loop(0, history_size, body_left, r)
+  r, beta = jax.lax.scan(body_left, r, (indices, alpha))
+
+  return r
 
 
 def inv_hessian_product(pytree: Any,
