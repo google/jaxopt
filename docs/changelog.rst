@@ -45,12 +45,13 @@ Bug fixes and enhancements
   :class:`jaxopt.ProximalGradient`, :class:`jaxopt.ProjectedGradient` and
   :class:`jaxopt.GradientDescent`.
 
-Deprecated features
-~~~~~~~~~~~~~~~~~~~
+Deprecations
+~~~~~~~~~~~~
 
 - :class:`jaxopt.QuadraticProgramming` is deprecated and will be removed in v0.3. Use
   :class:`jaxopt.CvxpyQP`, :class:`jaxopt.OSQP`, :class:`jaxopt.BoxOSQP` and
   :class:`jaxopt.EqualityConstrainedQP` instead.
+- ``params, state = solver.init(...)`` is deprecated. Use ``state = solver.init_state(...)`` instead.
 
 Contributors
 ~~~~~~~~~~~~
