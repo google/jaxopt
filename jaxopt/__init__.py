@@ -32,6 +32,7 @@ from jaxopt._src.gradient_descent import GradientDescent
 from jaxopt._src.iterative_refinement import IterativeRefinement
 from jaxopt._src.lbfgs import LBFGS
 from jaxopt._src.mirror_descent import MirrorDescent
+from jaxopt._src.nonlinear_cg import NonlinearCG
 from jaxopt._src.optax_wrapper import OptaxSolver
 from jaxopt._src.osqp import BoxOSQP
 from jaxopt._src.osqp import OSQP

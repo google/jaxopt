@@ -99,6 +99,15 @@ class TreeUtilTest(jtu.JaxTestCase):
     got = tree_util.tree_vdot(self.tree_A, self.tree_B)
     self.assertAllClose(expected, got)
 
+  def test_tree_div(self):
+    expected = (self.tree_A[0] / self.tree_B[0], self.tree_A[1] / self.tree_B[1])
+    got = tree_util.tree_div(self.tree_A, self.tree_B)
+    self.assertAllClose(expected, got)
+
+    got = tree_util.tree_div(self.tree_A_dict, self.tree_B_dict)
+    expected = (1.0, {'k1': 0.5, 'k2': (0.333333333, 0.25)}, 0.2)
+    self.assertAllClose(expected, got)
+
   def test_tree_sum(self):
     expected = jnp.sum(self.array_A)
     got = tree_util.tree_sum(self.array_A)
