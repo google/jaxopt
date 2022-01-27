@@ -13,6 +13,7 @@ Unconstrained
     jaxopt.GradientDescent
     jaxopt.LBFGS
     jaxopt.ScipyMinimize
+    jaxopt.NonlinearCG
 
 Constrained
 ~~~~~~~~~~~

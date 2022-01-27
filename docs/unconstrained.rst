@@ -39,6 +39,7 @@ Solvers
     jaxopt.GradientDescent
     jaxopt.LBFGS
     jaxopt.ScipyMinimize
+    jaxopt.NonlinearCG
 
 Instantiating and running the solver
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -52,7 +53,7 @@ instantiated and run as follows::
   # Alternatively, we could have used one of these solvers as well:
   # solver = jaxopt.GradientDescent(fun=ridge_reg_objective, maxiter=500)
   # solver = jaxopt.ScipyMinimize(fun=ridge_reg_objective, method="L-BFGS-B", maxiter=500)
-
+  # cg_model = jaxopt.NonlinearCG(fun=ridge_reg_objective, maxiter=300, method="polak-ribiere")
 Unpacking results
 ~~~~~~~~~~~~~~~~~
 

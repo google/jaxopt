@@ -60,7 +60,7 @@ def tree_vdot(tree_x, tree_y):
 
 def tree_dot(tree_x, tree_y):
   """Compute leaves-wise dot product between pytree of arrays.
-  
+
   Useful to store block diagonal linear operators: each leaf of the tree
   corresponds to a block."""
   return tree_map(jnp.dot, tree_x, tree_y)
