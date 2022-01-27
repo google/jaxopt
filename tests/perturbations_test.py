@@ -39,6 +39,7 @@ def top_k_hots(values, k):
   return jax.nn.one_hot(jnp.argsort(values)[-k:], n)
 
 
+@jtu.with_config(jax_numpy_rank_promotion='allow')
 class PerturbationsArgmaxTest(jtu.JaxTestCase):
 
   def setUp(self):
@@ -212,6 +213,7 @@ class PerturbationsArgmaxTest(jtu.JaxTestCase):
     self.assertArraysAllClose(delta_num, delta_lin, atol=5e-2)
 
 
+@jtu.with_config(jax_numpy_rank_promotion='allow')
 class PerturbationsMaxTest(jtu.JaxTestCase):
 
   def setUp(self):
