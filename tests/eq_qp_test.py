@@ -26,7 +26,7 @@ import numpy as onp
 
 
 class EqualityConstrainedQPTest(jtu.JaxTestCase):
-  def _check_derivative_Q_c_A_b(self, solver, params, Q, c, A, b):
+  def _check_derivative_Q_c_A_b(self, solver, Q, c, A, b):
     def fun(Q, c, A, b):
       Q = 0.5 * (Q + Q.T)
 
@@ -77,7 +77,7 @@ class EqualityConstrainedQPTest(jtu.JaxTestCase):
     hyperparams = dict(params_obj=(Q, c), params_eq=(A, b))
     sol = qp.run(**hyperparams).params
     self.assertAllClose(qp.l2_optimality_error(sol, **hyperparams), 0.0)
-    self._check_derivative_Q_c_A_b(qp, hyperparams, Q, c, A, b)
+    self._check_derivative_Q_c_A_b(qp, Q, c, A, b)
 
   def test_qp_eq_with_init(self):
     Q = 2 * jnp.array([[2.0, 0.5], [0.5, 1]])
@@ -89,7 +89,7 @@ class EqualityConstrainedQPTest(jtu.JaxTestCase):
     init_params = KKTSolution(jnp.array([1.0, 1.0]), jnp.array([1.0]))
     sol = qp.run(init_params, **hyperparams).params
     self.assertAllClose(qp.l2_optimality_error(sol, **hyperparams), 0.0)
-    self._check_derivative_Q_c_A_b(qp, hyperparams, Q, c, A, b)
+    self._check_derivative_Q_c_A_b(qp, Q, c, A, b)
 
   def test_projection_hyperplane(self):
     x = jnp.array([1.0, 2.0])

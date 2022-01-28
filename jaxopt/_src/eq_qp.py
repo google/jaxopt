@@ -57,7 +57,8 @@ def _make_eq_qp_optimality_fun(matvec_Q, matvec_A):
 
   # It is required to post_process the output of `idf.make_kkt_optimality_fun`
   # to make the signatures of optimality_fun() and run() agree.
-  def optimality_fun(params, params_obj, params_eq):
+  # The M argument is needed for using preconditioners.
+  def optimality_fun(params, params_obj, params_eq, M=None):
     return optimality_fun_with_ineq(params, params_obj, params_eq, None)
 
   return optimality_fun
@@ -103,7 +104,7 @@ class EqualityConstrainedQP(base.Solver):
   implicit_diff_solve: Optional[Callable] = None
   jit: bool = True
 
-  def _refined_solve(self, matvec, b, init, maxiter, tol):
+  def _refined_solve(self, matvec, b, init, maxiter, tol, **kwargs):
     # Instead of solving S x = b
     # We solve     \bar{S} x = b
     #
@@ -152,13 +153,14 @@ class EqualityConstrainedQP(base.Solver):
       maxiter=self.refine_maxiter,
       tol=tol,
     )
-    return solver.run(init_params=init, A=None, b=b)[0]
+    return solver.run(init_params=init, A=None, b=b, **kwargs)[0]
 
   def run(
     self,
     init_params: Optional[base.KKTSolution] = None,
     params_obj: Optional[Any] = None,
     params_eq: Optional[Any] = None,
+    **kwargs,
   ) -> base.OptStep:
     """Solves 0.5 * x^T Q x + c^T x subject to Ax = b.
 
@@ -168,6 +170,7 @@ class EqualityConstrainedQP(base.Solver):
       init_params: ignored.
       params_obj: (Q, c) or (params_Q, c) if matvec_Q is provided.
       params_eq: (A, b) or (params_A, b) if matvec_A is provided.
+      **kwargs: Keyword args provided to the solver.
     Returns:
       (params, state),  where params = (primal_var, dual_var_eq, None)
     """
@@ -200,10 +203,11 @@ class EqualityConstrainedQP(base.Solver):
         init=init_params,
         tol=self.tol,
         maxiter=self.maxiter,
+        **kwargs,
       )
     else:
       primal, dual_eq = self._refined_solve(
-        matvec, target, init_params, tol=self.tol, maxiter=self.maxiter
+        matvec, target, init_params, tol=self.tol, maxiter=self.maxiter, **kwargs
       )
 
     return base.OptStep(params=base.KKTSolution(primal, dual_eq, None), state=None)
