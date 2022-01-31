@@ -158,7 +158,7 @@ def _make_quadratic_prog_optimality_fun(matvec_Q, matvec_A):
 
 @dataclass(eq=False)
 class QuadraticProgramming(base.Solver):
-  """Deprecated: will be removed in v0.3.
+  """Deprecated: will be removed in v0.4.
 
   Use :class:`jaxopt.CvxpyQP`, :class:`jaxopt.OSQP`, :class:`jaxopt.BoxOSQP` and
   :class:`jaxopt.EqualityConstrainedQP` instead.
@@ -233,7 +233,7 @@ class QuadraticProgramming(base.Solver):
     return tree_util.tree_l2_norm(pytree)
 
   def __post_init__(self):
-    warnings.warn("Class 'QuadraticProgramming' will be removed in v0.3. "
+    warnings.warn("Class 'QuadraticProgramming' will be removed in v0.4. "
                   "Use 'EqualityConstraintsQP' if you want the same behavior as "
                   "'QuadraticProgramming' for QPs with equality constraints only. "
                   "Use 'CVXPY_QP' if you want the same behavior as "
