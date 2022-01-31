@@ -125,3 +125,20 @@ Line search
   :toctree: _autosummary
 
     jaxopt.BacktrackingLineSearch
+
+Tree utilities
+--------------
+
+.. autosummary::
+  :toctree: _autosummary
+
+    jaxopt.tree_util.tree_add
+    jaxopt.tree_util.tree_sub
+    jaxopt.tree_util.tree_mul
+    jaxopt.tree_util.tree_div
+    jaxopt.tree_util.tree_scalar_mul
+    jaxopt.tree_util.tree_add_scalar_mul
+    jaxopt.tree_util.tree_vdot
+    jaxopt.tree_util.tree_sum
+    jaxopt.tree_util.tree_l2_norm
+    jaxopt.tree_util.tree_zeros_like

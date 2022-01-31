@@ -31,9 +31,16 @@ tree_reduce = tu.tree_reduce
 tree_unflatten = tu.tree_unflatten
 
 tree_add = functools.partial(tree_multimap, operator.add)
+tree_add.__doc__ = "Tree addition."
+
 tree_sub = functools.partial(tree_multimap, operator.sub)
+tree_sub.__doc__ = "Tree subtraction."
+
 tree_mul = functools.partial(tree_multimap, operator.mul)
+tree_mul.__doc__ = "Tree multiplication."
+
 tree_div = functools.partial(tree_multimap, operator.truediv)
+tree_div.__doc__ = "Tree division."
 
 
 def tree_scalar_mul(scalar, tree_x):

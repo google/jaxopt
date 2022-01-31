@@ -7,15 +7,21 @@ Version 0.3
 New features
 ~~~~~~~~~~~~
 
-- :class:`jaxopt.LBFGS`.
-- :class:`jaxopt.BacktrackingLineSearch`.
-- :class:`jaxopt.GaussNewton`.
+- :class:`jaxopt.LBFGS`
+- :class:`jaxopt.BacktrackingLineSearch`
+- :class:`jaxopt.GaussNewton`
+- :class:`jaxopt.NonlinearCG`
 
 Bug fixes and enhancements
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 - `Support implicit AD in higher-order differentiation
   <https://github.com/google/jaxopt/pull/143>`_.
+
+Contributors
+~~~~~~~~~~~~
+
+Amir Saadat, Fabian Pedregosa, Geoffrey Négiar, Hyunsung Lee, Mathieu Blondel, Roy Frostig.
 
 Version 0.2
 -----------
@@ -48,7 +54,7 @@ Bug fixes and enhancements
 Deprecations
 ~~~~~~~~~~~~
 
-- :class:`jaxopt.QuadraticProgramming` is deprecated and will be removed in v0.3. Use
+- :class:`jaxopt.QuadraticProgramming` is deprecated and will be removed in v0.4. Use
   :class:`jaxopt.CvxpyQP`, :class:`jaxopt.OSQP`, :class:`jaxopt.BoxOSQP` and
   :class:`jaxopt.EqualityConstrainedQP` instead.
 - ``params, state = solver.init(...)`` is deprecated. Use ``state = solver.init_state(...)`` instead.
