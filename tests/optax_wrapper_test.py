@@ -30,6 +30,7 @@ import optax
 from sklearn import datasets
 
 
+@jtu.with_config(jax_numpy_rank_promotion='allow')
 class OptaxWrapperTest(jtu.JaxTestCase):
 
   def test_logreg_with_intercept_manual_loop(self):
