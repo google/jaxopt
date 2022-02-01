@@ -29,11 +29,11 @@ from jax.tree_util import tree_reduce
 
 from jaxopt._src import base
 from jaxopt._src import implicit_diff as idf
-from jaxopt._src.tree_util import tree_add, tree_sub, tree_mul
-from jaxopt._src.tree_util import tree_scalar_mul, tree_add_scalar_mul
-from jaxopt._src.tree_util import tree_map, tree_vdot, tree_dot
-from jaxopt._src.tree_util import tree_ones_like, tree_zeros_like, tree_where
-from jaxopt._src.tree_util import tree_negative, tree_l2_norm, tree_inf_norm
+from jaxopt.tree_util import tree_add, tree_sub, tree_mul
+from jaxopt.tree_util import tree_scalar_mul, tree_add_scalar_mul
+from jaxopt.tree_util import tree_map, tree_vdot
+from jaxopt.tree_util import tree_ones_like, tree_zeros_like, tree_where
+from jaxopt.tree_util import tree_negative, tree_l2_norm, tree_inf_norm
 from jaxopt._src.linear_operator import DenseLinearOperator, _make_linear_operator
 import jaxopt.linear_solve as linear_solve
 from jaxopt.projection import projection_box
@@ -456,10 +456,10 @@ class BoxOSQP(base.IterativeSolver):
     certif_Q   = tree_inf_norm(Q(delta_x))
     certif_c   = tree_vdot(c, delta_x)
 
-    unbouned_l = tree_map(lambda li: li == -jnp.inf, l)
-    unbouned_u = tree_map(lambda ui: ui == jnp.inf, u)
-    certif_l   = tree_map(lambda adxi,li: jnp.all(li <= adxi), Adx, tree_where(unbouned_l, -jnp.inf, -criterion))
-    certif_u   = tree_map(lambda adxi,ui: jnp.all(adxi <= ui), Adx, tree_where(unbouned_u, jnp.inf, criterion))
+    unbounded_l = tree_map(lambda li: li == -jnp.inf, l)
+    unbounded_u = tree_map(lambda ui: ui == jnp.inf, u)
+    certif_l   = tree_map(lambda adxi,li: jnp.all(li <= adxi), Adx, tree_where(unbounded_l, -jnp.inf, -criterion))
+    certif_u   = tree_map(lambda adxi,ui: jnp.all(adxi <= ui), Adx, tree_where(unbounded_u, jnp.inf, criterion))
     certif_A   = tree_reduce(jnp.logical_and, tree_map(jnp.logical_and, certif_l, certif_u))
 
     certif_dual_infeasible = jnp.logical_and(jnp.logical_and(certif_Q <= criterion, certif_c <= criterion), certif_A)
