@@ -18,8 +18,8 @@ import jax
 import jax.numpy as jnp
 
 from jaxopt import projection
-from jaxopt import QuadraticProgramming
 from jaxopt._src import test_util
+from jaxopt import OSQP
 
 import numpy as onp
 
@@ -265,7 +265,7 @@ class ProjectionTest(test_util.JaxoptTestCase):
     params = (A, b)
 
     p = projection.projection_affine_set(x, params)
-    self.assertAllClose(jnp.dot(A, p), b)
+    self.assertAllClose(jnp.dot(A, p), b, atol=1e-3, rtol=1e-3)
 
     jac_fun = jax.jacrev(projection.projection_affine_set, argnums=0)
     jac_x = jac_fun(x, params)
@@ -287,7 +287,7 @@ class ProjectionTest(test_util.JaxoptTestCase):
     params = (A, b, G, h)
 
     p = projection.projection_polyhedron(x, params)
-    self.assertAllClose(jnp.dot(A, p), b)
+    self.assertAllClose(jnp.dot(A, p), b, atol=1e-3, rtol=1e-3)
 
     jac_fun = jax.jacrev(projection.projection_polyhedron, argnums=0)
     jac_x = jac_fun(x, params)
@@ -328,9 +328,9 @@ class ProjectionTest(test_util.JaxoptTestCase):
     G = jnp.concatenate((-jnp.eye(len(x)), jnp.eye(len(x))))
     h = jnp.concatenate((alpha, beta))
     hyperparams = dict(params_obj=(Q, -x), params_eq=(A, b), params_ineq=(G, h))
-    qp = QuadraticProgramming()
-    p2 = qp.run(**hyperparams).params[0]
-    self.assertArraysAllClose(p, p2, atol=1e-5)
+    osqp = OSQP()
+    p2 = osqp.run(**hyperparams).params.primal
+    self.assertArraysAllClose(p, p2, atol=1e-3)
 
   def test_projection_box_section_infeasible(self):
     x = jnp.array([1.2, 3.0, 0.7])

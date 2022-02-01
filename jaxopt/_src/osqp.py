@@ -36,7 +36,15 @@ from jaxopt._src.tree_util import tree_ones_like, tree_zeros_like, tree_where
 from jaxopt._src.tree_util import tree_negative, tree_l2_norm, tree_inf_norm
 from jaxopt._src.linear_operator import DenseLinearOperator, _make_linear_operator
 import jaxopt.linear_solve as linear_solve
-from jaxopt.projection import projection_box
+
+
+# Since jaxopt.projection itself depends on OSQP, we duplicate projection_box to avoid a circular dependency.
+def _clip_safe(x, lower, upper):
+  return jnp.clip(jnp.asarray(x), lower, upper)
+
+def projection_box(x: Any, hyperparams: Tuple) -> Any:
+  lower, upper = hyperparams
+  return tree_map(_clip_safe, x, lower, upper)
 
 
 def _make_osqp_optimality_fun(matvec_Q, matvec_A):
@@ -636,21 +644,24 @@ class BoxOSQP(base.IterativeSolver):
     return base.OptStep(params=sol, state=state)
 
   def run(self,
-          init_params: Any,
-          params_obj: Tuple[Optional[Any], Any],  # Q can be params_Q or None
-          params_eq: Optional[Any],  # A can be params_A or None
-          params_ineq: Tuple[Optional[Any], Any]) -> base.OptStep:
+          init_params: Optional[Any] = None,
+          params_obj: Tuple[Optional[Any], Any] = None,  # Q can be params_Q or None
+          params_eq: Optional[Any] = None,  # A can be params_A or None
+          params_ineq: Tuple[Any, Any] = None) -> base.OptStep:
     """Return primal/dual variables.
 
     Args:
-      init_params: initial KKTSolution (can be None).
+      init_params: (optional) initial KKTSolution.
       params_obj: pair (params_Q, c).
-      params_eq: params_A.
+      params_eq: (optional) params_A.
       params_ineq: pair (l, u).
     """
+    assert params_obj is not None
+    assert params_ineq is not None
+
     if init_params is None:
       init_params = self.init_params(None, params_obj, params_eq, params_ineq)
-
+    
     return super().run(init_params, params_obj, params_eq, params_ineq)
 
   def l2_optimality_error(
@@ -758,7 +769,7 @@ class OSQP_to_BoxOSQP:
       if params is not None:
         y.append(params.dual_ineq)
 
-    A_box = [A, G]
+    A_box = [tree_map(jnp.asarray, A), tree_map(jnp.asarray, G)]
     if matvec_A_box is None:
       # no matvec: construct a pytree of matrices containing all constraints: A_box = [A; G].
       if None in A_box:
@@ -868,22 +879,23 @@ class OSQP(base.Solver):
                              implicit_diff=True, **kwargs)
 
   def run(self,
-          init_params: Any,
-          params_obj: Tuple[Optional[Any], Any],
-          params_eq: Optional[Tuple[Any,Any]],
-          params_ineq: Optional[Tuple[Any,Any]]) -> base.OptStep:
+          init_params: Any = None,
+          params_obj: Tuple[Optional[Any], Any] = None,
+          params_eq: Optional[Tuple[Any,Any]] = None,
+          params_ineq: Optional[Tuple[Any,Any]] = None) -> base.OptStep:
     """Runs the quadratic programming solver in Cvxpy.
 
     The returned params contains both the primal and dual solutions.
 
     Args:
-      init_params: init_params for warm_start.
+      init_params: (optional) init_params for warm_start.
       params_obj: (Q, c).
       params_eq: (A, b) or None if no equality constraints.
       params_ineq: (G, h) or None if no inequality constraints.
     Returns:
       (params, state), ``params = (primal_var, dual_var_eq, dual_var_ineq)``
     """
+    assert params_obj is not None
     init_params, hyper_params, eq_ineq_size = OSQP_to_BoxOSQP.transform(self.matvec_A_box,
                                                                         init_params, params_obj,
                                                                         params_eq, params_ineq)
