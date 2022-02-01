@@ -15,7 +15,6 @@
 from absl.testing import absltest
 from absl.testing import parameterized
 
-from jax import test_util as jtu
 import jax.numpy as jnp
 
 import numpy as onp
@@ -50,7 +49,7 @@ def materialize_inv_hessian(s_history, y_history, rho_history, start):
   return H
 
 
-class LbfgsTest(jtu.JaxTestCase):
+class LbfgsTest(test_util.JaxoptTestCase):
 
   @parameterized.product(start=[0, 1, 2, 3])
   def test_inv_hessian_product(self, start):
@@ -133,4 +132,4 @@ class LbfgsTest(jtu.JaxTestCase):
 
 
 if __name__ == '__main__':
-  absltest.main(testLoader=jtu.JaxTestLoader())
+  absltest.main()

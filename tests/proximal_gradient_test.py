@@ -14,11 +14,13 @@
 
 import functools
 from typing import Callable
+
 from absl.testing import absltest
 from absl.testing import parameterized
+
 import jax
-from jax import test_util as jtu
 import jax.numpy as jnp
+
 from jaxopt import implicit_diff
 from jaxopt import objective
 from jaxopt import projection
@@ -26,6 +28,7 @@ from jaxopt import prox
 from jaxopt import ProximalGradient
 from jaxopt._src import test_util
 from jaxopt import tree_util as tu
+
 from sklearn import datasets
 from sklearn import preprocessing
 
@@ -39,7 +42,7 @@ def make_stepsize_schedule(max_stepsize, n_steps, power=1.0) -> Callable:
   return stepsize_schedule
 
 
-class ProximalGradientTest(jtu.JaxTestCase):
+class ProximalGradientTest(test_util.JaxoptTestCase):
 
   @parameterized.product(acceleration=[True, False])
   def test_lasso_manual_loop(self, acceleration):
@@ -128,9 +131,9 @@ class ProximalGradientTest(jtu.JaxTestCase):
     params = jnp.zeros(X.shape[1])
     _, state = pg.run(params, hyperparams_prox=None, data=data)
     self.assertLess(state.error, 1e-3)
-                      
+
 
 if __name__ == '__main__':
   # Uncomment the line below in order to run in float64.
   # jax.config.update("jax_enable_x64", True)
-  absltest.main(testLoader=jtu.JaxTestLoader())
+  absltest.main()

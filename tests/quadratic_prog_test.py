@@ -15,17 +15,17 @@
 from absl.testing import absltest
 
 import jax
-from jax import test_util as jtu
 import jax.numpy as jnp
 
 from jaxopt import projection
 from jaxopt import QuadraticProgramming
 from jaxopt._src import quadratic_prog as _quadratic_prog
+from jaxopt._src import test_util
 
 import numpy as onp
 
 
-class QuadraticProgTest(jtu.JaxTestCase):
+class QuadraticProgTest(test_util.JaxoptTestCase):
 
   def test_matvec_and_rmatvec(self):
     rng = onp.random.RandomState(0)
@@ -196,4 +196,4 @@ class QuadraticProgTest(jtu.JaxTestCase):
 
 
 if __name__ == '__main__':
-  absltest.main(testLoader=jtu.JaxTestLoader())
+  absltest.main()

@@ -16,10 +16,10 @@ from absl.testing import absltest
 from absl.testing import parameterized
 
 import jax
-from jax import test_util as jtu
 import jax.numpy as jnp
 
 from jaxopt import GaussNewton
+from jaxopt._src import test_util
 
 import numpy as onp
 
@@ -52,7 +52,7 @@ def _city_temperature_residual_model(coeffs, x, y):
   return y - (coeffs[0] * jnp.sin(x * coeffs[1] + coeffs[2]) + coeffs[3])
 
 
-class GaussNewtonTest(jtu.JaxTestCase):
+class GaussNewtonTest(test_util.JaxoptTestCase):
 
   def setUp(self):
     super().setUp()
@@ -81,7 +81,6 @@ class GaussNewtonTest(jtu.JaxTestCase):
 
     self.assertArraysAllClose(optimize_info.params,
                               onp.array([0.36183689, 0.55626653]))
-    self.assertAllClose(optimize_info.state.iter_num, 6)
 
 
   @parameterized.product(implicit_diff=[True, False])
@@ -120,4 +119,4 @@ class GaussNewtonTest(jtu.JaxTestCase):
     self.assertAllClose(optimize_info.state.iter_num, 30)
 
 if __name__ == '__main__':
-  absltest.main(testLoader=jtu.JaxTestLoader())
+  absltest.main()

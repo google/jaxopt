@@ -16,12 +16,13 @@ from absl.testing import absltest
 from absl.testing import parameterized
 
 import jax
-from jax import test_util as jtu
 import jax.numpy as jnp
+
 from jaxopt import loop
+from jaxopt._src import test_util
 
 
-class LoopTest(jtu.JaxTestCase):
+class LoopTest(test_util.JaxoptTestCase):
 
   @parameterized.product(unroll=[True, False], jit=[True, False])
   def test_while_loop(self, unroll, jit):
@@ -67,4 +68,4 @@ class LoopTest(jtu.JaxTestCase):
 
 
 if __name__ == '__main__':
-  absltest.main(testLoader=jtu.JaxTestLoader())
+  absltest.main()

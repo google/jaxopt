@@ -15,7 +15,6 @@
 from absl.testing import absltest
 from absl.testing import parameterized
 
-from jax import test_util as jtu
 import jax.random
 import jax.numpy as jnp
 
@@ -52,7 +51,8 @@ def get_random_pytree():
     return [rn(key), {'a': rn(key), 'b': rn(key)}, _get_random_pytree()]
 
 
-class NonlinearCGTest(jtu.JaxTestCase):
+class NonlinearCGTest(test_util.JaxoptTestCase):
+
   def test_arbitrary_pytree(self):
     def loss(w, data):
       X, y = data
@@ -61,13 +61,18 @@ class NonlinearCGTest(jtu.JaxTestCase):
 
     w = get_random_pytree()
     f_w = jnp.concatenate(jax.tree_util.tree_leaves(w))
-    X, y = datasets.make_classification(n_samples=15, n_features=f_w.shape[-1], n_classes=2, n_informative=3, random_state=0)
+    X, y = datasets.make_classification(n_samples=15, n_features=f_w.shape[-1],
+                                        n_classes=2, n_informative=3,
+                                        random_state=0)
     data = (X, y)
-    cg_model = NonlinearCG(fun=loss, tol=1e-2, maxiter=300, method="polak-ribiere")
+    cg_model = NonlinearCG(fun=loss, tol=1e-2, maxiter=300,
+                           method="polak-ribiere")
     w_fit, info = cg_model.run(w, data=data)
     self.assertLessEqual(info.error, 5e-2)
 
-  @parameterized.product(method=["fletcher-reeves", "polak-ribiere", "hestenes-stiefel"])
+  @parameterized.product(method=["fletcher-reeves",
+                                 "polak-ribiere",
+                                 "hestenes-stiefel"])
   def test_binary_logreg(self, method):
     X, y = datasets.make_classification(n_samples=10, n_features=5, n_classes=2,
                                         n_informative=3, random_state=0)
@@ -88,4 +93,4 @@ class NonlinearCGTest(jtu.JaxTestCase):
 
 
 if __name__ == '__main__':
-  absltest.main(testLoader=jtu.JaxTestLoader())
+  absltest.main()

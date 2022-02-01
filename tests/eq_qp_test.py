@@ -15,17 +15,17 @@
 from absl.testing import absltest
 
 import jax
-from jax import test_util as jtu
 import jax.numpy as jnp
 
 from jaxopt import projection
 from jaxopt.base import KKTSolution
 from jaxopt import EqualityConstrainedQP
+from jaxopt._src import test_util
 
 import numpy as onp
 
 
-class EqualityConstrainedQPTest(jtu.JaxTestCase):
+class EqualityConstrainedQPTest(test_util.JaxoptTestCase):
   def _check_derivative_Q_c_A_b(self, solver, params, Q, c, A, b):
     def fun(Q, c, A, b):
       Q = 0.5 * (Q + Q.T)
@@ -162,7 +162,8 @@ class EqualityConstrainedQPTest(jtu.JaxTestCase):
     b = jnp.array(onp.random.rand(size_eq))
 
     # The tolerance is low, but ordinarily this problem cannot be solved by
-    # EqualityConstrainedQP without refinement, because the matrix has a huge condition number.
+    # EqualityConstrainedQP without refinement, because the matrix has a huge
+    # condition number.
     low_tol = 1e-1
     qp = EqualityConstrainedQP(
       refine_regularization=1.0,
@@ -178,4 +179,4 @@ class EqualityConstrainedQPTest(jtu.JaxTestCase):
 
 
 if __name__ == "__main__":
-  absltest.main(testLoader=jtu.JaxTestLoader())
+  absltest.main()

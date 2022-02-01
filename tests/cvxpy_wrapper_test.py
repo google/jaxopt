@@ -11,21 +11,22 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """CVXPY tests."""
 
 from absl.testing import absltest
 from absl.testing import parameterized
 
 import jax
-from jax import test_util as jtu
 import jax.numpy as jnp
 import numpy as onp
 
 from jaxopt import projection
-from jaxopt._src.cvxpy_wrapper import CvxpyQP
+from jaxopt import CvxpyQP
+from jaxopt._src import test_util
 
 
-class CvxpyQPTest(jtu.JaxTestCase):
+class CvxpyQPTest(test_util.JaxoptTestCase):
 
   def _check_derivative_Q_c_A_b(self, solver, params, Q, c, A, b):
     def fun(Q, c, A, b):
@@ -105,7 +106,7 @@ class CvxpyQPTest(jtu.JaxTestCase):
 
     rng = onp.random.RandomState(0)
     x = jnp.array(rng.randn(10).astype(onp.float32))
-    p = projection.projection_simplex(x)    
+    p = projection.projection_simplex(x)
     p2 = _projection_simplex_qp(x)
     self.assertArraysAllClose(p, p2)
     J = jax.jacrev(projection.projection_simplex)(x)
@@ -114,4 +115,4 @@ class CvxpyQPTest(jtu.JaxTestCase):
 
 
 if __name__ == '__main__':
-  absltest.main(testLoader=jtu.JaxTestLoader())
+  absltest.main()

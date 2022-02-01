@@ -16,7 +16,6 @@ from absl.testing import absltest
 from absl.testing import parameterized
 
 import jax
-from jax import test_util as jtu
 import jax.numpy as jnp
 
 from jaxopt import objective
@@ -30,8 +29,7 @@ import optax
 from sklearn import datasets
 
 
-@jtu.with_config(jax_numpy_rank_promotion='allow')
-class OptaxWrapperTest(jtu.JaxTestCase):
+class OptaxWrapperTest(test_util.JaxoptTestCase):
 
   def test_logreg_with_intercept_manual_loop(self):
     X, y = datasets.make_classification(n_samples=10, n_features=5, n_classes=3,
@@ -157,5 +155,5 @@ class OptaxWrapperTest(jtu.JaxTestCase):
 
 if __name__ == '__main__':
   # Uncomment the line below in order to run in float64.
-  jax.config.update("jax_enable_x64", True)
-  absltest.main(testLoader=jtu.JaxTestLoader())
+  #jax.config.update("jax_enable_x64", True)
+  absltest.main()

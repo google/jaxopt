@@ -16,7 +16,6 @@ from absl.testing import absltest
 from absl.testing import parameterized
 
 import jax
-from jax import test_util as jtu
 import jax.numpy as jnp
 
 from jaxopt import BlockCoordinateDescent
@@ -31,7 +30,7 @@ from sklearn import datasets
 from sklearn import preprocessing
 
 
-class BlockCoordinateDescentTest(jtu.JaxTestCase):
+class BlockCoordinateDescentTest(test_util.JaxoptTestCase):
 
   def test_lasso_manual_loop(self):
     X, y = datasets.make_regression(n_samples=10, n_features=3, random_state=0)
@@ -241,4 +240,4 @@ class BlockCoordinateDescentTest(jtu.JaxTestCase):
 if __name__ == '__main__':
   # Uncomment the line below in order to run in float64.
   # jax.config.update("jax_enable_x64", True)
-  absltest.main(testLoader=jtu.JaxTestLoader())
+  absltest.main()

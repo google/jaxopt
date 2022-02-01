@@ -11,16 +11,16 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """Tests for jax_perturbations.perturbations."""
 
 from absl.testing import absltest
 
 import jax
-from jax import test_util as jtu
 import jax.numpy as jnp
-import functools
 
 from jaxopt import perturbations
+from jaxopt._src import test_util
 
 
 def one_hot_argmax(inputs: jnp.array) -> jnp.array:
@@ -39,8 +39,7 @@ def top_k_hots(values, k):
   return jax.nn.one_hot(jnp.argsort(values)[-k:], n)
 
 
-@jtu.with_config(jax_numpy_rank_promotion='allow')
-class PerturbationsArgmaxTest(jtu.JaxTestCase):
+class PerturbationsArgmaxTest(test_util.JaxoptTestCase):
 
   def setUp(self):
     super().setUp()
@@ -213,8 +212,7 @@ class PerturbationsArgmaxTest(jtu.JaxTestCase):
     self.assertArraysAllClose(delta_num, delta_lin, atol=5e-2)
 
 
-@jtu.with_config(jax_numpy_rank_promotion='allow')
-class PerturbationsMaxTest(jtu.JaxTestCase):
+class PerturbationsMaxTest(test_util.JaxoptTestCase):
 
   def setUp(self):
     super().setUp()
@@ -376,4 +374,4 @@ class PerturbationsMaxTest(jtu.JaxTestCase):
 
 
 if __name__ == '__main__':
-  absltest.main(testLoader=jtu.JaxTestLoader())
+  absltest.main()

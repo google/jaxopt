@@ -17,7 +17,6 @@
 from absl.testing import absltest
 
 import jax
-from jax import test_util as jtu
 import jax.numpy as jnp
 
 import jaxopt
@@ -31,7 +30,7 @@ import optax
 from sklearn import datasets
 
 
-class CommonTest(jtu.JaxTestCase):
+class CommonTest(test_util.JaxoptTestCase):
 
   def test_jit_update_and_returned_states(self):
     fun = objective.least_squares
@@ -97,4 +96,4 @@ class CommonTest(jtu.JaxTestCase):
 
 
 if __name__ == '__main__':
-  absltest.main(testLoader=jtu.JaxTestLoader())
+  absltest.main()

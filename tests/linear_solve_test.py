@@ -15,15 +15,15 @@
 from absl.testing import absltest
 
 import jax
-from jax import test_util as jtu
 import jax.numpy as jnp
 
 from jaxopt._src import linear_solve as _linear_solve
 from jaxopt import linear_solve
+from jaxopt._src import test_util
 
 import numpy as onp
 
-class LinearSolveTest(jtu.JaxTestCase):
+class LinearSolveTest(test_util.JaxoptTestCase):
 
   def test_materialize_array(self):
     rng = onp.random.RandomState(0)
@@ -168,4 +168,4 @@ class LinearSolveTest(jtu.JaxTestCase):
 
 
 if __name__ == '__main__':
-  absltest.main(testLoader=jtu.JaxTestLoader())
+  absltest.main()

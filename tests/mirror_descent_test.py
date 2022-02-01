@@ -18,7 +18,6 @@ from absl.testing import absltest
 from absl.testing import parameterized
 
 import jax
-from jax import test_util as jtu
 import jax.numpy as jnp
 
 from jaxopt import MirrorDescent
@@ -64,7 +63,7 @@ def make_stepsize_schedule(max_stepsize, n_steps, power=1.0) -> Callable:
   return stepsize_schedule
 
 
-class MirrorDescentTest(jtu.JaxTestCase):
+class MirrorDescentTest(test_util.JaxoptTestCase):
 
   @parameterized.named_parameters(
       ('kl', None),
@@ -169,4 +168,4 @@ class MirrorDescentTest(jtu.JaxTestCase):
 if __name__ == '__main__':
   # Uncomment the line below in order to run in float64.
   # jax.config.update("jax_enable_x64", True)
-  absltest.main(testLoader=jtu.JaxTestLoader())
+  absltest.main()

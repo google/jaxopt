@@ -16,7 +16,6 @@ from absl.testing import absltest
 from absl.testing import parameterized
 
 import jax
-from jax import test_util as jtu
 import jax.numpy as jnp
 
 from jaxopt import objective
@@ -27,7 +26,7 @@ import numpy as onp
 from sklearn import datasets
 
 
-class PolyakSgdTest(jtu.JaxTestCase):
+class PolyakSgdTest(test_util.JaxoptTestCase):
 
   @parameterized.product(momentum=[0.0, 0.9])
   def test_logreg_with_intercept_manual_loop(self, momentum):
@@ -143,5 +142,5 @@ class PolyakSgdTest(jtu.JaxTestCase):
 
 if __name__ == '__main__':
   # Uncomment the line below in order to run in float64.
-  jax.config.update("jax_enable_x64", True)
-  absltest.main(testLoader=jtu.JaxTestLoader())
+  #jax.config.update("jax_enable_x64", True)
+  absltest.main()

@@ -15,16 +15,15 @@
 
 from absl.testing import absltest
 
-
 import jax
-from jax import test_util as jtu
 import jax.numpy as jnp
 import numpy as onp
 
 from jaxopt._src.linear_operator import FunctionalLinearOperator
+from jaxopt._src import test_util
 
 
-class LinearOperatorTest(jtu.JaxTestCase):
+class LinearOperatorTest(test_util.JaxoptTestCase):
 
   def test_matvec_and_rmatvec(self):
     rng = onp.random.RandomState(0)
@@ -39,4 +38,4 @@ class LinearOperatorTest(jtu.JaxTestCase):
 
 
 if __name__ == '__main__':
-  absltest.main(testLoader=jtu.JaxTestLoader())
+  absltest.main()

@@ -18,7 +18,6 @@ from absl.testing import parameterized
 
 import jax
 import jax.numpy as jnp
-from jax import test_util as jtu
 from jax import scipy as jsp
 from jax.tree_util import tree_map, tree_all
 from jax.test_util import check_grads
@@ -28,12 +27,13 @@ from jaxopt.tree_util import tree_l2_norm, tree_scalar_mul
 from jaxopt._src.tree_util import tree_average, tree_sub
 from jaxopt import objective
 from jaxopt import AndersonAcceleration
+from jaxopt._src import test_util
 
 import numpy as onp
 from sklearn import datasets
 
 
-class AndersonAccelerationTest(jtu.JaxTestCase):
+class AndersonAccelerationTest(test_util.JaxoptTestCase):
 
   def _make_random_affine_contractive_mapping(self, n):
     """Return a pair (M,b) where M is a contractive mapping"""
@@ -47,7 +47,7 @@ class AndersonAccelerationTest(jtu.JaxTestCase):
     key, subkey = jax.random.split(key)
     b = jax.random.uniform(subkey, shape=(n,))
     return M, b
-  
+
   def test_geometric_decay(self):
     """Test convergence for geometric progression with common ratio r < 1."""
     def f(x):
@@ -71,7 +71,7 @@ class AndersonAccelerationTest(jtu.JaxTestCase):
   @parameterized.product(jit=[False,True])
   def test_sin_fixed_point(self, jit):
     """Test convergence for simple polynomials and sin.
-    
+
     Also test the support of pytree in input/output.
     """
     if jit:
@@ -91,7 +91,7 @@ class AndersonAccelerationTest(jtu.JaxTestCase):
 
   def test_cos_fixed_point(self):
     """Test convergence for cos fixed point (non-zero fixed point).
-    
+
     Also test support for additional parameters.
     """
     def f(x, theta):
@@ -204,4 +204,4 @@ class AndersonAccelerationTest(jtu.JaxTestCase):
 if __name__ == '__main__':
   # Uncomment the line below in order to run in float64.
   # jax.config.update("jax_enable_x64", True)
-  absltest.main(testLoader=jtu.JaxTestLoader())
+  absltest.main()

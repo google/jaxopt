@@ -18,7 +18,6 @@ from absl.testing import absltest
 from absl.testing import parameterized
 
 import jax
-from jax import test_util as jtu
 import jax.numpy as jnp
 
 from jaxopt import implicit_diff as idf
@@ -45,7 +44,7 @@ def ridge_solver_with_kwargs(init_params, **kw):
   return ridge_solver(init_params, kw['lam'], kw['X'], kw['y'])
 
 
-class ImplicitDiffTest(jtu.JaxTestCase):
+class ImplicitDiffTest(test_util.JaxoptTestCase):
 
   def test_root_vjp(self):
     X, y = datasets.make_regression(n_samples=10, n_features=3, random_state=0)
@@ -168,4 +167,4 @@ class ImplicitDiffTest(jtu.JaxTestCase):
 if __name__ == '__main__':
   # Uncomment the line below in order to run in float64.
   # jax.config.update("jax_enable_x64", True)
-  absltest.main(testLoader=jtu.JaxTestLoader())
+  absltest.main()
