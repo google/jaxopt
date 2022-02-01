@@ -15,11 +15,11 @@
 from absl.testing import absltest
 
 import jax
-from jax import test_util as jtu
 import jax.numpy as jnp
 
 from jaxopt import projection
 from jaxopt import Bisection
+from jaxopt._src import test_util
 
 import numpy as onp
 
@@ -54,7 +54,7 @@ def _projection_simplex_bisect(x, s=1.0):
   return jnp.maximum(x - _threshold_proj_simplex(x, s), 0)
 
 
-class BisectionTest(jtu.JaxTestCase):
+class BisectionTest(test_util.JaxoptTestCase):
 
   def test_bisect(self):
     rng = onp.random.RandomState(0)
@@ -110,4 +110,4 @@ class BisectionTest(jtu.JaxTestCase):
 
 
 if __name__ == '__main__':
-  absltest.main(testLoader=jtu.JaxTestLoader())
+  absltest.main()

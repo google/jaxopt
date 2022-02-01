@@ -15,10 +15,10 @@
 from absl.testing import absltest
 
 import jax
-from jax import test_util as jtu
 import jax.numpy as jnp
 
 from jaxopt import base
+from jaxopt._src import test_util
 
 import numpy as onp
 
@@ -74,7 +74,7 @@ class DummySolver(base.IterativeSolver):
     self.dummy_attr = True
 
 
-class BaseTest(jtu.JaxTestCase):
+class BaseTest(test_util.JaxoptTestCase):
 
   def test_linear_operator(self):
     rng = onp.random.RandomState(0)
@@ -158,4 +158,4 @@ class BaseTest(jtu.JaxTestCase):
 
 
 if __name__ == '__main__':
-  absltest.main(testLoader=jtu.JaxTestLoader())
+  absltest.main()

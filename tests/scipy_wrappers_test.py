@@ -17,7 +17,6 @@ from absl.testing import parameterized
 
 import jax
 from jax import random
-from jax import test_util as jtu
 from jax import tree_util
 import jax.numpy as jnp
 
@@ -36,7 +35,7 @@ import scipy as osp
 from sklearn import datasets
 
 
-class JnpToOnpTest(jtu.JaxTestCase):
+class JnpToOnpTest(test_util.JaxoptTestCase):
 
   def setUp(self):
     super().setUp()
@@ -100,7 +99,7 @@ class JnpToOnpTest(jtu.JaxTestCase):
     self.assertArraysAllClose(jac_flat, jac_jnp_to_onp(jac_pytree))
 
 
-class ScipyMinimizeTest(jtu.JaxTestCase):
+class ScipyMinimizeTest(test_util.JaxoptTestCase):
 
   def setUp(self):
     super().setUp()
@@ -204,7 +203,7 @@ class ScipyMinimizeTest(jtu.JaxTestCase):
       self.assertArraysAllClose(array_num, array_custom, atol=1e-3)
 
 
-class ScipyBoundedMinimizeTest(jtu.JaxTestCase):
+class ScipyBoundedMinimizeTest(test_util.JaxoptTestCase):
 
   def setUp(self):
     super().setUp()
@@ -294,7 +293,7 @@ class ScipyBoundedMinimizeTest(jtu.JaxTestCase):
       self.assertArraysAllClose(array_num, array_custom, atol=1e-2)
 
 
-class ScipyRootFindingTest(jtu.JaxTestCase):
+class ScipyRootFindingTest(test_util.JaxoptTestCase):
 
   def setUp(self):
     super().setUp()
@@ -364,7 +363,7 @@ class ScipyRootFindingTest(jtu.JaxTestCase):
     self.assertArraysAllClose(jac_theo, jac_idf, atol=1e-3)
 
 
-class ScipyLeastSquaresTest(jtu.JaxTestCase):
+class ScipyLeastSquaresTest(test_util.JaxoptTestCase):
 
   def setUp(self):
     super().setUp()
@@ -571,4 +570,4 @@ class ScipyBoundedLeastSquaresTest(ScipyLeastSquaresTest):
 if __name__ == '__main__':
   # Uncomment the line below in order to run in float64.
   # jax.config.update("jax_enable_x64", True)
-  absltest.main(testLoader=jtu.JaxTestLoader())
+  absltest.main()

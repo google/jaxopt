@@ -18,7 +18,6 @@ from absl.testing import parameterized
 import itertools
 
 import jax
-from jax import test_util as jtu
 import jax.numpy as jnp
 
 from jaxopt import objective
@@ -29,7 +28,7 @@ import numpy as onp
 from sklearn import datasets
 
 
-class ArmijoSgdTest(jtu.JaxTestCase):
+class ArmijoSgdTest(test_util.JaxoptTestCase):
 
   @parameterized.product(aggressiveness=[0.1, 0.5, 0.9], decrease_factor=[0.8, 0.9])
   def test_interpolating_regime(self, aggressiveness, decrease_factor):
@@ -230,4 +229,4 @@ class ArmijoSgdTest(jtu.JaxTestCase):
 if __name__ == '__main__':
   # Uncomment the line below in order to run in float64.
   # jax.config.update("jax_enable_x64", True)
-  absltest.main(testLoader=jtu.JaxTestLoader())
+  absltest.main()

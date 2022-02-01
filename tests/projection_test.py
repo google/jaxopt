@@ -15,16 +15,16 @@
 from absl.testing import absltest
 
 import jax
-from jax import test_util as jtu
 import jax.numpy as jnp
 
 from jaxopt import projection
 from jaxopt import QuadraticProgramming
+from jaxopt._src import test_util
 
 import numpy as onp
 
 
-class ProjectionTest(jtu.JaxTestCase):
+class ProjectionTest(test_util.JaxoptTestCase):
 
   def test_projection_non_negative(self):
     x = jnp.array([-1.0, 2.0, 3.0])
@@ -363,4 +363,4 @@ class ProjectionTest(jtu.JaxTestCase):
 
 
 if __name__ == '__main__':
-  absltest.main(testLoader=jtu.JaxTestLoader())
+  absltest.main()

@@ -14,14 +14,15 @@
 
 from absl.testing import absltest
 
-from jax import test_util as jtu
 import jax.numpy as jnp
+
 from jaxopt import tree_util
+from jaxopt._src import test_util
 
 import numpy as onp
 
 
-class TreeUtilTest(jtu.JaxTestCase):
+class TreeUtilTest(test_util.JaxoptTestCase):
 
   def setUp(self):
     super().setUp()
@@ -133,4 +134,4 @@ class TreeUtilTest(jtu.JaxTestCase):
 
 
 if __name__ == '__main__':
-  absltest.main(testLoader=jtu.JaxTestLoader())
+  absltest.main()

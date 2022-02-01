@@ -15,16 +15,16 @@
 from absl.testing import absltest
 
 import jax
-from jax import test_util as jtu
 import jax.numpy as jnp
 
 from jaxopt import projection
 from jaxopt import prox
+from jaxopt._src import test_util
 
 import numpy as onp
 
 
-class ProxTest(jtu.JaxTestCase):
+class ProxTest(test_util.JaxoptTestCase):
 
   def test_prox_none(self):
     rng = onp.random.RandomState(0)
@@ -191,4 +191,4 @@ class ProxTest(jtu.JaxTestCase):
     self.assertArraysAllClose(proxop(x), projection.projection_simplex(x))
 
 if __name__ == '__main__':
-  absltest.main(testLoader=jtu.JaxTestLoader())
+  absltest.main()

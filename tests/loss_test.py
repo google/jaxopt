@@ -15,16 +15,16 @@
 from absl.testing import absltest
 
 import jax
-from jax import test_util as jtu
 from jax.nn import softmax
 from jax.scipy.special import expit as sigmoid
 import jax.numpy as jnp
 
 from jaxopt import loss
 from jaxopt import projection
+from jaxopt._src import test_util
 
 
-class LossTest(jtu.JaxTestCase):
+class LossTest(test_util.JaxoptTestCase):
 
   def _test_binary_loss_function(self, loss_fun, inv_link_fun):
     # Check that loss is zero when the weight goes to the correct label.
@@ -88,4 +88,4 @@ class LossTest(jtu.JaxTestCase):
 
 
 if __name__ == '__main__':
-  absltest.main(testLoader=jtu.JaxTestLoader())
+  absltest.main()

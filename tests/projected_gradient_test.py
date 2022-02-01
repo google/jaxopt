@@ -17,18 +17,18 @@ import functools
 from absl.testing import absltest
 
 import jax
-from jax import test_util as jtu
 import jax.numpy as jnp
 
 from jaxopt import objective
 from jaxopt import projection
 from jaxopt import ProjectedGradient
 from jaxopt import ScipyBoundedMinimize
+from jaxopt._src import test_util
 
 import numpy as onp
 
 
-class ProjectedGradientTest(jtu.JaxTestCase):
+class ProjectedGradientTest(test_util.JaxoptTestCase):
 
   def test_non_negative_least_squares(self):
     rng = onp.random.RandomState(0)
@@ -106,7 +106,7 @@ class ProjectedGradientTest(jtu.JaxTestCase):
     A = jnp.array([[0, 0]])
     b = jnp.array([0])
     G = jnp.array([[-1, -1], [0, 1], [1, -1], [-1, 0], [0, -1]])
-    h = jnp.array([-1, 1, 1, 0, 0])    
+    h = jnp.array([-1, 1, 1, 0, 0])
     hyperparams = (A, b, G, h)
 
     proj = projection.projection_polyhedron
@@ -118,4 +118,4 @@ class ProjectedGradientTest(jtu.JaxTestCase):
 if __name__ == '__main__':
   # Uncomment the line below in order to run in float64.
   # jax.config.update("jax_enable_x64", True)
-  absltest.main(testLoader=jtu.JaxTestLoader())
+  absltest.main()

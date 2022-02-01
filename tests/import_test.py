@@ -13,12 +13,12 @@
 # limitations under the License.
 
 from absl.testing import absltest
-from jax import test_util as jtu
 
 import jaxopt
+from jaxopt._src import test_util
 
 
-class ImportTest(jtu.JaxTestCase):
+class ImportTest(test_util.JaxoptTestCase):
 
   def test_implicit_diff(self):
     jaxopt.implicit_diff.root_vjp
@@ -57,4 +57,4 @@ class ImportTest(jtu.JaxTestCase):
 
 
 if __name__ == '__main__':
-  absltest.main(testLoader=jtu.JaxTestLoader())
+  absltest.main()

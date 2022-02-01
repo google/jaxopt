@@ -16,7 +16,6 @@ from absl.testing import absltest
 from absl.testing import parameterized
 
 import jax
-from jax import test_util as jtu
 import jax.numpy as jnp
 from jax.test_util import check_grads
 import numpy as onp
@@ -30,6 +29,7 @@ from jaxopt._src.base import KKTSolution
 from jaxopt._src.osqp import BoxOSQP
 from jaxopt._src.osqp import OSQP
 from jaxopt._src.cvxpy_wrapper import CvxpyQP
+from jaxopt._src import test_util
 
 
 def get_random_osqp_problem(problem_size, eq_constraints, ineq_constraints):
@@ -68,7 +68,7 @@ def _from_osqp_form_to_boxosqp_form(Q, c, A, l, u):
   return (Q, c), (A_eq, b), (G, h)
 
 
-class BoxOSQPTest(jtu.JaxTestCase):
+class BoxOSQPTest(test_util.JaxoptTestCase):
 
   def test_small_qp(self):
     # Setup a random QP min_x 0.5*x'*Q*x + q'*x s.t. Ax = z; l <= z <= u;
@@ -513,7 +513,7 @@ class BoxOSQPTest(jtu.JaxTestCase):
     self.assertAllClose(opt_error, 0.0, atol=1e-2)
 
 
-class OSQPTest(jtu.JaxTestCase):
+class OSQPTest(test_util.JaxoptTestCase):
 
   def _check_derivative_A_b(self, solver, Q, c, A, b, params_ineq):
     @jax.jit
@@ -583,4 +583,4 @@ class OSQPTest(jtu.JaxTestCase):
 
 if __name__ == '__main__':
   jax.config.update("jax_enable_x64", False)
-  absltest.main(testLoader=jtu.JaxTestLoader())
+  absltest.main()

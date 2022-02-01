@@ -19,7 +19,6 @@ from absl.testing import parameterized
 import jax
 import jax.numpy as jnp
 from jax.config import config
-from jax import test_util as jtu
 from jax.tree_util import tree_map, tree_all
 from jax.test_util import check_grads
 import optax
@@ -43,7 +42,7 @@ import scipy
 from sklearn import datasets
 
 
-class AndersonWrapperTest(jtu.JaxTestCase):
+class AndersonWrapperTest(test_util.JaxoptTestCase):
 
   def test_proximal_gradient_wrapper(self):
     """Baseline test on simple optimizer."""
@@ -153,4 +152,4 @@ class AndersonWrapperTest(jtu.JaxTestCase):
 if __name__ == '__main__':
   # Uncomment the line below in order to run in float64.
   # config.update("jax_enable_x64", True)
-  absltest.main(testLoader=jtu.JaxTestLoader())
+  absltest.main()

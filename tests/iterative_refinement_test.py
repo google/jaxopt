@@ -17,17 +17,17 @@ from functools import partial
 from absl.testing import absltest
 
 import jax
-from jax import test_util as jtu
 import jax.numpy as jnp
 from jax.test_util import check_grads
 
 from jaxopt import linear_solve
 from jaxopt import IterativeRefinement
+from jaxopt._src import test_util
 
 import numpy as onp
 
 
-class IterativeRefinementTest(jtu.JaxTestCase):
+class IterativeRefinementTest(test_util.JaxoptTestCase):
 
   def test_simple_system(self):
     onp.random.seed(0)
@@ -132,4 +132,4 @@ class IterativeRefinementTest(jtu.JaxTestCase):
 
 if __name__ == "__main__":
   jax.config.update("jax_enable_x64", False)  # low precision environment.
-  absltest.main(testLoader=jtu.JaxTestLoader())
+  absltest.main()

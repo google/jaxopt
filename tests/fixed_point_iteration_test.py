@@ -17,19 +17,19 @@ from absl.testing import parameterized
 
 import jax
 import jax.numpy as jnp
-from jax import test_util as jtu
 from jax.tree_util import tree_map, tree_all
 from jax.test_util import check_grads
 
 from jaxopt.tree_util import tree_l2_norm, tree_scalar_mul, tree_sub
 from jaxopt import objective
 from jaxopt import FixedPointIteration
+from jaxopt._src import test_util
 
 import numpy as onp
 from sklearn import datasets
 
 
-class FixedPointIterationTest(jtu.JaxTestCase):
+class FixedPointIterationTest(test_util.JaxoptTestCase):
 
   def test_geometric_decay(self):
     """Test convergence for geometric progression with common ratio r < 1."""
@@ -146,4 +146,4 @@ class FixedPointIterationTest(jtu.JaxTestCase):
 if __name__ == '__main__':
   # Uncomment the line below in order to run in float64.
   # jax.config.update("jax_enable_x64", True)
-  absltest.main(testLoader=jtu.JaxTestLoader())
+  absltest.main()
