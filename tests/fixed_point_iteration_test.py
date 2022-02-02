@@ -102,7 +102,7 @@ class FixedPointIterationTest(test_util.JaxoptTestCase):
     fp = FixedPointIteration(f, maxiter=4*1000, tol=1e-6, implicit_diff=implicit_diff)
     def solve_run(args, kwargs):
       return fp.run(x0, *args, **kwargs)[0]
-    check_grads(solve_run, args=([theta], {}), order=1, modes=['rev'], eps=None)
+    check_grads(solve_run, args=([theta], {}), order=1, modes=['rev'], eps=1e-3)
 
   def test_grads_flat_landscape(self):
     """Test correctness of gradients."""

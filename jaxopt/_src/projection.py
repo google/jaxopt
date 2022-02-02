@@ -21,7 +21,8 @@ import jax
 import jax.numpy as jnp
 
 from jaxopt._src.bisection import Bisection
-from jaxopt._src.quadratic_prog import QuadraticProgramming
+from jaxopt._src.osqp import OSQP, BoxOSQP
+from jaxopt._src.eq_qp import EqualityConstrainedQP
 from jaxopt._src import tree_util
 
 
@@ -269,15 +270,17 @@ def projection_affine_set(x: jnp.ndarray, hyperparams: Tuple) -> jnp.ndarray:
   Returns:
     output array, with the same shape as ``x``.
   """
-  # todo: support matvec for A
+  # TODO: support matvec for A
   A, b = hyperparams
-  qp = QuadraticProgramming()
-  I = jnp.eye(len(x))
-  hyperparams = dict(params_obj=(I, -x), params_eq=(A, b), params_ineq=None)
-  return qp.run(**hyperparams).params[0]
+  matvec_Q = lambda _, vec: vec
+  osqp = EqualityConstrainedQP(matvec_Q=matvec_Q)
+  hyperparams = dict(params_obj=(None, -x), params_eq=(A, b))
+  kkt_sol = osqp.run(**hyperparams).params
+  return kkt_sol.primal
 
 
-def projection_polyhedron(x: jnp.ndarray, hyperparams: Tuple) -> jnp.ndarray:
+def projection_polyhedron(x: jnp.ndarray, hyperparams: Tuple,
+                          check_feasible=True) -> jnp.ndarray:
   r"""Projection onto a polyhedron:
 
   .. math::
@@ -289,16 +292,22 @@ def projection_polyhedron(x: jnp.ndarray, hyperparams: Tuple) -> jnp.ndarray:
     x: pytree to project.
     hyperparams: tuple ``hyperparams = (A, b, G, h)``, where ``A`` is a matrix,
       ``b`` is a vector, ``G`` is a matrix and ``h`` is a vector.
+    check_feasible: if True (default: True) check the non emptyness of the polyhedron,
+      which disables jit compilation. If False, the function is jit compiled.
 
   Returns:
     output array, with the same shape as ``x``.
   """
   # todo: support matvecs for A and G
   A, b, G, h = hyperparams
-  qp = QuadraticProgramming()
-  I = jnp.eye(len(x))
-  hyperparams = dict(params_obj=(I, -x), params_eq=(A, b), params_ineq=(G, h))
-  return qp.run(**hyperparams).params[0]
+  matvec_Q = lambda _, vec: vec
+  osqp = OSQP(matvec_Q=matvec_Q, check_primal_dual_infeasability=check_feasible)
+  # check feasability by default; currently there is no way to return the info to the user inside @jit.
+  hyperparams = dict(params_obj=(None, -x), params_eq=(A, b), params_ineq=(G, h))
+  kkt_sol, state = osqp.run(**hyperparams)
+  if check_feasible and state.status == BoxOSQP.PRIMAL_INFEASIBLE:
+    raise ValueError("The polyhedron is empty.")
+  return kkt_sol.primal
 
 
 def _optimality_fun_proj_box_sec(tau, x, hyperparams):
