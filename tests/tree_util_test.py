@@ -132,6 +132,20 @@ class TreeUtilTest(test_util.JaxoptTestCase):
     tree = tree_util.tree_zeros_like(self.tree_A)
     self.assertAllClose(tree_util.tree_l2_norm(tree), 0.0)
 
+  def test_tree_where(self):
+    c = jnp.array([True, False, True, False]), jnp.array([True, False, False, True])
+    a = jnp.array([1., 2., 3., 4.]), jnp.array([5., 6., 7., 8.])
+    b = jnp.array(42.), jnp.array(13.)
+    d = tree_util.tree_where(c, a, b)
+    self.assertAllClose(d[0], jnp.array([1., 42., 3., 42.]))
+    self.assertAllClose(d[1], jnp.array([5., 13., 13., 8.]))
+
+    c = [jnp.array([True, False, True, False])]
+    a = [jnp.array([1., 2., 3., 4.])]
+    b = [jnp.array(42.)]
+    d = tree_util.tree_where(c, a, b)
+    self.assertAllClose(d[0], jnp.array([1., 42., 3., 42.]))
+
 
 if __name__ == '__main__':
   absltest.main()
