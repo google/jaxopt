@@ -134,6 +134,7 @@ def update_history(history_pytree, new_pytree, last):
 class LbfgsState(NamedTuple):
   """Named tuple containing state information."""
   iter_num: int
+  value: float
   stepsize: float
   error: float
   s_history: Any
@@ -216,6 +217,7 @@ class LBFGS(base.IterativeSolver):
       state
     """
     return LbfgsState(iter_num=jnp.asarray(0),
+                      value=jnp.asarray(jnp.inf),
                       stepsize=jnp.asarray(1.0),
                       error=jnp.asarray(jnp.inf),
                       s_history=init_history(init_params, self.history_size),
@@ -263,6 +265,7 @@ class LBFGS(base.IterativeSolver):
                                     params=params, value=value, grad=grad,
                                     descent_direction=descent_direction,
                                     *args, **kwargs)
+    new_value = ls_state.value
     new_params = ls_state.params
     new_grad = ls_state.grad
 
@@ -276,11 +279,15 @@ class LBFGS(base.IterativeSolver):
     rho_history = update_history(state.rho_history, rho, last)
 
     new_state = LbfgsState(iter_num=state.iter_num + 1,
+                           value=new_value,
                            stepsize=jnp.asarray(new_stepsize),
-                           error=tree_l2_norm(grad),
+                           error=tree_l2_norm(new_grad),
                            s_history=s_history,
                            y_history=y_history,
                            rho_history=rho_history,
+                           # FIXME: we should return new_aux here but
+                           # BacktrackingLineSearch currently doesn't support
+                           # an aux.
                            aux=aux)
 
     return base.OptStep(params=new_params, state=new_state)
