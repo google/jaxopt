@@ -1,8 +1,26 @@
 Changelog
 =========
 
+
+=======
+
 Version 0.4
 -----------
+
+
+Bug fixes and enhancements
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- `Support for GPU and state of the art adversarial training algorithm (PGD) on the robust_training.py example <https://github.com/google/jaxopt/pull/139>`_ by `Fabian Pedregosa <https://fa.bianp.net/>`_
+
+
+
+
+Contributors
+~~~~~~~~~~~~
+
+Mathieu Blondel, Louis Bethune, Fabian Pedregosa.
+
 
 Version 0.3
 -----------
