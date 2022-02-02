@@ -56,6 +56,10 @@ class DummySolver(base.IterativeSolver):
   maxiter: int = 500
   tol: float = 1e-3
   implicit_diff: bool = False
+  implicit_diff_solve = None
+  jit = True
+  unroll = False
+  verbose = True
 
   def init_state(self, init_params: Any, *args, **kwargs) -> DummySolverState:
     return DummySolverState(iter_num=0, error=jnp.inf, value=jnp.inf, aux=None)
@@ -69,6 +73,9 @@ class DummySolver(base.IterativeSolver):
 
   def dummy_method(self):
     return self
+
+  def optimality_fun(self, *args, **kwargs):
+    return jax.grad(self.fun)(*args, **kwargs)
 
   def __post_init__(self):
     self.dummy_attr = True
@@ -155,6 +162,22 @@ class BaseTest(test_util.JaxoptTestCase):
     fun = lambda x: x
     solver = DummySolver(fun=fun, maxiter=10, tol=1.0, implicit_diff=True)
     update = jax.jit(solver.update)
+
+  def test_maxiter_static_vs_dynamic(self):
+    def f(maxiter):
+      solver = DummySolver(
+          fun=lambda x: x, maxiter=maxiter, tol=1.0, implicit_diff=True)
+      return solver.run(7.0)
+
+    f_jit_d = jax.jit(f)
+    f_jit_s = jax.jit(f, static_argnums=0)
+
+    ref0 = f(0)
+    ref3 = f(3)
+    self.assertAllClose(ref0, f_jit_s(0))
+    self.assertAllClose(ref3, f_jit_s(3))
+    self.assertAllClose(ref0, f_jit_d(0))
+    self.assertAllClose(ref3, f_jit_d(3))
 
 
 if __name__ == '__main__':
