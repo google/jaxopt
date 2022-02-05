@@ -16,6 +16,7 @@
 
 import abc
 import dataclasses
+import functools
 import itertools
 
 from typing import Any
@@ -143,26 +144,49 @@ class IterativeSolver(Solver):
     (params, state), (args, kwargs) = inputs
     return self.update(params, state, *args, **kwargs), (args, kwargs)
 
+  # TODO(frostig,mblondel): temporary workaround to accommodate line
+  # search as an iterative solver, but for this reason and others
+  # (automatic implicit diff) we should consider having it not be one.
+  def _make_zero_step(self, init_params, state) -> OptStep:
+     return OptStep(params=init_params, state=state)
+
   def _run(self,
            init_params: Any,
            *args,
            **kwargs) -> OptStep:
     state = self.init_state(init_params, *args, **kwargs)
 
-    if self.maxiter == 0:
-      return OptStep(params=init_params, state=state)
-
     # We unroll the very first iteration. This allows `init_val` and `body_fun`
     # below to have the same output type, which is a requirement of
     # lax.while_loop and lax.scan.
+    #
+    # TODO(frostig,mblondel): if we could check concreteness of self.maxiter,
+    # and we knew that it is concrete here, then we could optimize away the
+    # redundant first step, e.g.:
+    #
+    #   maxiter = get_maybe_concrete(self.maxiter)  # concrete value or None
+    #   if maxiter == 0:
+    #     return OptStep(params=init_params, state=state)
+    #
+    # In the general case below, we prefer to use `jnp.where` instead
+    # of a `lax.cond` for now in order to avoid staging the initial
+    # update and the run loop. They might not be staging compatible.
+
+    zero_step = self._make_zero_step(init_params, state)
+
     opt_step = self.update(init_params, state, *args, **kwargs)
     init_val = (opt_step, (args, kwargs))
 
     jit, unroll = self._get_loop_options()
 
-    return loop.while_loop(cond_fun=self._cond_fun, body_fun=self._body_fun,
-                           init_val=init_val, maxiter=self.maxiter - 1, jit=jit,
-                           unroll=unroll)[0]
+    many_step = loop.while_loop(
+        cond_fun=self._cond_fun, body_fun=self._body_fun,
+        init_val=init_val, maxiter=self.maxiter - 1, jit=jit,
+        unroll=unroll)[0]
+
+    return tree_util.tree_map(
+        functools.partial(_where, self.maxiter == 0), zero_step, many_step,
+        is_leaf=lambda x: x is None)  # state attributes can sometimes be None
 
   def run(self,
           init_params: Any,
@@ -189,6 +213,12 @@ class IterativeSolver(Solver):
       run = decorator(run)
 
     return run(init_params, *args, **kwargs)
+
+
+def _where(cond, x, y):
+  if x is None: return y
+  if y is None: return x
+  return jnp.where(cond, x, y)
 
 
 class StochasticSolver(IterativeSolver):
@@ -296,6 +326,9 @@ class LineSearchStep(NamedTuple):
 
 
 class IterativeLineSearch(IterativeSolver):
+
+  def _make_zero_step(self, init_stepsize, state) -> LineSearchStep:
+    return LineSearchStep(stepsize=init_stepsize, state=state)
 
   def run(self,
           init_stepsize: float,

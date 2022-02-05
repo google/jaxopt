@@ -74,7 +74,9 @@ def while_loop(cond_fun, body_fun, init_val, maxiter, unroll=False, jit=False):
     else:
       raise ValueError("unroll=False and jit=False cannot be used together")
 
-  if jit:
+  if jit and fun is not _while_loop_lax:
+    # jit of a lax while_loop is redundant, and this jit would only
+    # constrain maxiter to be static where it is not required.
     fun = jax.jit(fun, static_argnums=(0, 1, 3))
 
   return fun(cond_fun, body_fun, init_val, maxiter)
