@@ -151,7 +151,7 @@ def main(argv):
                             batch_size=FLAGS.test_batch_size)
   input_shape = (1,) + ds_info.features["image"].shape
   num_classes = ds_info.features["label"].num_classes
-  iter_per_epoch = ds_info.splits['train'].num_examples // FLAGS.train_batch_size
+  iter_per_epoch_train = ds_info.splits['train'].num_examples // FLAGS.train_batch_size
   iter_per_epoch_test = ds_info.splits['test'].num_examples // FLAGS.test_batch_size
 
   # Set up model.
@@ -201,7 +201,7 @@ def main(argv):
                   nesterov=True)
 
   # We need has_aux=True because loss_fun returns batch_stats.
-  solver = OptaxSolver(opt=opt, fun=loss_fun, maxiter=FLAGS.epochs * iter_per_epoch, has_aux=True)
+  solver = OptaxSolver(opt=opt, fun=loss_fun, maxiter=FLAGS.epochs * iter_per_epoch_train, has_aux=True)
 
   # Initialize parameters.
   rng = jax.random.PRNGKey(0)
@@ -217,15 +217,21 @@ def main(argv):
   for _ in range(solver.maxiter):
     train_minibatch = next(train_ds)
 
-    if state.iter_num % iter_per_epoch == iter_per_epoch - 1:
+    if state.iter_num % iter_per_epoch_train == iter_per_epoch_train - 1:
       # Once per epoch evaluate the model on the train and test sets.
-      train_acc, train_loss = accuracy_and_loss(params, FLAGS.l2reg, train_minibatch, batch_stats)
       test_acc, test_loss = 0., 0.
       # make a pass over test set to compute test accuracy
       for _ in range(iter_per_epoch_test):
           tmp = accuracy_and_loss(params, FLAGS.l2reg, next(test_ds), batch_stats)
           test_acc += tmp[0] / iter_per_epoch_test
           test_loss += tmp[1] / iter_per_epoch_test
+
+      train_acc, train_loss = 0., 0.
+      # make a pass over train set to compute train accuracy
+      for _ in range(iter_per_epoch_train):
+          tmp = accuracy_and_loss(params, FLAGS.l2reg, next(train_ds), batch_stats)
+          train_acc += tmp[0] / iter_per_epoch_train
+          train_loss += tmp[1] / iter_per_epoch_train
 
       train_acc = jax.device_get(train_acc)
       train_loss = jax.device_get(train_loss)
@@ -234,7 +240,7 @@ def main(argv):
       # time elapsed without microseconds
       time_elapsed = (datetime.now().replace(microsecond=0) - start)
 
-      print(f"[Epoch {state.iter_num // (iter_per_epoch+1)}/{FLAGS.epochs}] "
+      print(f"[Epoch {state.iter_num // (iter_per_epoch_train+1)}/{FLAGS.epochs}] "
             f"Train acc: {train_acc:.3f}, train loss: {train_loss:.3f}. "
             f"Test acc: {test_acc:.3f}, test loss: {test_loss:.3f}. "
             f"Time elapsed: {time_elapsed}")
