@@ -39,7 +39,8 @@ loss achieved by :math:`x^\star(\theta)` over the training set:
     f(x, \theta; [k]) + \text{l2reg} \|x\|^2\,}_{\text{inner problem}},
 
 where :math:`f(W, X; y) := \ell(y, XW)`, and :math:`\ell` denotes the multiclass
-logistic regression loss, and :math:`\text{l2reg} = 10^{-1}` is a regularization
+logistic regression loss, :math:`X_{\text{tr}}, y_{\text{tr}}` are the samples and
+target values in the train set, and :math:`\text{l2reg} = 10^{-1}` is a regularization
 parameter that we found improved convergence.
 """
 import itertools
