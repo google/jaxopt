@@ -54,7 +54,8 @@ class CommonTest(test_util.JaxoptTestCase):
                    fpi,
                    jaxopt.AndersonAcceleration(fixed_point_fun=fixed_point_fun),
                    jaxopt.AndersonWrapper(fpi),
-                   jaxopt.ArmijoSGD(fun=fun)):
+                   jaxopt.ArmijoSGD(fun=fun),
+                   jaxopt.LBFGS(fun=fun)):
 
       hash(solver)  # Checks that hash works.
       update = jax.jit(solver.update)
