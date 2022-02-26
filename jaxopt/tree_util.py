@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from jaxopt._src.tree_util import broadcast_pytrees
 from jaxopt._src.tree_util import tree_map
 from jaxopt._src.tree_util import tree_multimap
 from jaxopt._src.tree_util import tree_reduce
