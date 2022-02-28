@@ -1,26 +1,28 @@
 Changelog
 =========
 
+Version 0.3.1.
+--------------
 
-=======
+New features
+~~~~~~~~~~~~
 
-Version 0.4
------------
-
+- Pjit-based example of data parallel training using Flax, by Felipe Llinares.
 
 Bug fixes and enhancements
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 - `Support for GPU and state of the art adversarial training algorithm (PGD) on the robust_training.py example <https://github.com/google/jaxopt/pull/139>`_ by `Fabian Pedregosa <https://fa.bianp.net/>`_
-
-
-
+- Update line search in LBFGS to use jit and unroll from LBFGS, by Ian Williamson.
+- Support dynamic maximum iteration count in iterative solvers, by Roy Frostig.
+- Fix tree_where for singleton pytrees, by Louis Béthune.
+- Remove QuadraticProg in projections and set ``init_params=None`` by default in QP solvers, by Louis Béthune.
+- Add missing 'value' attribute in LbfgsState, by Mathieu Blondel.
 
 Contributors
 ~~~~~~~~~~~~
 
-Mathieu Blondel, Louis Bethune, Fabian Pedregosa.
-
+Felipe Llinares, Fabian Pedregosa, Ian Williamson, Louis Bétune, Mathieu Blondel, Roy Frostig.
 
 Version 0.3
 -----------
