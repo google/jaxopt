@@ -15,6 +15,7 @@
 from absl.testing import absltest
 
 import jax.numpy as jnp
+import jax.tree_util as jtu
 
 from jaxopt import tree_util
 from jaxopt._src import test_util
@@ -146,6 +147,37 @@ class TreeUtilTest(test_util.JaxoptTestCase):
     d = tree_util.tree_where(c, a, b)
     self.assertAllClose(d[0], jnp.array([1., 42., 3., 42.]))
 
+    c = jnp.asarray(False)
+    a = [jnp.array([1., 2., 3., 4.]), jnp.array([5., 6., 7., 8.])]
+    b = jnp.array(42.)
+    d = tree_util.tree_where(c, a, b)
+    self.assertAllClose(d[0], jnp.array([42., 42., 42., 42.]))
+    self.assertAllClose(d[1], jnp.array([42., 42., 42., 42.]))
+
+  def test_broadcast_pytrees(self):
+    # No leaf pytrees, treedefs match.
+    trees_in = ([jnp.asarray(1.), jnp.asarray(2.)],
+                [jnp.asarray(3.), jnp.asarray(4.)])
+    trees_out = tree_util.broadcast_pytrees(*trees_in)
+    for l_in, l_out in zip(jtu.tree_leaves(trees_in),
+                           jtu.tree_leaves(trees_out)):
+      self.assertAllClose(l_in, l_out)
+
+    # One leaf pytree. `a_out` should match the structure of `b_in` and `b_out`
+    # by broadcasting `a_in`.
+    a_in = jnp.asarray(1.)
+    b_in = [jnp.asarray(2.), jnp.asarray(3.)]
+    a_out, b_out = tree_util.broadcast_pytrees(a_in, b_in)
+    self.assertAllClose(a_out[0], a_in)
+    self.assertAllClose(a_out[1], a_in)
+    self.assertAllClose(b_out[0], b_in[0])
+    self.assertAllClose(b_out[1], b_in[1])
+
+    # Treedefs do not match.
+    a_in = [jnp.asarray(1.)]
+    b_in = [jnp.asarray(2.), jnp.asarray(3.)]
+    with self.assertRaises(ValueError):
+      a_out, b_out = tree_util.broadcast_pytrees(a_in, b_in)
 
 if __name__ == '__main__':
   absltest.main()

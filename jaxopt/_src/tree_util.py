@@ -15,6 +15,7 @@
 """Tree utilities."""
 
 import functools
+import itertools
 import operator
 
 import jax
@@ -29,6 +30,44 @@ tree_map = tu.tree_map
 tree_multimap = tu.tree_multimap
 tree_reduce = tu.tree_reduce
 tree_unflatten = tu.tree_unflatten
+
+
+def broadcast_pytrees(*trees):
+  """Broadcasts leaf pytrees to match treedef shared by the other arguments.
+
+  Args:
+    *trees: A `Sequence` of pytrees such that all elements that are *not* leaf
+      pytrees (i.e. single arrays) have the same treedef.
+
+  Returns:
+    The input `Sequence` of pytrees `*trees` with leaf pytrees (i.e. single
+    arrays) replaced by pytrees matching the treedef of non-shallow elements via
+    broadcasting.
+
+  Raises:
+    ValueError: If two or more pytrees in `*trees` that are not leaf pytrees
+      differ in their structure (treedef).
+  """
+  leaves, treedef, is_leaf = [], None, []
+  for tree in trees:
+    leaves_i, treedef_i = tu.tree_flatten(tree)
+    is_leaf_i = tu.treedef_is_leaf(treedef_i)
+    if not is_leaf_i:
+      treedef = treedef or treedef_i
+      if treedef_i != treedef:
+        raise ValueError('Pytrees are not broadcastable.: '
+                         f'{treedef} != {treedef_i}')
+    leaves.append(leaves_i)
+    is_leaf.append(is_leaf_i)
+  if treedef is not None:
+    max_num_leaves = max(len(leaves_i) for leaves_i in leaves)
+    broadcast_leaf = lambda leaf: itertools.repeat(leaf[0], max_num_leaves)
+    leaves = [broadcast_leaf(leaves_i) if is_leaf_i else leaves_i
+              for (leaves_i, is_leaf_i) in zip(leaves, is_leaf)]
+    return tuple(treedef.unflatten(leaves_i) for leaves_i in leaves)
+  # All Pytrees are leaves.
+  return trees
+
 
 tree_add = functools.partial(tree_multimap, operator.add)
 tree_add.__doc__ = "Tree addition."
@@ -134,29 +173,24 @@ def tree_inf_norm(tree_x):
 
 def tree_where(cond, a, b):
   """jnp.where for trees.
-  
+
   Mimic broadcasting semantic of jnp.where.
-  a and b can be arrays (including scalars) broadcastable to the leaves of cond.
-  
+  cond, a and b can be arrays (including scalars) broadcastable to the leaves of
+  the other input arguments.
+
   Args:
-    cond: pytree of booleans arrays.
-    a   : pytree of arrays, or single array broadcastable
-      to the shapes of leaves of cond.
-    b   : pytree of arrays, or single array broadcastable
-      to the shapes of leaves of cond.
-    
+    cond: pytree of booleans arrays, or single array broadcastable to the shapes
+      of leaves of `a` and `b`.
+    a: pytree of arrays, or single array broadcastable to the shapes of leaves
+      of `cond` and `b`.
+    b: pytree of arrays, or single array broadcastable to the shapes of leaves
+      of `cond` and `a`.
+
   Returns:
     pytree of arrays, or single array
   """
-  a_scalar = tu.treedef_is_leaf(tu.tree_structure(a))
-  b_scalar = tu.treedef_is_leaf(tu.tree_structure(b))
-  if a_scalar and b_scalar:
-    return tree_map(lambda c: jnp.where(c, a, b), cond)
-  if b_scalar:
-    return tree_map(lambda c, u: jnp.where(c, u, b), cond, a)
-  if a_scalar:
-    return tree_map(lambda c, v: jnp.where(c, a, v), cond, b)
-  return tree_map(lambda c, u, v: jnp.where(c, u, v), cond, a, b)
+  cond, a, b = broadcast_pytrees(cond, a, b)
+  return tree_map(jnp.where, cond, a, b)
 
 
 def tree_negative(tree):
