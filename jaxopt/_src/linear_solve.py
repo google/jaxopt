@@ -109,10 +109,9 @@ def solve_cg(matvec: Callable,
   return jax.scipy.sparse.linalg.cg(matvec, b, x0=init, **kwargs)[0]
 
 
-def _rmatvec(matvec, x):
-  """Computes A^T x, from matvec(x) = A x, where A is square."""
+def _make_rmatvec(matvec, x):
   transpose = jax.linear_transpose(matvec, x)
-  return transpose(x)[0]
+  return lambda y: transpose(y)[0]
 
 
 def _normal_matvec(matvec, x):
@@ -141,16 +140,28 @@ def solve_normal_cg(matvec: Callable,
   Returns:
     pytree with same structure as ``b``.
   """
-  def _matvec(x):
-    """Computes A^T A x."""
+  if init is None:
+    example_x = b  # This assumes that matvec is a square linear operator.
+  else:
+    example_x = init
+
+  try:
+    rmatvec = _make_rmatvec(matvec, example_x)
+  except TypeError:
+    raise TypeError("The initialization `init` of solve_normal_cg is "
+                    "compulsory when `matvec` is nonsquare. It should "
+                    "have the same pytree structure as a solution. "
+                    "Typically, a pytree filled with zeros should work.")
+
+  def normal_matvec(x):
     return _normal_matvec(matvec, x)
 
   if ridge is not None:
-    _matvec = _make_ridge_matvec(_matvec, ridge=ridge)
+    normal_matvec = _make_ridge_matvec(normal_matvec, ridge=ridge)
 
-  Ab = _rmatvec(matvec, b)
+  Ab = rmatvec(b)  # A.T b
 
-  return jax.scipy.sparse.linalg.cg(_matvec, Ab, x0=init, **kwargs)[0]
+  return jax.scipy.sparse.linalg.cg(normal_matvec, Ab, x0=init, **kwargs)[0]
 
 
 def solve_gmres(matvec: Callable,

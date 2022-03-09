@@ -1,6 +1,15 @@
 Changelog
 =========
 
+Main branch
+-----------
+
+Bug fixes and enhancements
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- Fixed ``solve_normal_cg`` when the linear operator is "nonsquare" (does not map to a space of same dimension),
+  by Mathieu Blondel.
+
 Version 0.3.1.
 --------------
 
