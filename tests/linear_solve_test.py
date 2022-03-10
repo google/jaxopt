@@ -23,6 +23,7 @@ from jaxopt._src import test_util
 
 import numpy as onp
 
+
 class LinearSolveTest(test_util.JaxoptTestCase):
 
   def test_materialize_array(self):
@@ -43,11 +44,21 @@ class LinearSolveTest(test_util.JaxoptTestCase):
 
   def test_rmatvec(self):
     rng = onp.random.RandomState(0)
+
+    # Test square case.
     A = rng.randn(5, 5)
     matvec = lambda x: jnp.dot(A, x)
     x = rng.randn(5)
-    self.assertArraysAllClose(_linear_solve._rmatvec(matvec, x),
-                              jnp.dot(A.T, x))
+    rmatvec = _linear_solve._make_rmatvec(matvec, x)
+    self.assertArraysAllClose(rmatvec(x), jnp.dot(A.T, x))
+
+    # Test non-square case
+    A = rng.randn(5, 3)
+    matvec = lambda x: jnp.dot(A, x)
+    y = rng.randn(5)
+    example_x = rng.randn(3)
+    rmatvec = _linear_solve._make_rmatvec(matvec, example_x)
+    self.assertArraysAllClose(rmatvec(y), jnp.dot(A.T, y))
 
   def test_normal_matvec(self):
     rng = onp.random.RandomState(0)
@@ -156,7 +167,6 @@ class LinearSolveTest(test_util.JaxoptTestCase):
   def test_solve_1d(self):
     rng = onp.random.RandomState(0)
 
-    # Matrix case.
     A = rng.randn(1, 1)
     b = rng.randn(1)
 
@@ -165,6 +175,24 @@ class LinearSolveTest(test_util.JaxoptTestCase):
 
     x = linear_solve.solve_lu(matvec, b)
     self.assertArraysAllClose(x, b / A[0, 0])
+
+  def test_solve_normal_cg_nonsquare(self):
+    rng = onp.random.RandomState(0)
+
+    A = rng.randn(2, 3)
+    b = rng.randn(2)
+
+    def matvec(x):
+      return jnp.dot(A, x)
+
+    def normal_matvec(x):
+      return jnp.dot(A.T, jnp.dot(A, x))
+
+    self.assertRaises(TypeError, linear_solve.solve_normal_cg, matvec, b)
+
+    x = linear_solve.solve_normal_cg(matvec, b, init=jnp.zeros(3))
+    x2 = linear_solve.solve_cg(normal_matvec, jnp.dot(A.T, b))
+    self.assertArraysAllClose(x, x2)
 
 
 if __name__ == '__main__':
