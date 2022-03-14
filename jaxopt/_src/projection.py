@@ -43,8 +43,10 @@ def projection_non_negative(x: Any, hyperparams=None) -> Any:
   del hyperparams  # Not used.
   return tree_util.tree_map(jax.nn.relu, x)
 
+
 def _clip_safe(x, lower, upper):
   return jnp.clip(jnp.asarray(x), lower, upper)
+
 
 def projection_box(x: Any, hyperparams: Tuple) -> Any:
   r"""Projection onto box constraints:
@@ -64,6 +66,26 @@ def projection_box(x: Any, hyperparams: Tuple) -> Any:
   """
   lower, upper = hyperparams
   return tree_util.tree_multimap(_clip_safe, x, lower, upper)
+
+
+def projection_hypercube(x: Any, unit: float = 1.0) -> Any:
+  r"""Projection onto the (unit) hypercube:
+
+  .. math::
+
+    \underset{p}{\text{argmin}} ~ ||x - p||_2^2 \quad \textrm{subject to} \quad
+    0 \le p \le \text{unit}
+
+  This is a convenience wrapper around
+  :func:`projection_box <jaxopt.projection.projection_box>`.
+
+  Args:
+    x: pytree to project.
+    unit: a float value, defaults to 1.0.
+  Returns:
+    projected pytree, with the same structure as ``x``.
+  """
+  return projection_box(x, (0.0, unit))
 
 
 @jax.custom_jvp
