@@ -65,6 +65,16 @@ class ProjectionTest(test_util.JaxoptTestCase):
     self.assertArraysEqual(projection.projection_box((x, x), params),
                            (expected, expected))
 
+  def test_projection_hypercube(self):
+    x = jnp.array([-1.0, 2.0, 0.5])
+
+    expected = jnp.array([0, 1.0, 0.5])
+    self.assertArraysEqual(projection.projection_hypercube(x), expected)
+
+    expected = jnp.array([0, 0.8, 0.5])
+    self.assertArraysEqual(projection.projection_hypercube(x, 0.8), expected)
+
+
   def test_projection_simplex(self):
     rng = onp.random.RandomState(0)
 

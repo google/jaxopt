@@ -14,6 +14,7 @@
 
 from jaxopt._src.projection import projection_non_negative
 from jaxopt._src.projection import projection_box
+from jaxopt._src.projection import projection_hypercube
 from jaxopt._src.projection import projection_simplex
 from jaxopt._src.projection import projection_l1_sphere
 from jaxopt._src.projection import projection_l1_ball
