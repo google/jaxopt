@@ -1,11 +1,12 @@
 matplotlib>=3.3.4
 pandoc>=1.0.2
 sphinx>=3.5.1
-recommonmark>=0.7.1
 sphinx_rtd_theme>=0.5.1
 sphinx_autodoc_typehints>=1.11.1
 ipython>=7.20.0
 ipykernel>=5.5.0
 sphinx-gallery>=0.9.0
-nbsphinx>=0.8.7
 sphinx_copybutton>=0.4.0
+jupyter-sphinx>=0.3.2
+myst-nb
+tensorflow-datasets
