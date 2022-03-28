@@ -108,6 +108,14 @@ class BisectionTest(test_util.JaxoptTestCase):
     g2 = jax.grad(bisect_val)(x)
     self.assertArraysAllClose(g1, g2)
 
+  def test_edge(self):
+    def F(x):
+      return x - 0.5
+
+    bisec = Bisection(optimality_fun=F, lower=0.0, upper=1.0)
+    # The solution is found on the first iteration.
+    self.assertEqual(bisec.run().params, 0.5)
+
 
 if __name__ == '__main__':
   absltest.main()
