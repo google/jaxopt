@@ -84,7 +84,7 @@ class ArmijoSgdTest(test_util.JaxoptTestCase):
     opt = ArmijoSGD(fun=fun, aggressiveness=0.7, maxiter=10*1000, tol=tol)
     params, state = opt.run(pytree_init, l2reg=l2reg, data=data)
     error = opt.l2_optimality_error(params, l2reg=l2reg, data=data)
-    self.assertLessEqual(error, 1e-3)
+    self.assertLessEqual(error, 0.0015)
 
   def test_logreg_autodiff(self):
     X, y = datasets.load_digits(return_X_y=True)
