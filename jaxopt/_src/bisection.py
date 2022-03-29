@@ -79,15 +79,14 @@ class Bisection(base.IterativeSolver):
     """Initialize the solver state.
 
     Args:
-      init_params: initial scalar value. If None (default), we use
-        0.5 * (self.high + self.low) instead. This initialization is mainly for
-        API consistency with the rest of JAXopt and will not affect the next
-        bracketed interval.
+      init_params: ignored, we use 0.5 * (state.high + state.low) instead.
       *args: additional positional arguments to be passed to ``optimality_fun``.
       **kwargs: additional keyword arguments to be passed to ``optimality_fun``.
     Returns:
       state
     """
+    del init_params
+
     lower = jnp.asarray(self.lower, float)
     upper = jnp.asarray(self.upper, float)
 
@@ -122,37 +121,34 @@ class Bisection(base.IterativeSolver):
     """Performs one iteration of the bisection solver.
 
     Args:
-      params: pytree containing the parameters.
+      params: ignored, we use 0.5 * (state.high + state.low) instead.
       state: named tuple containing the solver state.
     Returns:
       (params, state)
     """
-    if params is None:
-      params = 0.5 * (state.high + state.low)
-    else:
-      params = jnp.asarray(params, float)
+    # Ignored: we use the midpoint between state.low and state.high instead.
+    del params
 
+    params = 0.5 * (state.high + state.low)
     value, aux = self._fun_with_aux(params, *args, **kwargs)
-    too_large = state.sign * value > 0
+    error = jnp.sqrt(value ** 2)
 
+    # Compute `low` and `high` for the next iteration.
     # When `value` is too large, `params` becomes the next `high`,
     # and `low` remains the same. Otherwise, it is the opposite.
+    too_large = state.sign * value > 0
     high = jnp.where(too_large, params, state.high)
     low = jnp.where(too_large, state.low, params)
 
     state = BisectionState(iter_num=state.iter_num + 1,
                            value=value,
-                           error=jnp.sqrt(value ** 2),
+                           error=error,
                            low=low,
                            high=high,
                            sign=state.sign,
                            aux=aux)
 
-    # We return `midpoint` as the next guess.
-    # Users can also inspect state.low and state.high.
-    midpoint = 0.5 * (low + high)
-
-    return base.OptStep(params=midpoint, state=state)
+    return base.OptStep(params=params, state=state)
 
   def run(self,
           init_params: Optional[Any] = None,
