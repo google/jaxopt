@@ -103,7 +103,9 @@ class LinearSolveTest(test_util.JaxoptTestCase):
     matvec = lambda x: jnp.dot(A, x)
     x = linear_solve.solve_cholesky(matvec, b)
     x2 = jax.numpy.linalg.solve(A, b)
+    x3 = linear_solve.solve_inv(matvec, b)
     self.assertArraysAllClose(x, x2, atol=1e-2)
+    self.assertArraysAllClose(x, x3, atol=1e-2)
 
   def test_solve_sparse(self):
     rng = onp.random.RandomState(0)
@@ -144,8 +146,10 @@ class LinearSolveTest(test_util.JaxoptTestCase):
     x = linear_solve.solve_lu(matvec_with_ridge, b)
     x2 = linear_solve.solve_gmres(matvec, b, ridge=ridge)
     x3 = linear_solve.solve_bicgstab(matvec, b, ridge=ridge)
+    x4 = linear_solve.solve_inv(matvec, b, ridge=ridge)
     self.assertArraysAllClose(x, x2, atol=1e-4)
     self.assertArraysAllClose(x, x3, atol=1e-4)
+    self.assertArraysAllClose(x, x4, atol=1e-4)
 
     K = onp.dot(A.T, A)
     Ab = onp.dot(A.T, b)
