@@ -87,6 +87,7 @@ Nonlinear least squares
   :toctree: _autosummary
 
     jaxopt.GaussNewton
+    jaxopt.LevenbergMarquardt
 
 Root finding
 ------------

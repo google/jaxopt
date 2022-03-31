@@ -14,6 +14,7 @@
 
 from jaxopt._src.linear_solve import solve_lu
 from jaxopt._src.linear_solve import solve_cholesky
+from jaxopt._src.linear_solve import solve_inv
 from jaxopt._src.linear_solve import solve_cg
 from jaxopt._src.linear_solve import solve_normal_cg
 from jaxopt._src.linear_solve import solve_gmres

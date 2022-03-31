@@ -4,6 +4,12 @@ Changelog
 Main branch
 -----------
 
+New features
+~~~~~~~~~~~~
+
+- Added solver :class:`jaxopt.LevenbergMarquardt`, by Amir Saadat.
+
+
 Bug fixes and enhancements
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 

@@ -61,7 +61,9 @@ def solve_lu(matvec: Callable, b: jnp.ndarray) -> jnp.ndarray:
     raise NotImplementedError
 
 
-def solve_cholesky(matvec: Callable, b: jnp.ndarray) -> jnp.ndarray:
+def solve_cholesky(matvec: Callable,
+                   b: jnp.ndarray,
+                   ridge: Optional[float] = None) -> jnp.ndarray:
   """Solves ``A x = b``, using Cholesky decomposition.
 
   It will materialize the matrix ``A`` in memory.
@@ -69,10 +71,13 @@ def solve_cholesky(matvec: Callable, b: jnp.ndarray) -> jnp.ndarray:
   Args:
     matvec: product between positive definite matrix ``A`` and a vector.
     b: array.
+    ridge: optional ridge regularization.
 
   Returns:
     array with same structure as ``b``.
   """
+  if ridge is not None:
+    matvec = _make_ridge_matvec(matvec, ridge=ridge)
   if len(b.shape) == 0:
     return b / _materialize_array(matvec, b.shape)
   elif len(b.shape) == 1:
@@ -81,6 +86,32 @@ def solve_cholesky(matvec: Callable, b: jnp.ndarray) -> jnp.ndarray:
   elif len(b.shape) == 2:
     A = _materialize_array(matvec, b.shape)
     return  jax.scipy.linalg.solve(A, b.ravel(), sym_pos=True).reshape(*b.shape)
+  else:
+    raise NotImplementedError
+
+
+def solve_inv(matvec: Callable,
+              b: jnp.ndarray,
+              ridge: Optional[float] = None) -> jnp.ndarray:
+  """Solves ``A x = b``, using matrix inversion.
+
+  It will materialize the matrix ``A`` in memory.
+
+  Args:
+    matvec: product between positive definite matrix ``A`` and a vector.
+    b: array.
+    ridge: optional ridge regularization.
+
+  Returns:
+    array with same structure as ``b``.
+  """
+  if ridge is not None:
+    matvec = _make_ridge_matvec(matvec, ridge=ridge)
+  if len(b.shape) == 0:
+    return b / _materialize_array(matvec, b.shape)
+  elif len(b.shape) == 1:
+    A = _materialize_array(matvec, b.shape)
+    return jnp.dot(jnp.linalg.inv(A), b)
   else:
     raise NotImplementedError
 
