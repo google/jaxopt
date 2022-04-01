@@ -168,7 +168,7 @@ def main(argv):
       sign_grad = jnp.sign(grad_adversarial(image_perturbation))
 
       # heuristic step-size 2 eps / maxiter
-      image_perturbation += (2 * epsilon / maxiter) * sign_grad)
+      image_perturbation += (2 * epsilon / maxiter) * sign_grad
       # projection step onto the L-infinity ball centered at image
       image_perturbation = jnp.clip(image_perturbation, - epsilon, epsilon)
 
