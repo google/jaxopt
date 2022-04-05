@@ -26,10 +26,7 @@ import jax
 import jax.numpy as jnp
 
 from jaxopt._src import base
-from jaxopt._src import linear_solve
 from jaxopt._src.linear_solve import solve_cg
-from jaxopt._src.linear_solve import solve_bicgstab
-from jaxopt._src.linear_solve import solve_gmres
 from jaxopt._src.linear_solve import solve_cholesky
 from jaxopt._src.linear_solve import solve_inv
 from jaxopt._src.tree_util import tree_l2_norm, tree_inf_norm, tree_sub, tree_add, tree_mul
@@ -93,6 +90,9 @@ class LevenbergMarquardt(base.IterativeSolver):
       faster than 'inv' since it uses the symmetry feature of A.
     geodesic: bool, if we would like to include the geodesic acceleration when
       solving for the delta_params in every iteration.
+    contribution_ratio_threshold: float, the threshold for acceleration/velocity
+      ratio. We update the parameters in the algorithm only if the ratio is
+      smaller than this threshold value.
     implicit_diff: bool, whether to enable implicit diff or autodiff of unrolled
       iterations.
     implicit_diff_solve: the linear system solver to use.
@@ -117,6 +117,7 @@ class LevenbergMarquardt(base.IterativeSolver):
 
   solver: Union[Literal['cholesky', 'inv'], Callable] = solve_cg
   geodesic: bool = False
+  contribution_ratio_threshold = 0.75
 
   verbose: bool = False
   implicit_diff: bool = True
@@ -174,7 +175,7 @@ class LevenbergMarquardt(base.IterativeSolver):
         gradient=gradient,
         aux=aux)
 
-  def update_state_using_gain_ratio(self, gain_ratio,
+  def update_state_using_gain_ratio(self, gain_ratio, contribution_ratio_diff,
                                     gain_ratio_test_init_state, *args,
                                     **kwargs):
     """The function to return state variables based on gain ratio.
@@ -212,21 +213,38 @@ class LevenbergMarquardt(base.IterativeSolver):
     # Calling the jax condition function:
     # Note that only the parameters that are used in the rest of the program
     # are returned by this function.
-    params, damping_factor, increase_factor, gradient, residual = jax.lax.cond(
-        gain_ratio > 0, gain_ratio_test_true_func, gain_ratio_test_false_func,
+
+    gain_ratio_test_is_met = jnp.logical_and(gain_ratio > 0.0,
+                                             contribution_ratio_diff <= 0.0)
+
+    gain_ratio_test_is_met_ret = gain_ratio_test_true_func(
         *gain_ratio_test_init_state)
+    gain_ratio_test_not_met_ret = gain_ratio_test_false_func(
+        *gain_ratio_test_init_state)
+
+    gain_ratio_test_is_met_ret = jax.tree_map(
+        lambda x: gain_ratio_test_is_met * x, gain_ratio_test_is_met_ret)
+
+    gain_ratio_test_not_met_ret = jax.tree_map(
+        lambda x: (1.0 - gain_ratio_test_is_met) * x,
+        gain_ratio_test_not_met_ret)
+
+    params, damping_factor, increase_factor, gradient, residual = jax.tree_multimap(
+        lambda x, y: x + y, gain_ratio_test_is_met_ret,
+        gain_ratio_test_not_met_ret)
 
     return params, damping_factor, increase_factor, gradient, residual
 
-
   def update_state_using_delta_params(self, loss_curr, params, delta_params,
-                                      damping_factor, increase_factor,
-                                      gradient, residual, *args, **kwargs):
+                                      contribution_ratio_diff, damping_factor,
+                                      increase_factor, gradient, residual,
+                                      *args, **kwargs):
     """The function to return state variables based on delta_params.
 
     Define the functions required for the major conditional of the algorithm,
     which checks the magnitude of dparams and checks if it is small enough.
-    for the value of dparams."""
+    for the value of dparams.
+    """
 
     updated_params = params + delta_params
 
@@ -235,26 +253,24 @@ class LevenbergMarquardt(base.IterativeSolver):
     # Calculate denominator of the gain ratio based on Eq. 6.16, "Introduction
     # to optimization and data fitting", L(0)-L(hlm)=0.5*hlm^T*(mu*hlm-g).
     gain_ratio_denom = 0.5 * jnp.dot(
-      jnp.transpose(delta_params),
-      (damping_factor * delta_params - gradient))
+        jnp.transpose(delta_params), (damping_factor * delta_params - gradient))
 
     # Current value of loss function F=0.5*||f||^2.
     loss_next = 0.5 * jnp.dot(residual_next, residual_next)
 
     gain_ratio = (loss_curr - loss_next) / gain_ratio_denom
 
-    gain_ratio_test_init_state = (params, damping_factor,
-                                increase_factor, residual, gradient,
-                                updated_params)
+    gain_ratio_test_init_state = (params, damping_factor, increase_factor,
+                                  residual, gradient, updated_params)
 
     # Calling the jax condition function:
     # Note that only the parameters that are used in the rest of the program
     # are returned by this function.
 
     params, damping_factor, increase_factor, gradient, residual = (
-      self.update_state_using_gain_ratio(gain_ratio,
-                                         gain_ratio_test_init_state, *args,
-                                         **kwargs))
+        self.update_state_using_gain_ratio(gain_ratio, contribution_ratio_diff,
+                                           gain_ratio_test_init_state, *args,
+                                           **kwargs))
 
     return params, damping_factor, increase_factor, gradient, residual
 
@@ -275,34 +291,49 @@ class LevenbergMarquardt(base.IterativeSolver):
     matvec = lambda v: self._jtj_op(params, v, *args, **kwargs)
 
     if isinstance(self.solver, Callable):
-      delta_params = self.solver(
+      velocity = self.solver(
           matvec, state.gradient, ridge=state.damping_factor, init=state.delta)
+      delta_params = velocity
       if self.geodesic:
         # jtrpp=JT * r" - J is jacobian and r" is second order dir. derivative
-        rpp = self._d2fvv_op(params, delta_params, delta_params, *args, **kwargs)
+        rpp = self._d2fvv_op(params, delta_params, delta_params, *args,
+                             **kwargs)
         jtrpp = self._jt_op(params, rpp, *args, **kwargs)
-        delta_params += 0.5*self.solver(matvec, jtrpp, ridge=state.damping_factor)
+        acceleration = self.solver(matvec, jtrpp, ridge=state.damping_factor)
+        delta_params += 0.5*acceleration
     elif self.solver == 'cholesky':
-      delta_params = solve_cholesky(
+      velocity = solve_cholesky(
           matvec, state.gradient, ridge=state.damping_factor)
+      delta_params = velocity
       if self.geodesic:
         # jtrpp=JT * r" - J is jacobian and r" is second order dir. derivative
         rpp = self._d2fvv_op(params, delta_params, delta_params, *args, **kwargs)
         jtrpp = self._jt_op(params, rpp, *args, **kwargs)
-        delta_params += 0.5*solve_cholesky(matvec, jtrpp, ridge=state.damping_factor)
+        acceleration = 0.5*solve_cholesky(matvec, jtrpp, ridge=state.damping_factor)
+        delta_params += acceleration
     elif self.solver == 'inv':
-      delta_params = solve_inv(
+      velocity = solve_inv(
           matvec, state.gradient, ridge=state.damping_factor)
+      delta_params = velocity
       if self.geodesic:
         # jtrpp=JT * r" - J is jacobian and r" is second order dir. derivative
-        rpp = self._d2fvv_op(params, delta_params, delta_params, *args, **kwargs)
+        rpp = self._d2fvv_op(params, delta_params, delta_params, *args,
+                             **kwargs)
         jtrpp = self._jt_op(params, rpp, *args, **kwargs)
-        delta_params += 0.5*solve_inv(matvec, jtrpp, ridge=state.damping_factor)
+        acceleration = solve_inv(matvec, jtrpp, ridge=state.damping_factor)
+        delta_params += 0.5*acceleration
+    if self.geodesic:
+      contribution_ratio_diff = jnp.linalg.norm(acceleration) / jnp.linalg.norm(
+          velocity) - self.contribution_ratio_threshold
+    else:
+      contribution_ratio_diff = 0.0
+
     delta_params = -delta_params
 
     # Checking if the dparams satisfy the "sufficiently small" criteria.
     params, damping_factor, increase_factor, gradient, residual = (
         self.update_state_using_delta_params(loss_curr, params, delta_params,
+                                             contribution_ratio_diff,
                                              state.damping_factor,
                                              state.increase_factor,
                                              state.gradient, state.residual,
