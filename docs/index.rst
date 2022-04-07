@@ -45,6 +45,7 @@ Alternatively, it can be be installed from sources with the following command::
    fixed_point
    implicit_diff
    line_search
+   developer
 
 .. toctree::
    :maxdepth: 1
@@ -56,6 +57,7 @@ Alternatively, it can be be installed from sources with the following command::
    :maxdepth: 2
    :caption: Examples
 
+   notebooks/index
    auto_examples/index
 
 .. toctree::

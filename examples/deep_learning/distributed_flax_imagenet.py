@@ -13,19 +13,21 @@
 # limitations under the License.
 
 """
-====================================
 SPMD ResNet example with Flax and JAXopt.
-====================================
+=========================================
+
 The purpose of this example is to illustrate how JAXopt solvers can be easily
 used for distributed training thanks to `jax.pjit`. In this case, we begin by
 implementing data parallel training of a ResNet50 model on the ImageNet dataset
 as a fork of Flax's official ImageNet example. General aspects to pay attention
 to include:
- + How auxiliary information (e.g. Flax mutables, model outputs from train
-     metrics, etc) can be extracted from `loss_fun` using the `state.aux` field
-     of JAXopt's optimizer state.
- + How `jax.pjit` can be used to easily port single-device training loops to
-     distributed training loops.
+
+* How auxiliary information (e.g. Flax mutables, model outputs from train metrics,
+  etc) can be extracted from `loss_fun` using the `state.aux` field
+  of JAXopt's optimizer state.
+
+* How `jax.pjit` can be used to easily port single-device training loops to
+  distributed training loops.
 
 Running on Google Cloud TPU:
 

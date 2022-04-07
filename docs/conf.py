@@ -54,9 +54,9 @@ extensions = [
     'sphinx.ext.mathjax',
     'sphinx.ext.viewcode',
     'matplotlib.sphinxext.plot_directive',
-    'nbsphinx',
     'sphinx_autodoc_typehints',
-    'recommonmark',
+    'myst_nb',
+    "sphinx_remove_toctrees",
     'sphinx_rtd_theme',
     'sphinx_gallery.gen_gallery',
     'sphinx_copybutton',
@@ -70,11 +70,8 @@ sphinx_gallery_conf = {
      "backreferences_dir": os.path.join("modules", "generated"),
 }
 
-# TODO: remove once all examples run
-nbsphinx_allow_errors = True
 
-#source_suffix = ['.rst', '.md']
-source_suffix = ['.rst']
+source_suffix = ['.rst', '.ipynb', '.md']
 
 autosummary_generate = True
 autodoc_default_options = {"members": True, "inherited-members": True}
@@ -82,7 +79,6 @@ autodoc_default_options = {"members": True, "inherited-members": True}
 master_doc = 'index'
 
 autodoc_typehints = 'description'
-nbsphinx_codecell_lexer = 'ipython3'
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
@@ -90,7 +86,14 @@ templates_path = ['_templates']
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
 # This pattern also affects html_static_path and html_extra_path.
-exclude_patterns = ['README.md', '_build', '**.ipynb_checkpoints']
+exclude_patterns = [
+    'build/html',
+    'build/jupyter_execute',
+    'README.md',
+    '_build',
+    '**.ipynb_checkpoints',
+    # Ignore markdown source for notebooks; myst-nb builds from the ipynb
+    'notebooks/deep_learning/*.md']
 
 
 # -- Options for HTML output -------------------------------------------------
@@ -111,4 +114,20 @@ html_static_path = ['_static']
 # or fully qualified paths (eg. https://...)
 html_css_files = [
     'css/custom.css',
+]
+
+
+# -- Options for myst ----------------------------------------------
+jupyter_execute_notebooks = "force"
+execution_allow_errors = False
+execution_fail_on_error = True  # Requires https://github.com/executablebooks/MyST-NB/pull/296
+
+# Notebook cell execution timeout; defaults to 30.
+execution_timeout = 100
+
+# List of patterns, relative to source directory, that match notebook
+# files that will not be executed.
+execution_excludepatterns = [
+    # Slow notebook
+    'notebooks/deep_learning/resnet_flax.*',
 ]
