@@ -51,7 +51,7 @@ def projection_grad_kl_stable(x: Any,
     g_i = g_i - jnp.max(g_i, axis=-1, keepdims=True)
     y_i = x_i * jnp.exp(g_i)
     return y_i / jnp.sum(y_i, axis=-1, keepdims=True)
-  return tu.tree_multimap(_fn, x, x_fun_grad)
+  return tu.tree_map(_fn, x, x_fun_grad)
 
 
 def make_stepsize_schedule(max_stepsize, n_steps, power=1.0) -> Callable:

@@ -14,7 +14,6 @@
 
 from jaxopt._src.tree_util import broadcast_pytrees
 from jaxopt._src.tree_util import tree_map
-from jaxopt._src.tree_util import tree_multimap
 from jaxopt._src.tree_util import tree_reduce
 from jaxopt._src.tree_util import tree_add
 from jaxopt._src.tree_util import tree_sub

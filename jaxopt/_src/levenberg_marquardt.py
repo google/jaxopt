@@ -229,7 +229,7 @@ class LevenbergMarquardt(base.IterativeSolver):
         lambda x: (1.0 - gain_ratio_test_is_met) * x,
         gain_ratio_test_not_met_ret)
 
-    params, damping_factor, increase_factor, gradient, residual = jax.tree_multimap(
+    params, damping_factor, increase_factor, gradient, residual = jax.tree_map(
         lambda x, y: x + y, gain_ratio_test_is_met_ret,
         gain_ratio_test_not_met_ret)
 

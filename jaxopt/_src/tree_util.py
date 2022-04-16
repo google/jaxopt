@@ -27,7 +27,6 @@ import numpy as onp
 tree_flatten = tu.tree_flatten
 tree_leaves = tu.tree_leaves
 tree_map = tu.tree_map
-tree_multimap = tu.tree_multimap
 tree_reduce = tu.tree_reduce
 tree_unflatten = tu.tree_unflatten
 
@@ -69,16 +68,16 @@ def broadcast_pytrees(*trees):
   return trees
 
 
-tree_add = functools.partial(tree_multimap, operator.add)
+tree_add = functools.partial(tree_map, operator.add)
 tree_add.__doc__ = "Tree addition."
 
-tree_sub = functools.partial(tree_multimap, operator.sub)
+tree_sub = functools.partial(tree_map, operator.sub)
 tree_sub.__doc__ = "Tree subtraction."
 
-tree_mul = functools.partial(tree_multimap, operator.mul)
+tree_mul = functools.partial(tree_map, operator.mul)
 tree_mul.__doc__ = "Tree multiplication."
 
-tree_div = functools.partial(tree_multimap, operator.truediv)
+tree_div = functools.partial(tree_map, operator.truediv)
 tree_div.__doc__ = "Tree division."
 
 
@@ -89,7 +88,7 @@ def tree_scalar_mul(scalar, tree_x):
 
 def tree_add_scalar_mul(tree_x, scalar, tree_y):
   """Compute tree_x + scalar * tree_y."""
-  return tree_multimap(lambda x, y: x + scalar * y, tree_x, tree_y)
+  return tree_map(lambda x, y: x + scalar * y, tree_x, tree_y)
 
 
 _vdot = functools.partial(jnp.vdot, precision=jax.lax.Precision.HIGHEST)
@@ -100,7 +99,7 @@ def _vdot_safe(a, b):
 
 def tree_vdot(tree_x, tree_y):
   """Compute the inner product <tree_x, tree_y>."""
-  vdots = tree_multimap(_vdot_safe, tree_x, tree_y)
+  vdots = tree_map(_vdot_safe, tree_x, tree_y)
   return tree_reduce(operator.add, vdots)
 
 

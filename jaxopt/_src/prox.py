@@ -71,7 +71,7 @@ def prox_lasso(x: Any,
     l1reg = 1.0
 
   fun = lambda u, v: jnp.sign(u) * jax.nn.relu(jnp.abs(u) - v * scaling)
-  return tree_util.tree_multimap(fun, x, l1reg)
+  return tree_util.tree_map(fun, x, l1reg)
 
 
 def prox_non_negative_lasso(x: Any,
@@ -126,7 +126,7 @@ def prox_elastic_net(x: Any,
   prox_l1 = lambda u, lam: jnp.sign(u) * jax.nn.relu(jnp.abs(u) - lam)
   fun = lambda u, lam, gamma: (prox_l1(u, scaling * lam) /
                                (1.0 + scaling * lam * gamma))
-  return tree_util.tree_multimap(fun, x, hyperparams[0], hyperparams[1])
+  return tree_util.tree_map(fun, x, hyperparams[0], hyperparams[1])
 
 
 def prox_group_lasso(x: Any,
