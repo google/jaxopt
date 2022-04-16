@@ -99,7 +99,7 @@ class OptaxSolver(base.StochasticSolver):
 
   def _apply_updates(self, params, updates):
     update_fun = lambda p, u: jnp.asarray(p + u).astype(jnp.asarray(p).dtype)
-    return jax.tree_multimap(update_fun, params, updates)
+    return jax.tree_map(update_fun, params, updates)
 
   def update(self,
              params: Any,

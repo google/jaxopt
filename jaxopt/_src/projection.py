@@ -65,7 +65,7 @@ def projection_box(x: Any, hyperparams: Tuple) -> Any:
     projected pytree, with the same structure as ``x``.
   """
   lower, upper = hyperparams
-  return tree_util.tree_multimap(_clip_safe, x, lower, upper)
+  return tree_util.tree_map(_clip_safe, x, lower, upper)
 
 
 def projection_hypercube(x: Any, unit: float = 1.0) -> Any:
