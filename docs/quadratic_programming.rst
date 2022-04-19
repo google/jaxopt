@@ -109,7 +109,7 @@ it is possible to enable
 `iterative refinement <https://en.wikipedia.org/wiki/Iterative_refinement>`_.
 This can be done by setting ``refine_regularization`` and ``refine_maxiter``::
 
-  from jaxopt._src.eq_qp import EqualityConstrainedQP
+  from jaxopt.eq_qp import EqualityConstrainedQP
 
   Q = 2 * jnp.array([[3000., 0.5], [0.5, 1]])
   c = jnp.array([1.0, 1.0])
@@ -203,8 +203,8 @@ See :class:`jaxopt.BoxOSQP` for a full description of the parameters.
 
    * :ref:`sphx_glr_auto_examples_constrained_multiclass_linear_svm.py`
 
-Box-constrained QPs
--------------------
+Box-constrained QPs, with equality
+----------------------------------
 
 The problem takes the form:
 
@@ -253,6 +253,38 @@ If required the algorithm can be sped up by setting
 .. topic:: Example
 
   * :ref:`sphx_glr_auto_examples_constrained_binary_kernel_svm_with_intercept.py`
+
+Box-constrained QPs, without equality
+-------------------------------------
+
+The problem takes the form:
+
+.. math::
+
+    \min_{x} \frac{1}{2} x^\top Q x + c^\top x \textrm{ subject to } l \le x \le u
+
+.. autosummary::
+  :toctree: _autosummary
+
+    jaxopt.BoxCDQP
+
+:class:`jaxopt.BoxCDQP` uses a coordinate descent solver. The solver returns only
+the primal solution.
+
+Example::
+
+  from jaxopt import BoxCDQP
+
+  Q = 2 * jnp.array([[2.0, 0.5], [0.5, 1]])
+  c = jnp.array([1.0, -1.0])
+  l = jnp.array([0.0, 0.0])
+  u = jnp.array([1.0, 1.0])
+
+  qp = BoxCDQP()
+  init = jnp.zeros(2)
+  sol = qp.run(init, params_obj=(Q, c), params_ineq=(l, u)).params
+
+  print(sol)
 
 Unconstrained QPs
 -----------------
