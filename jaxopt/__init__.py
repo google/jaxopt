@@ -24,6 +24,7 @@ from jaxopt._src.armijo_sgd import ArmijoSGD
 from jaxopt._src.backtracking_linesearch import BacktrackingLineSearch
 from jaxopt._src.bisection import Bisection
 from jaxopt._src.block_cd import BlockCoordinateDescent
+from jaxopt._src.cd_qp import BoxCDQP
 from jaxopt._src.cvxpy_wrapper import CvxpyQP
 from jaxopt._src.eq_qp import EqualityConstrainedQP
 from jaxopt._src.fixed_point_iteration import FixedPointIteration

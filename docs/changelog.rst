@@ -8,6 +8,7 @@ New features
 ~~~~~~~~~~~~
 
 - Added solver :class:`jaxopt.LevenbergMarquardt`, by Amir Saadat.
+- Added solver :class:`jaxopt.BoxCDQP`, by Mathieu Blondel.
 
 
 Bug fixes and enhancements
@@ -17,6 +18,7 @@ Bug fixes and enhancements
   by Mathieu Blondel.
 - Added :func:`projection_hypercube <jaxopt.projection.projection_hypercube>`, by Mathieu Blondel.
 - Fixed edge case in :class:`jaxopt.Bisection`, by Mathieu Blondel.
+- Replaced deprecated tree_multimap with tree_map, by Fan Yang.
 
 Version 0.3.1.
 --------------
