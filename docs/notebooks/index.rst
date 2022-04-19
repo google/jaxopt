@@ -26,5 +26,21 @@ Deep learning
 
 
 
+.. raw:: html
+
+    <div class="sphx-glr-thumbcontainer" tooltip="Adversarial training with jaxopt.">
+
+.. only:: html
+
+ .. figure:: /notebooks/deep_learning/thumbnails/adversarial_training.png
+     :alt: Adversarial Training.
+
+     :doc:`/notebooks/deep_learning/adversarial_training`
+
+.. raw:: html
+
+    </div>
+
+
 
 
