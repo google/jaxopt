@@ -189,8 +189,8 @@ def make_onp_to_jnp(pytree_topology: PyTreeTopology) -> Callable:
 def pytree_topology_from_example(x_jnp: Any) -> PyTreeTopology:
   """Returns a PyTreeTopology encoding the PyTree structure of `x_jnp`."""
   leaves, treedef = tree_util.tree_flatten(x_jnp)
-  shapes = [leaf.shape for leaf in leaves]
-  dtypes = [leaf.dtype for leaf in leaves]
+  shapes = [jnp.asarray(leaf).shape for leaf in leaves]
+  dtypes = [jnp.asarray(leaf).dtype for leaf in leaves]
   return PyTreeTopology(treedef=treedef, shapes=shapes, dtypes=dtypes)
 
 

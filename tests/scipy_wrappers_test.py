@@ -202,6 +202,13 @@ class ScipyMinimizeTest(test_util.JaxoptTestCase):
                                        tree_util.tree_leaves(jac_custom)):
       self.assertArraysAllClose(array_num, array_custom, atol=1e-3)
 
+  def test_issue_201(self):
+    # https://github.com/google/jaxopt/issues/201
+    def loss(params): return params ** 2
+    params = 0.0
+    out = ScipyMinimize(fun=loss).run(params)  # doesn't crash
+    self.assertArraysEqual(out.params, jnp.array(0.))
+
 
 class ScipyBoundedMinimizeTest(test_util.JaxoptTestCase):
 
