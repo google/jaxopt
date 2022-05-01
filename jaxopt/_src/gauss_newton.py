@@ -43,7 +43,7 @@ class GaussNewtonState(NamedTuple):
 class GaussNewton(base.IterativeSolver):
   """Gauss-Newton nonlinear least-squares solver.
 
-  Given the residual function ``f(x): R^m -> R^n``, where ``f(x) =
+  Given the residual function ``f(x): R^n -> R^m``, where ``f(x) =
   residual_fun(x, *args, **kwargs)``, ``GaussNewton`` finds a local minimum of
   the cost function ``argmin_x 0.5 * sum(f(x) ** 2)``.
 

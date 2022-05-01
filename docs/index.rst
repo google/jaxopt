@@ -36,6 +36,7 @@ Alternatively, it can be be installed from sources with the following command::
    basics
    unconstrained
    constrained
+   nonlinear_least_squares
    quadratic_programming
    non_smooth
    stochastic

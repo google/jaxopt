@@ -25,6 +25,15 @@ Constrained
     jaxopt.MirrorDescent
     jaxopt.ScipyBoundedMinimize
 
+Least-Squares
+~~~~~~~~~~~~~
+
+.. autosummary::
+  :toctree: _autosummary
+
+    jaxopt.GaussNewton
+    jaxopt.LevenbergMarquardt
+
 Quadratic programming
 ~~~~~~~~~~~~~~~~~~~~~
 
