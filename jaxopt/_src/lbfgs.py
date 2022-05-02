@@ -163,7 +163,9 @@ class LBFGS(base.IterativeSolver):
 
     history_size: size of the memory to use.
     use_gamma: whether to initialize the inverse Hessian approximation with
-      gamma * I, see 'Numerical Optimization', equation (7.20).
+      gamma * I, where gamma is chosen following equation (7.20) of 'Numerical
+      Optimization' (reference below). If use_gamma is set to False, the
+      identity is used as initialization.
 
     implicit_diff: whether to enable implicit diff or autodiff of unrolled
       iterations.
