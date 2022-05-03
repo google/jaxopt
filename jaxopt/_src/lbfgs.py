@@ -20,7 +20,6 @@ from typing import Any
 from typing import Callable
 from typing import NamedTuple
 from typing import Optional
-from typing import Union
 
 from dataclasses import dataclass
 
@@ -32,7 +31,6 @@ from jaxopt._src.backtracking_linesearch import BacktrackingLineSearch
 from jaxopt.tree_util import tree_map
 from jaxopt.tree_util import tree_vdot
 from jaxopt.tree_util import tree_scalar_mul
-from jaxopt.tree_util import tree_add_scalar_mul
 from jaxopt.tree_util import tree_sub
 from jaxopt.tree_util import tree_sum
 from jaxopt.tree_util import tree_l2_norm
