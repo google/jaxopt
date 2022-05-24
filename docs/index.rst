@@ -1,7 +1,7 @@
 :github_url: https://github.com/google/jaxopt/tree/master/docs
 
-JAXopt Documentation
-====================
+JAXopt
+======
 
 Hardware accelerated, batchable and differentiable optimizers in
 `JAX <https://github.com/google/jax>`_.
@@ -36,15 +36,15 @@ Alternatively, it can be be installed from sources with the following command::
    basics
    unconstrained
    constrained
-   nonlinear_least_squares
    quadratic_programming
    non_smooth
    stochastic
-   objective_and_loss
-   linear_system_solvers
    root_finding
    fixed_point
+   nonlinear_least_squares
+   linear_system_solvers
    implicit_diff
+   objective_and_loss
    line_search
    developer
 
@@ -92,12 +92,13 @@ its implicit differentiation framework:
 .. code-block:: bibtex
 
    @article{jaxopt_implicit_diff,
-   title={Efficient and Modular Implicit Differentiation},
-   author={Blondel, Mathieu and Berthet, Quentin and Cuturi, Marco and Frostig, Roy
+     title={Efficient and Modular Implicit Differentiation},
+     author={Blondel, Mathieu and Berthet, Quentin and Cuturi, Marco and Frostig, Roy
       and Hoyer, Stephan and Llinares-L{\'o}pez, Felipe and Pedregosa, Fabian
       and Vert, Jean-Philippe},
-   journal={arXiv preprint arXiv:2105.15183},
-   year={2021}
+     journal={arXiv preprint arXiv:2105.15183},
+     year={2021}
+   }
 
 
 Indices and tables

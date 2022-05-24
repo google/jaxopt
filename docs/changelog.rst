@@ -1,7 +1,7 @@
 Changelog
 =========
 
-Main branch
+Version 0.4
 -----------
 
 New features
@@ -9,16 +9,26 @@ New features
 
 - Added solver :class:`jaxopt.LevenbergMarquardt`, by Amir Saadat.
 - Added solver :class:`jaxopt.BoxCDQP`, by Mathieu Blondel.
-
+- Added :func:`projection_hypercube <jaxopt.projection.projection_hypercube>`, by Mathieu Blondel.
 
 Bug fixes and enhancements
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-- Fixed ``solve_normal_cg`` when the linear operator is "nonsquare" (does not map to a space of same dimension),
+- Fixed :func:`solve_normal_cg <jaxopt.linear_solve.solve_normal_cg>`
+  when the linear operator is "nonsquare" (does not map to a space of same dimension),
   by Mathieu Blondel.
-- Added :func:`projection_hypercube <jaxopt.projection.projection_hypercube>`, by Mathieu Blondel.
 - Fixed edge case in :class:`jaxopt.Bisection`, by Mathieu Blondel.
 - Replaced deprecated tree_multimap with tree_map, by Fan Yang.
+- Added support for leaf cond pytrees in :func:`tree_where <jaxopt.tree_util.tree_where>`, by Felipe Llinares.
+- Added Python 3.10 support officially, by Jeppe Klitgaard.
+- Replaced deprecated tree_multimap with tree_map, by Fan Yang.
+- In scipy wrappers, converted pytree leaves to jax arrays to determine their shape/dtype, by Roy Frostig.
+- Converted the "Resnet" and "Adversarial Training" examples to notebooks, by Fabian Pedregosa.
+
+Contributors
+~~~~~~~~~~~~
+
+Amir Saadat, Fabian Pedregosa, Fan Yang, Felipe Llinares, Jeppe Klitgaard, Mathieu Blondel, Roy Frostig.
 
 Version 0.3.1.
 --------------
