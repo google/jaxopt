@@ -5,7 +5,7 @@ jupytext:
     extension: .md
     format_name: myst
     format_version: 0.13
-    jupytext_version: 1.13.6
+    jupytext_version: 1.13.7
 kernelspec:
   display_name: Python 3 (ipykernel)
   language: python
@@ -13,6 +13,13 @@ kernelspec:
 ---
 
 # Adversarial training
+
+
+[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/google/jaxopt/blob/main/docs/notebooks/resnet_flax.ipynb)
+
+[*Fabian Pedregosa*](https://fa.bianp.net), [*Geoffrey Negiar*](http://geoffreynegiar.com/)
+
+
 
 
 The following code trains a convolutional neural network (CNN) to be robust
@@ -28,7 +35,7 @@ perturbation stays on the boundary of the infinity ball.
 ## References
 
   Goodfellow, Ian J., Jonathon Shlens, and Christian Szegedy. "Explaining
-  and harnessing adversarial examples." https://arxiv.org/abs/1412.6572
+  and harnessing adversarial examples.", https://arxiv.org/abs/1412.6572
 
   Madry, Aleksander, et al. "Towards deep learning models resistant to
   adversarial attacks.", https://arxiv.org/pdf/1706.06083.pdf
@@ -50,10 +57,17 @@ from jaxopt import OptaxSolver
 from jaxopt import tree_util
 
 from matplotlib import pyplot as plt
+plt.rcParams.update({'font.size': 22})
 
 import optax
 import tensorflow as tf
 import tensorflow_datasets as tfds
+```
+
+Show on which platform JAX is running. The code below should take around 3 min to run on GPU but might take longer on CPUs.
+
+```{code-cell} ipython3
+print("JAX running on", jax.devices()[0].platform.upper())
 ```
 
 ```{code-cell} ipython3
@@ -185,12 +199,6 @@ def pgd_attack(image, label, params, epsilon=0.1, maxiter=10):
   return jnp.clip(image + image_perturbation, 0, 1)
 ```
 
-Show on which platform JAX is running. The code below should take around 3 min to run on GPU but might take longer on CPUs.
-
-```{code-cell} ipython3
-print("JAX running on", jax.devices()[0].platform.upper())
-```
-
 ```{code-cell} ipython3
 # Initialize solver and parameters.
 solver = OptaxSolver(
@@ -270,19 +278,29 @@ for it in range(solver.maxiter):
 ```
 
 ```{code-cell} ipython3
-plt.title(f"Adversarial training on {FLAGS.dataset}")
-plt.plot(accuracy_train, lw=3, label="clean accuracy on train set." , marker='<')
-plt.plot(accuracy_test, lw=3, label="clean accuracy on test set.", marker='d')
-plt.plot(
+fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(16, 6))
+
+plt.suptitle("Adversarial training on " + f"{FLAGS.dataset}".upper())
+axes[0].plot(accuracy_train, lw=3, label="train set." , marker='<', markersize=10)
+axes[0].plot(accuracy_test, lw=3, label="test set.", marker='d', markersize=10)
+axes[0].grid()
+axes[0].set_ylabel('accuracy on clean images')
+
+axes[1].plot(
     adversarial_accuracy_train,
     lw=3,
-    label="adversarial accuracy on train set.", marker='^')
-plt.plot(
+    label="adversarial accuracy on train set.", marker='^', markersize=10)
+axes[1].plot(
     adversarial_accuracy_test,
     lw=3,
-    label="adversarial accuracy on test set.", marker='>')
-plt.grid()
-plt.legend(frameon=False, ncol=2)
+    label="adversarial accuracy on test set.", marker='>', markersize=10)
+axes[1].grid()
+axes[0].legend(frameon=False, ncol=2, loc='upper center', bbox_to_anchor=(0.8, -0.1))
+axes[0].set_xlabel('epochs')
+axes[1].set_ylabel('accuracy on adversarial images')
+plt.subplots_adjust( wspace=0.5 )
+
+
 plt.show()
 ```
 
@@ -321,12 +339,17 @@ img_clean, prediction_clean, img_adversarial, prediction_adversarial = \
 ```
 
 ```{code-cell} ipython3
-_, axes = plt.subplots(nrows=1, ncols=2)
+_, axes = plt.subplots(nrows=1, ncols=3, figsize=(6*3, 6))
 
 axes[0].set_title('Clean image \n Prediction %s' % int(prediction_clean))
-axes[0].imshow(img_clean, cmap=plt.cm.get_cmap('Greys'))
+axes[0].imshow(img_clean, cmap=plt.cm.get_cmap('Greys'), vmax=1, vmin=0)
 axes[1].set_title('Adversarial image \n Prediction %s' % prediction_adversarial)
-axes[1].imshow(img_adversarial, cmap=plt.cm.get_cmap('Greys'))
+axes[1].imshow(img_adversarial, cmap=plt.cm.get_cmap('Greys'), vmax=1, vmin=0)
+axes[2].set_title(r'|Adversarial - clean| $\times$ %.0f' % (1/FLAGS.epsilon))
+axes[2].imshow(jnp.abs(img_clean - img_adversarial) / FLAGS.epsilon, cmap=plt.cm.get_cmap('Greys'), vmax=1, vmin=0)
+for i in range(3):
+    axes[i].set_xticks(())
+    axes[i].set_yticks(())
 plt.show()
 ```
 
