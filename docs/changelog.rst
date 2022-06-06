@@ -18,10 +18,14 @@ Bug fixes and enhancements
 - Changed losses to avoid roundoff, by Jack Valmadre.
 - Fixed init_params bug in multiclass_svm example, by Louis Béthune.
 
+- Added example :doc:`/notebooks/deep_learning/maml` by Fabian Pedregosa and Paul Vicol.
+
+
 Contributors
 ~~~~~~~~~~~~
 
 Louis Béthune, Mathieu Blondel, Amélie Héliou, Fabian Pedregosa, Jack Valmadre.
+
 
 Version 0.4.2
 -------------
