@@ -16,6 +16,7 @@ The best choice will depend on the usage.
    * - Name
      - jit
      - matvec
+     - fun
      - precision
      - stability
      - speed
@@ -23,11 +24,13 @@ The best choice will depend on the usage.
    * - :class:`jaxopt.EqualityConstrainedQP`
      - yes
      - yes
+     - no
      - ++
      - \+
      - +++
      - (Q, c), (A, b)
    * - :class:`jaxopt.CvxpyQP`
+     - no
      - no
      - no
      - +++
@@ -37,11 +40,13 @@ The best choice will depend on the usage.
    * - :class:`jaxopt.OSQP`
      - yes
      - yes
+     - yes
      - \+
      - ++
      - ++
      - (Q, c), (A, b), (G, h)
    * - :class:`jaxopt.BoxOSQP`
+     - yes
      - yes
      - yes
      - \+
@@ -51,6 +56,7 @@ The best choice will depend on the usage.
 
 - *jit*: the algorithm can be used with jit or vmap, on GPU/TPU.
 - *matvec*: the input can be given as matvec instead of dense matrices.
+- *fun*: the algorithm can be used with quadratic polynomial fun.
 - *precision*: accuracy expected when the solver succeeds to converge.
 - *stability*: capacity to handle badly scaled problems and matrices with poor conditioning.
 - *speed*: typical speed on big instances to reach its maximum accuracy.

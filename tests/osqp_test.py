@@ -18,6 +18,7 @@ from absl.testing import parameterized
 import jax
 import jax.numpy as jnp
 from jax.test_util import check_grads
+from jax.tree_util import tree_map
 import numpy as onp
 
 from sklearn import datasets
@@ -365,7 +366,7 @@ class BoxOSQPTest(test_util.JaxoptTestCase):
     l = 0., 1.
     u = jnp.inf, 1.
 
-    def matvec_Q(_,x):
+    def matvec_Q(_, x):
       return 0., 0., 0.
 
     hyper_params = dict(params_obj=(None, (-1., -2., 1.)), params_eq=None, params_ineq=(l, u))
@@ -500,6 +501,49 @@ class BoxOSQPTest(test_util.JaxoptTestCase):
     jac_prox = jax.jacrev(run_prox)(data)
     self.assertArraysAllClose(jac_osqp, jac_prox, atol=1e-2)
 
+  def test_convenience_api_simple_problem(self):
+    hyper_params = dict(params_obj=None, params_eq=None, params_ineq=None)
+
+    def fun(x, params_obj):
+      del params_obj  # unused
+      return 0.5*jnp.dot(x, x) + jnp.sum(x) + 17.0
+
+    problem_size = 66
+    x_init = jnp.arange(problem_size, dtype=jnp.float32)
+    solver = BoxOSQP(fun=fun)
+    (_, _, cste), c = solver._get_Q_c(x_init, hyper_params['params_obj'])
+
+    self.assertAlmostEqual(cste, 17.0)
+    self.assertArraysAllClose(c, jnp.ones(problem_size), atol=1e-3, rtol=1e-2)
+
+  def test_convenience_api_random_problem(self):
+    (Q, c), A , (l, u) = get_random_osqp_problem(3, 1, 1)
+
+    hyper_params = dict(params_obj=(Q, c), params_eq=A, params_ineq=(l, u))
+    cste = 42.
+    def fun(x, fun_params):
+      Q, c = fun_params
+      return 0.5*jnp.dot(x, jnp.dot(Q, x)) + jnp.dot(c, x) + cste
+
+    init_x = jnp.array([1., 2., 3])
+    tol = 1e-4
+
+    solver_with_fun = BoxOSQP(fun=fun, tol=tol)
+    (_, _, cste_approx), c_approx = solver_with_fun._get_Q_c(init_x, hyper_params['params_obj'])
+    self.assertAlmostEqual(cste_approx, cste)
+    self.assertArraysAllClose(c_approx, c, atol=1e-2, rtol=1e-2)
+
+    init_params = solver_with_fun.init_params(init_x, **hyper_params)
+    sol_with_fun, state_with_fun = solver_with_fun.run(init_params, **hyper_params)
+    self.assertLessEqual(state_with_fun.error, tol)
+    
+    solver_without_fun = BoxOSQP(tol=tol)
+    init_params = solver_without_fun.init_params(init_x, **hyper_params)
+    sol_without_fun, state_without_fun = solver_without_fun.run(init_params, **hyper_params)
+    self.assertLessEqual(state_without_fun.error, tol)
+
+    tree_map((lambda x,y: self.assertArraysAllClose(x, y, atol=1e-2)), sol_with_fun, sol_without_fun)
+
   def test_lu_factorization(self):
     problem_size = 200
     eq_constraints = 30
@@ -580,6 +624,36 @@ class OSQPTest(test_util.JaxoptTestCase):
     J2 = jax.jacrev(_projection_simplex_qp)(x)
     self.assertArraysAllClose(J, J2, atol=1e-4)
 
+  def test_NNLS(self):
+    # Solve Non Negative Least Squares factorization.
+    #
+    #  min_W \|Y-UW\|_F^2
+    #  s.t. W>=0
+    n, m = 20, 10
+    rank = 3
+    onp.random.seed(654)
+    U = jax.nn.relu(onp.random.randn(n, rank))
+    W_0 = jax.nn.relu(onp.random.randn(m, rank))
+    Y = U @ W_0.T
+
+    def fun(W, params_obj):
+      Y, U = params_obj
+      return jnp.sum(jnp.square(Y - U @ W.T))
+
+    def matvec_G(_, W):
+      return -W
+
+    zeros = jnp.zeros_like(W_0)
+    hyper_params = dict(params_obj=(Y, U), params_eq=None, params_ineq=(None, zeros))
+
+    init_W = jnp.zeros_like(W_0)
+    solver = OSQP(fun=fun, matvec_G=matvec_G)
+    init_params = solver.init_params(init_W, **hyper_params)
+    sol, _ = solver.run(init_params=init_params, **hyper_params)
+    W_sol = sol.primal
+
+    # Check that the solution is close to the original.
+    self.assertAllClose(W_0, W_sol, atol=1e-2, rtol=1e-2)
 
 if __name__ == '__main__':
   jax.config.update("jax_enable_x64", False)

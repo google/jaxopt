@@ -1,6 +1,19 @@
 Changelog
 =========
 
+Development version
+___________________
+
+Bug fixes and enhancements
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- Add support for quadratic polynomial `fun` in :class:`jaxopt.BoxOSQP` and :class:`jaxopt.OSQP`.
+
+Contributors
+~~~~~~~~~~~~
+
+Louis Béthune.
+
 Version 0.4.2
 -------------
 
@@ -82,7 +95,7 @@ Bug fixes and enhancements
 Contributors
 ~~~~~~~~~~~~
 
-Felipe Llinares, Fabian Pedregosa, Ian Williamson, Louis Bétune, Mathieu Blondel, Roy Frostig.
+Felipe Llinares, Fabian Pedregosa, Ian Williamson, Louis Béthune, Mathieu Blondel, Roy Frostig.
 
 Version 0.3
 -----------
@@ -145,7 +158,7 @@ Deprecations
 Contributors
 ~~~~~~~~~~~~
 
-Fabian Pedregosa, Felipe Llinares, Geoffrey Negiar, Louis Bethune, Mathieu
+Fabian Pedregosa, Felipe Llinares, Geoffrey Negiar, Louis Béthune, Mathieu
 Blondel, Vikas Sindhwani.
 
 Version 0.1.1

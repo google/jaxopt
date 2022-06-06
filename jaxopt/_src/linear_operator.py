@@ -22,6 +22,13 @@ from jaxopt.tree_util import tree_map, tree_sum, tree_mul
 
 
 class DenseLinearOperator:
+  """General operator for dense matrices.
+  
+  Attributes:
+    pytree: pytree of dense matrices.
+      
+  Each leaf of ``pytree`` must be a 2D matrix.
+  """
 
   def __init__(self, pytree):
     self.pytree = pytree
