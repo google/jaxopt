@@ -20,8 +20,6 @@ import jax.numpy as jnp
 import numpy as onp
 
 from jaxopt._src.lbfgs import inv_hessian_product
-from jaxopt._src.lbfgs import init_history
-from jaxopt._src.lbfgs import update_history
 
 from jaxopt import LBFGS
 from jaxopt import objective
@@ -129,6 +127,19 @@ class LbfgsTest(test_util.JaxoptTestCase):
 
     # Check optimality conditions.
     self.assertLessEqual(info.error, 1e-2)
+
+
+  @absltest.skip
+  def test_Rosenbrock(self):
+    # optimize the Rosenbrock function.
+    def fun(x, *args, **kwargs):
+      return sum(100.0*(x[1:] - x[:-1]**2.0)**2.0 + (1 - x[:-1])**2.0)
+
+    x0 = jnp.zeros(2)
+    lbfgs = LBFGS(fun=fun, tol=1e-3, maxiter=500)
+    pytree_fit, _ = lbfgs.run(x0)
+    # the Rosenbrock function is zero at its minimum
+    self.assertLessEqual(fun(pytree_fit), 1e-2)
 
 
 if __name__ == '__main__':

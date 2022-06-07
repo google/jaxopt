@@ -49,7 +49,7 @@ class LevenbergMarquardtState(NamedTuple):
 class LevenbergMarquardt(base.IterativeSolver):
   """Levenberg-Marquardt nonlinear least-squares solver.
 
-    Given the residual function `func` (x): R^m -> R^n, `least_squares` finds a
+    Given the residual function `func` (x): R^n -> R^m, `least_squares` finds a
     local minimum of the cost function F(x):
 
     ```
@@ -57,11 +57,9 @@ class LevenbergMarquardt(base.IterativeSolver):
     f(x) = func(x, *args)
     ```
 
-    The convergence is achieved once the coeff update satisfies the criteria:
-    ```
-    ||dcoeffs||_2 <= xtol * (||coeffs||_2 + xtol)
-    ```
-    or the gradient satisfies ``||grad(f)||_inf <= gtol``.
+    If stop_criterion is 'madsen-nielsen', the convergence is achieved once the
+    coeff update satisfies ``||dcoeffs||_2 <= xtol * (||coeffs||_2 + xtol) `` or
+    the gradient satisfies ``||grad(f)||_inf <= gtol``.
 
   Attributes:
     residual_fun: a smooth function of the form ``residual_fun(x, *args,
