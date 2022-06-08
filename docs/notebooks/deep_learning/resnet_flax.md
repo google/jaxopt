@@ -5,7 +5,7 @@ jupytext:
     extension: .md
     format_name: myst
     format_version: 0.13
-    jupytext_version: 1.13.7
+    jupytext_version: 1.13.8
 kernelspec:
   display_name: Python 3 (ipykernel)
   language: python
@@ -14,7 +14,7 @@ kernelspec:
 
 # Resnet example with Flax and JAXopt.
 
-[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/google/jaxopt/blob/main/docs/notebooks/resnet_flax.ipynb)
+[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/google/jaxopt/blob/main/docs/notebooks/deep_learning/resnet_flax.ipynb)
 
 [*Mathieu Blondel*](https://mblondel.org/), [*Fabian Pedregosa*](https://fa.bianp.net)
 
