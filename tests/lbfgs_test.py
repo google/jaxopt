@@ -241,7 +241,6 @@ class LbfgsTest(test_util.JaxoptTestCase):
     # Check optimality conditions.
     self.assertLessEqual(info.error, 1e-2)
 
-  @absltest.skip
   def test_Rosenbrock(self):
     # optimize the Rosenbrock function.
     def fun(x, *args, **kwargs):

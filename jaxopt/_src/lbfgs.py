@@ -162,6 +162,8 @@ class LBFGS(base.IterativeSolver):
       (default: 0.8).
     increase_factor: factor by which to increase the stepsize during line search
       (default: 1.5).
+    max_stepsize: upper bound on stepsize.
+    min_stepsize: lower bound on stepsize.
 
     history_size: size of the memory to use.
     use_gamma: whether to initialize the inverse Hessian approximation with
@@ -196,6 +198,9 @@ class LBFGS(base.IterativeSolver):
   maxls: int = 15
   decrease_factor: float = 0.8
   increase_factor: float = 1.5
+  max_stepsize: float = 1.0
+  # FIXME: should depend on whether float32 or float64 is used.
+  min_stepsize: float = 1e-6
 
   history_size: int = 10
   use_gamma: bool = True
@@ -266,10 +271,15 @@ class LBFGS(base.IterativeSolver):
                                   value_and_grad=True,
                                   maxiter=self.maxls,
                                   decrease_factor=self.decrease_factor,
+                                  max_stepsize=self.max_stepsize,
                                   condition=self.condition,
                                   jit=self.jit,
                                   unroll=self.unroll)
-      init_stepsize = state.stepsize * self.increase_factor
+      init_stepsize = jnp.where(state.stepsize <= self.min_stepsize,
+                                # If stepsize became too small, we restart it.
+                                self.max_stepsize,
+                                # Otherwise, we increase a bit the previous one.
+                                state.stepsize * self.increase_factor)
       new_stepsize, ls_state = ls.run(init_stepsize=init_stepsize,
                                       params=params, value=value, grad=grad,
                                       descent_direction=descent_direction,
