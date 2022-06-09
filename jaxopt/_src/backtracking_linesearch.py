@@ -56,6 +56,7 @@ class BacktrackingLineSearch(base.IterativeLineSearch):
     c2: constant strictly less than 1 used by the (strong) Wolfe condition.
     decrease_factor: factor by which to decrease the stepsize during line search
       (default: 0.8).
+    max_stepsize: upper bound on stepsize.
 
     maxiter: maximum number of line search iterations.
     tol: tolerance of the stopping criterion.
@@ -76,6 +77,7 @@ class BacktrackingLineSearch(base.IterativeLineSearch):
   c1: float = 1e-4
   c2: float = 0.9
   decrease_factor: float = 0.8
+  max_stepsize: float = 1.0
 
   verbose: int = 0
   jit: base.AutoOrBoolean = "auto"
@@ -136,6 +138,9 @@ class BacktrackingLineSearch(base.IterativeLineSearch):
     Returns:
       (params, state)
     """
+    # Ensure that stepsize does not exceed upper bound.
+    stepsize = jax.lax.min(self.max_stepsize, stepsize)
+
     if value is None or grad is None:
       value, grad = self._value_and_grad_fun(params, *args, **kwargs)
 
