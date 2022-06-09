@@ -15,6 +15,7 @@
 from absl.testing import absltest
 from absl.testing import parameterized
 
+import jax
 import jax.numpy as jnp
 
 import numpy as onp
@@ -47,12 +48,109 @@ def materialize_inv_hessian(s_history, y_history, rho_history, start):
   return H
 
 
+def _inv_hessian_product(s, y, v, gamma=1.0):
+  history_size = len(s)
+
+  if history_size == 0:
+    return v
+
+  s = jnp.array(s)
+  y = jnp.array(y)
+
+  rho = jnp.zeros(history_size)
+  alpha = jnp.zeros(history_size)
+
+  # Compute right product.
+  def body_fun(j, tup):
+    rho, alpha, r = tup
+    i = history_size - j - 1
+    # rho[i] = 1. / jnp.sum(s[i] * y[i])
+    rho = rho.at[i].set(1. / jnp.sum(s[i] * y[i]))
+    # alpha[i] = rho[i] * jnp.sum(s[i] * r)
+    alpha = alpha.at[i].set(rho[i] * jnp.sum(s[i] * r))
+    r = r - alpha[i] * y[i]
+    return rho, alpha, r
+
+  # for i in reversed(range(history_size)):
+  rho, alpha, r = jax.lax.fori_loop(0, history_size, body_fun, (rho, alpha, v))
+
+  r = r * gamma
+
+  # Compute left product.
+  def body_fun2(i, r):
+    beta = rho[i] * jnp.sum(y[i] * r)
+    return r + s[i] * (alpha[i] - beta)
+
+  # for i in range(history_size):
+  r = jax.lax.fori_loop(0, history_size, body_fun2, r)
+
+  return r
+
+
+def _lbfgs(fun, init, stepsize=1e-3, maxiter=500, tol=1e-3,
+           verbose=0, history_size=10, use_gamma=True):
+
+  value_and_grad_fun = jax.value_and_grad(fun)
+
+  x = init
+  value, grad = value_and_grad_fun(init)
+  s_history = []
+  y_history = []
+
+  for it in range(maxiter):
+    if use_gamma and it > 0:
+      gamma = jnp.vdot(y_history[-1], s_history[-1])
+      gamma /= jnp.sum(y_history[-1] ** 2)
+    else:
+      gamma = 1.0
+
+    direction = -_inv_hessian_product(s_history, y_history, grad, gamma)
+    x_old, grad_old = x, grad
+    x = x + stepsize * direction
+    value, grad = value_and_grad_fun(x)
+
+    s_history.append(x - x_old)
+    y_history.append(grad - grad_old)
+
+    if len(s_history) > history_size:
+      s_history = s_history[1:]  # Pop left.
+      y_history = y_history[1:]
+
+    grad_norm = jnp.sqrt(jnp.sum(grad ** 2))
+
+    if verbose:
+      print("iter %d" % it, "f:", value, "grad:", grad_norm)
+
+    if grad_norm <= tol:
+      break
+
+  return x
+
+
 class LbfgsTest(test_util.JaxoptTestCase):
 
-  @parameterized.product(start=[0, 1, 2, 3])
-  def test_inv_hessian_product(self, start):
-    """Test inverse Hessian product with pytrees."""
+  def test_inv_hessian_product_array(self):
+    rng = onp.random.RandomState(0)
+    history_size = 4
+    d = 3
+    s_history = jnp.array(rng.randn(history_size, d))
+    y_history = jnp.array(rng.randn(history_size, d))
+    rho_history = 1.0 / jnp.sum(s_history * y_history, axis=1)
+    v = jnp.array(rng.randn(d))
 
+    Hv1 = _inv_hessian_product(s_history, y_history, v)
+
+    H = materialize_inv_hessian(s_history, y_history, rho_history, 0)
+    Hv2 = H.dot(v)
+
+    Hv3 = inv_hessian_product(v, s_history, y_history, rho_history, start=0)
+
+    self.assertArraysAllClose(Hv1, Hv2, atol=1e-2)
+    self.assertArraysAllClose(Hv1, Hv3, atol=1e-2)
+
+
+  @parameterized.product(start=[0, 1, 2, 3])
+  def test_inv_hessian_product_pytree(self, start):
     rng = onp.random.RandomState(0)
     history_size = 4
     shape1 = (3, 2)
@@ -89,6 +187,21 @@ class LbfgsTest(test_util.JaxoptTestCase):
                              start=start)
     self.assertArraysAllClose(Hv[0], Hv1, atol=1e-2)
     self.assertArraysAllClose(Hv[1], Hv2, atol=1e-2)
+
+  @parameterized.product(use_gamma=[True, False])
+  def test_correctness(self, use_gamma):
+    def fun(x, *args, **kwargs):  # Rosenbrock function.
+      return sum(100.0*(x[1:] - x[:-1]**2.0)**2.0 + (1 - x[:-1])**2.0)
+
+    x0 = jnp.zeros(2)
+    lbfgs = LBFGS(fun=fun, tol=1e-3, stepsize=1e-3, maxiter=15, history_size=5,
+                  use_gamma=use_gamma)
+    x1, _ = lbfgs.run(x0)
+
+    x2 = _lbfgs(fun, x0, stepsize=1e-3, maxiter=15, history_size=5,
+                use_gamma=use_gamma)
+
+    self.assertArraysAllClose(x1, x2, atol=1e-5)
 
   @parameterized.product(use_gamma=[True, False])
   def test_binary_logreg(self, use_gamma):
@@ -128,7 +241,6 @@ class LbfgsTest(test_util.JaxoptTestCase):
     # Check optimality conditions.
     self.assertLessEqual(info.error, 1e-2)
 
-
   @absltest.skip
   def test_Rosenbrock(self):
     # optimize the Rosenbrock function.
@@ -137,9 +249,10 @@ class LbfgsTest(test_util.JaxoptTestCase):
 
     x0 = jnp.zeros(2)
     lbfgs = LBFGS(fun=fun, tol=1e-3, maxiter=500)
-    pytree_fit, _ = lbfgs.run(x0)
+    x, _ = lbfgs.run(x0)
+
     # the Rosenbrock function is zero at its minimum
-    self.assertLessEqual(fun(pytree_fit), 1e-2)
+    self.assertLessEqual(fun(x), 1e-2)
 
 
 if __name__ == '__main__':

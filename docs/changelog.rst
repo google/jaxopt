@@ -1,6 +1,15 @@
 Changelog
 =========
 
+Development version
+-------------------
+
+Bug fixes and enhancements
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- Improvements in :class:`jaxopt.LBFGS`: fixed bug when using ``use_gamma=True``,
+  added ``stepsize`` option, strengthened tests, by Mathieu Blondel.
+
 Version 0.4
 -----------
 
