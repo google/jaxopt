@@ -20,6 +20,7 @@ from typing import Any
 from typing import Callable
 from typing import NamedTuple
 from typing import Optional
+from typing import Union
 
 from dataclasses import dataclass
 
@@ -30,6 +31,7 @@ from jaxopt._src import base
 from jaxopt._src.backtracking_linesearch import BacktrackingLineSearch
 from jaxopt.tree_util import tree_map
 from jaxopt.tree_util import tree_vdot
+from jaxopt.tree_util import tree_add_scalar_mul
 from jaxopt.tree_util import tree_scalar_mul
 from jaxopt.tree_util import tree_sub
 from jaxopt.tree_util import tree_sum
@@ -153,6 +155,8 @@ class LBFGS(base.IterativeSolver):
     maxiter: maximum number of proximal gradient descent iterations.
     tol: tolerance of the stopping criterion.
 
+    stepsize: a stepsize to use (if <= 0, use backtracking line search),
+      or a callable specifying the **positive** stepsize to use at each iteration.
     maxls: maximum number of iterations to use in the line search.
     decrease_factor: factor by which to decrease the stepsize during line search
       (default: 0.8).
@@ -187,6 +191,7 @@ class LBFGS(base.IterativeSolver):
   maxiter: int = 500
   tol: float = 1e-3
 
+  stepsize: Union[float, Callable] = 0.0
   condition: str = "strong-wolfe"
   maxls: int = 15
   decrease_factor: float = 0.8
@@ -242,7 +247,7 @@ class LBFGS(base.IterativeSolver):
     (value, aux), grad = self._value_and_grad_with_aux(params, *args, **kwargs)
 
     start = state.iter_num % self.history_size
-    last = (start + self.history_size) % self.history_size
+    last = (start + self.history_size - 1) % self.history_size
 
     if self.use_gamma:
       gamma = compute_gamma(state.s_history, state.y_history, last)
@@ -253,29 +258,43 @@ class LBFGS(base.IterativeSolver):
                                   y_history=state.y_history,
                                   rho_history=state.rho_history, gamma=gamma,
                                   start=start)
-    descent_direction = tree_scalar_mul(-1, product)
+    descent_direction = tree_scalar_mul(-1.0, product)
 
-    ls = BacktrackingLineSearch(fun=self._value_and_grad_fun,
-                                value_and_grad=True,
-                                maxiter=self.maxls,
-                                decrease_factor=self.decrease_factor,
-                                condition=self.condition,
-                                jit=self.jit,
-                                unroll=self.unroll)
-    init_stepsize = state.stepsize * self.increase_factor
-    new_stepsize, ls_state = ls.run(init_stepsize=init_stepsize,
-                                    params=params, value=value, grad=grad,
-                                    descent_direction=descent_direction,
-                                    *args, **kwargs)
-    new_value = ls_state.value
-    new_params = ls_state.params
-    new_grad = ls_state.grad
+    if not isinstance(self.stepsize, Callable) and self.stepsize <= 0:
+      # with line search
+      ls = BacktrackingLineSearch(fun=self._value_and_grad_fun,
+                                  value_and_grad=True,
+                                  maxiter=self.maxls,
+                                  decrease_factor=self.decrease_factor,
+                                  condition=self.condition,
+                                  jit=self.jit,
+                                  unroll=self.unroll)
+      init_stepsize = state.stepsize * self.increase_factor
+      new_stepsize, ls_state = ls.run(init_stepsize=init_stepsize,
+                                      params=params, value=value, grad=grad,
+                                      descent_direction=descent_direction,
+                                      *args, **kwargs)
+      new_value = ls_state.value
+      new_params = ls_state.params
+      new_grad = ls_state.grad
 
+    else:
+      # without line search
+      if isinstance(self.stepsize, Callable):
+        new_stepsize = self.stepsize(state.iter_num)
+      else:
+        new_stepsize = self.stepsize
+
+      new_params = tree_add_scalar_mul(params, new_stepsize, descent_direction)
+      # FIXME: this requires a second function call per iteration.
+      new_value, new_grad = self._value_and_grad_fun(new_params, *args,
+                                                     **kwargs)
     s = tree_sub(new_params, params)
     y = tree_sub(new_grad, grad)
     vdot_sy = tree_vdot(s, y)
     rho = jnp.where(vdot_sy == 0, 0, 1. / vdot_sy)
 
+    last = (start + self.history_size) % self.history_size
     s_history = update_history(state.s_history, s, last)
     y_history = update_history(state.y_history, y, last)
     rho_history = update_history(state.rho_history, rho, last)
