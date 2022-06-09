@@ -24,7 +24,7 @@ The following illustrates how to express the ridge regression objective::
 
   def ridge_reg_objective(params, l2reg, X, y):
     residuals = jnp.dot(X, params) - y
-    return jnp.mean(residuals ** 2) + 0.5 * l2reg * jnp.dot(params ** 2)
+    return jnp.mean(residuals ** 2) + 0.5 * l2reg * jnp.sum(params ** 2)
 
 The model parameters ``params`` correspond to :math:`x` while ``l2reg``, ``X``
 and ``y`` correspond to the extra arguments :math:`\theta` in the mathematical
