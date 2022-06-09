@@ -247,10 +247,10 @@ class LBFGS(base.IterativeSolver):
     (value, aux), grad = self._value_and_grad_with_aux(params, *args, **kwargs)
 
     start = state.iter_num % self.history_size
-    last = (start + self.history_size - 1) % self.history_size
+    previous = (start + self.history_size - 1) % self.history_size
 
     if self.use_gamma:
-      gamma = compute_gamma(state.s_history, state.y_history, last)
+      gamma = compute_gamma(state.s_history, state.y_history, previous)
     else:
       gamma = 1.0
 
