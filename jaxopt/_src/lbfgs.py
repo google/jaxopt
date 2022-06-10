@@ -228,7 +228,7 @@ class LBFGS(base.IterativeSolver):
     """
     return LbfgsState(iter_num=jnp.asarray(0),
                       value=jnp.asarray(jnp.inf),
-                      stepsize=jnp.asarray(1.0),
+                      stepsize=jnp.asarray(self.max_stepsize),
                       error=jnp.asarray(jnp.inf),
                       s_history=init_history(init_params, self.history_size),
                       y_history=init_history(init_params, self.history_size),
