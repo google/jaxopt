@@ -1,6 +1,20 @@
 Changelog
 =========
 
+Version 0.4.2
+-------------
+
+Bug fixes and enhancements
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- Fix issue with positional arguments in :class:`jaxopt.LBFGS` and :class:`jaxopt.NonlinearCG`,
+  by Mathieu Blondel.
+
+Contributors
+~~~~~~~~~~~~
+
+Mathieu Blondel.
+
 Version 0.4.1
 -------------
 

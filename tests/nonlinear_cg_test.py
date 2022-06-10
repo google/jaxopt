@@ -81,7 +81,8 @@ class NonlinearCGTest(test_util.JaxoptTestCase):
 
     w_init = jnp.zeros(X.shape[1])
     cg_model = NonlinearCG(fun=fun, tol=1e-3, maxiter=100, method=method)
-    w_fit, info = cg_model.run(w_init, data=data)
+    # Test with positional argument.
+    w_fit, info = cg_model.run(w_init, data)
 
     # Check optimality conditions.
     self.assertLessEqual(info.error, 5e-2)
