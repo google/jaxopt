@@ -280,9 +280,9 @@ class LBFGS(base.IterativeSolver):
                                 self.max_stepsize,
                                 # Otherwise, we increase a bit the previous one.
                                 state.stepsize * self.increase_factor)
-      new_stepsize, ls_state = ls.run(init_stepsize=init_stepsize,
-                                      params=params, value=value, grad=grad,
-                                      descent_direction=descent_direction,
+      new_stepsize, ls_state = ls.run(init_stepsize,
+                                      params, value, grad,
+                                      descent_direction,
                                       *args, **kwargs)
       new_value = ls_state.value
       new_params = ls_state.params

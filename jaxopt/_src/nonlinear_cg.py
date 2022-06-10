@@ -139,10 +139,11 @@ class NonlinearCG(base.IterativeSolver):
                                 maxiter=self.maxls,
                                 decrease_factor=self.decrease_factor,
                                 condition=self.condition)
-    new_stepsize, ls_state = ls.run(init_stepsize=init_stepsize,
-                                    params=params,
-                                    value=value,
-                                    grad=grad,
+    new_stepsize, ls_state = ls.run(init_stepsize,
+                                    params,
+                                    value,
+                                    grad,
+                                    None, # descent_direction
                                     *args, **kwargs)
 
     new_params = tree_add_scalar_mul(params, new_stepsize, descent_direction)

@@ -213,6 +213,7 @@ class LbfgsTest(test_util.JaxoptTestCase):
 
     w_init = jnp.zeros(X.shape[1])
     lbfgs = LBFGS(fun=fun, tol=1e-3, maxiter=500, use_gamma=use_gamma)
+    # Test with keyword argument.
     w_fit, info = lbfgs.run(w_init, data=data)
 
     # Check optimality conditions.
@@ -236,7 +237,8 @@ class LbfgsTest(test_util.JaxoptTestCase):
     pytree_init = (W_init, b_init)
 
     lbfgs = LBFGS(fun=fun, tol=1e-3, maxiter=500, use_gamma=use_gamma)
-    pytree_fit, info = lbfgs.run(pytree_init, data=data)
+    # Test with positional argument.
+    pytree_fit, info = lbfgs.run(pytree_init, data)
 
     # Check optimality conditions.
     self.assertLessEqual(info.error, 1e-2)
