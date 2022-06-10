@@ -1,14 +1,22 @@
 Changelog
 =========
 
-Development version
--------------------
+Version 0.4.1
+-------------
 
 Bug fixes and enhancements
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 - Improvements in :class:`jaxopt.LBFGS`: fixed bug when using ``use_gamma=True``,
   added ``stepsize`` option, strengthened tests, by Mathieu Blondel.
+
+- Fixed link in resnet notebook, by Fabian Pedregosa.
+
+Contributors
+~~~~~~~~~~~~
+
+Fabian Pedregosa, Mathieu Blondel.
+
 
 Version 0.4
 -----------
