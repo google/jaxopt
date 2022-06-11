@@ -295,7 +295,7 @@ class NMFState(NamedTuple):
 
 @dataclass(eq=False)
 class NMF(base.IterativeSolver):
-  """ Non Negative Least Squares solver based on ADMM.
+  """ Non Negative Matrix Factorization solver based on ADMM.
 
   Solves ::
     min_{H1, H2} 0.5 * ||Y - H1 @ H2.T||_F^2
