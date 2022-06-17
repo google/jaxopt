@@ -78,42 +78,49 @@ class ProjectionTest(test_util.JaxoptTestCase):
   def test_projection_simplex(self):
     rng = onp.random.RandomState(0)
 
-    for _ in range(10):
-      x = rng.randn(50).astype(onp.float32)
+    for scale in [1.0, 1e9]:
+      for _ in range(10):
+        x = scale * rng.randn(50).astype(onp.float32)
 
-      p = projection.projection_simplex(x)
-      self.assertAllClose(jnp.sum(p), 1.0)
-      self.assertTrue(jnp.all(0 <= p))
-      self.assertTrue(jnp.all(p <= 1))
+        p = projection.projection_simplex(x)
+        self.assertAllClose(jnp.sum(p), 1.0)
+        self.assertTrue(jnp.all(0 <= p))
+        self.assertTrue(jnp.all(p <= 1))
 
-      p = projection.projection_simplex(x, 0.8)
-      self.assertAllClose(jnp.sum(p), 0.8)
-      self.assertTrue(jnp.all(0 <= p))
-      self.assertTrue(jnp.all(p <= 0.8))
+        p = projection.projection_simplex(x, 0.8)
+        self.assertAllClose(jnp.sum(p), 0.8)
+        self.assertTrue(jnp.all(0 <= p))
+        self.assertTrue(jnp.all(p <= 0.8))
+
+    # Check that -inf is supported.
+    p = projection.projection_simplex(jnp.array([0.0, 0.0, -jnp.inf]))
+    self.assertAllClose(p, jnp.array([0.5, 0.5, 0.0]))
 
   def test_projection_simplex_jacobian(self):
     rng = onp.random.RandomState(0)
-    x = rng.rand(5).astype(onp.float32)
-    v = rng.randn(5).astype(onp.float32)
 
-    J_rev = jax.jacrev(projection.projection_simplex)(x)
-    J_fwd = jax.jacfwd(projection.projection_simplex)(x)
+    for scale in [1.0, 1e9]:
+      x = scale * rng.rand(5).astype(onp.float32)
+      v = scale * rng.randn(5).astype(onp.float32)
 
-    # Check against theoretical expression.
-    p = projection.projection_simplex(x)
-    support = (p > 0).astype(jnp.int32)
-    cardinality = jnp.count_nonzero(support)
-    J_true = jnp.diag(support) - jnp.outer(support, support) / cardinality
-    self.assertArraysAllClose(J_true, J_fwd)
-    self.assertArraysAllClose(J_true, J_rev)
+      J_rev = jax.jacrev(projection.projection_simplex)(x)
+      J_fwd = jax.jacfwd(projection.projection_simplex)(x)
 
-    # Check vector Jacobian product.
-    vJ, = jax.vjp(projection.projection_simplex, x)[1](v)
-    self.assertArraysAllClose(vJ, jnp.dot(v, J_true))
+      # Check against theoretical expression.
+      p = projection.projection_simplex(x)
+      support = (p > 0).astype(jnp.int32)
+      cardinality = jnp.count_nonzero(support)
+      J_true = jnp.diag(support) - jnp.outer(support, support) / cardinality
+      self.assertArraysAllClose(J_true, J_fwd)
+      self.assertArraysAllClose(J_true, J_rev)
 
-    # Check vector Jacobian product.
-    Jv = jax.jvp(projection.projection_simplex, (x,), (v,))[1]
-    self.assertArraysAllClose(Jv, jnp.dot(J_true, v))
+      # Check vector Jacobian product.
+      vJ, = jax.vjp(projection.projection_simplex, x)[1](v)
+      self.assertArraysAllClose(vJ, jnp.dot(v, J_true))
+
+      # Check vector Jacobian product.
+      Jv = jax.jvp(projection.projection_simplex, (x,), (v,))[1]
+      self.assertArraysAllClose(Jv, jnp.dot(J_true, v))
 
   def test_projection_simplex_vmap(self):
     rng = onp.random.RandomState(0)
