@@ -42,5 +42,26 @@ Deep learning
     </div>
 
 
+.. raw:: html
+
+    <div class="sphx-glr-clear"></div>
+Implicit Differentiation
+------------------------
+
+
+.. raw:: html
+
+    <div class="sphx-glr-thumbcontainer" tooltip="Bi-level dataset distillation with JAXopt.">
+
+.. only:: html
+
+ .. figure:: /notebooks/implicit_diff/thumbnails/plot_dataset_distillation.png
+     :alt: Dataset distillation example with JAXopt.
+
+     :doc:`/notebooks/implicit_diff/plot_dataset_distillation`
+
+.. raw:: html
+
+    </div>
 
 

@@ -93,7 +93,8 @@ exclude_patterns = [
     '_build',
     '**.ipynb_checkpoints',
     # Ignore markdown source for notebooks; myst-nb builds from the ipynb
-    'notebooks/deep_learning/*.md']
+    'notebooks/deep_learning/*.md',
+    'notebooks/implicit_diff/*.md']
 
 
 # -- Options for HTML output -------------------------------------------------
