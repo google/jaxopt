@@ -94,12 +94,11 @@ def _projection_unit_simplex(x: jnp.ndarray) -> jnp.ndarray:
   s = 1.0
   n_features = x.shape[0]
   u = jnp.sort(x)[::-1]
-  cssv = jnp.cumsum(u) - s
+  cumsum_u = jnp.cumsum(u)
   ind = jnp.arange(n_features) + 1
-  cond = u - cssv / ind > 0
+  cond = s / ind + (u - cumsum_u / ind) > 0
   idx = jnp.count_nonzero(cond)
-  threshold = cssv[idx - 1] / idx.astype(x.dtype)
-  return jax.nn.relu(x - threshold)
+  return jax.nn.relu(s / idx + (x - cumsum_u[idx - 1] / idx))
 
 
 @_projection_unit_simplex.defjvp

@@ -57,7 +57,9 @@ def binary_logistic_loss(label: int, logit: float) -> float:
   # Softplus is the Fenchel conjugate of the Fermi-Dirac negentropy on [0, 1].
   # softplus = proba * logit - xlogx(proba) - xlogx(1 - proba),
   # where xlogx(proba) = proba * log(proba).
-  return softplus(logit) - label * logit
+  # Use -log sigmoid(logit) = softplus(-logit)
+  # and 1 - sigmoid(logit) = sigmoid(-logit).
+  return softplus(jnp.where(label, -logit, logit))
 
 
 # Multiclass classification.
@@ -72,11 +74,13 @@ def multiclass_logistic_loss(label: int, logits: jnp.ndarray) -> float:
   Returns:
     loss value
   """
-  n_classes = logits.shape[0]
-  one_hot = jax.nn.one_hot(label, n_classes)
+  logits = jnp.asarray(logits)
   # Logsumexp is the Fenchel conjugate of the Shannon negentropy on the simplex.
   # logsumexp = jnp.dot(proba, logits) - jnp.dot(proba, jnp.log(proba))
-  return logsumexp(logits) - jnp.dot(logits, one_hot)
+  # To avoid roundoff error, subtract target inside logsumexp.
+  # logsumexp(logits) - logits[y] = logsumexp(logits - logits[y])
+  logits = (logits - logits[label]).at[label].set(0.0)
+  return logsumexp(logits)
 
 
 def multiclass_sparsemax_loss(label: int, scores: jnp.ndarray) -> float:
@@ -93,10 +97,10 @@ def multiclass_sparsemax_loss(label: int, scores: jnp.ndarray) -> float:
     Classification. André F. T. Martins, Ramón Fernandez Astudillo.
     ICML 2016.
   """
-  n_classes = scores.shape[0]
-  one_hot = jax.nn.one_hot(label, n_classes)
+  scores = jnp.asarray(scores)
   proba = projection_simplex(scores)
   # Fenchel conjugate of the Gini negentropy, defined by:
   # cumulant = jnp.dot(proba, scores) + 0.5 * jnp.dot(proba, (1 - proba)).
-  cumulant = 0.5 + jnp.dot(proba , scores - 0.5 * proba)
-  return cumulant - jnp.dot(scores, one_hot)
+  scores = (scores - scores[label]).at[label].set(0.0)
+  return (jnp.dot(proba, jnp.where(proba, scores, 0.0))
+          + 0.5 * (1.0 - jnp.dot(proba, proba)))
