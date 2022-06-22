@@ -15,7 +15,7 @@ kernelspec:
 # Adversarial training
 
 
-[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/google/jaxopt/blob/main/docs/notebooks/resnet_flax.ipynb)
+[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/google/jaxopt/blob/main/docs/notebooks/deep_learning/adversarial_training.ipynb)
 
 [*Fabian Pedregosa*](https://fa.bianp.net), [*Geoffrey Negiar*](http://geoffreynegiar.com/)
 
