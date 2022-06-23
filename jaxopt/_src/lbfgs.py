@@ -29,6 +29,7 @@ import jax.numpy as jnp
 
 from jaxopt._src import base
 from jaxopt._src.backtracking_linesearch import BacktrackingLineSearch
+from jaxopt._src.zoom_linesearch import zoom_linesearch
 from jaxopt.tree_util import tree_map
 from jaxopt.tree_util import tree_vdot
 from jaxopt.tree_util import tree_add_scalar_mul
@@ -157,6 +158,8 @@ class LBFGS(base.IterativeSolver):
 
     stepsize: a stepsize to use (if <= 0, use backtracking line search),
       or a callable specifying the **positive** stepsize to use at each iteration.
+    linesearch: the type of line search to use: "backtracking" for backtracking
+      line search or "zoom" for zoom line search.
     maxls: maximum number of iterations to use in the line search.
     decrease_factor: factor by which to decrease the stepsize during line search
       (default: 0.8).
@@ -194,6 +197,7 @@ class LBFGS(base.IterativeSolver):
   tol: float = 1e-3
 
   stepsize: Union[float, Callable] = 0.0
+  linesearch: str = "backtracking"
   condition: str = "strong-wolfe"
   maxls: int = 15
   decrease_factor: float = 0.8
@@ -267,26 +271,42 @@ class LBFGS(base.IterativeSolver):
 
     if not isinstance(self.stepsize, Callable) and self.stepsize <= 0:
       # with line search
-      ls = BacktrackingLineSearch(fun=self._value_and_grad_fun,
-                                  value_and_grad=True,
-                                  maxiter=self.maxls,
-                                  decrease_factor=self.decrease_factor,
-                                  max_stepsize=self.max_stepsize,
-                                  condition=self.condition,
-                                  jit=self.jit,
-                                  unroll=self.unroll)
-      init_stepsize = jnp.where(state.stepsize <= self.min_stepsize,
-                                # If stepsize became too small, we restart it.
-                                self.max_stepsize,
-                                # Otherwise, we increase a bit the previous one.
-                                state.stepsize * self.increase_factor)
-      new_stepsize, ls_state = ls.run(init_stepsize,
-                                      params, value, grad,
-                                      descent_direction,
-                                      *args, **kwargs)
-      new_value = ls_state.value
-      new_params = ls_state.params
-      new_grad = ls_state.grad
+
+      if self.linesearch == "backtracking":
+        ls = BacktrackingLineSearch(fun=self._value_and_grad_fun,
+                                    value_and_grad=True,
+                                    maxiter=self.maxls,
+                                    decrease_factor=self.decrease_factor,
+                                    max_stepsize=self.max_stepsize,
+                                    condition=self.condition,
+                                    jit=self.jit,
+                                    unroll=self.unroll)
+        init_stepsize = jnp.where(state.stepsize <= self.min_stepsize,
+                                  # If stepsize became too small, we restart it.
+                                  self.max_stepsize,
+                                  # Else, we increase a bit the previous one.
+                                  state.stepsize * self.increase_factor)
+        new_stepsize, ls_state = ls.run(init_stepsize,
+                                        params, value, grad,
+                                        descent_direction,
+                                        *args, **kwargs)
+        new_value = ls_state.value
+        new_params = ls_state.params
+        new_grad = ls_state.grad
+
+      elif self.linesearch == "zoom":
+        fun = lambda p: self._fun(p, *args, **kwargs)
+        ls_state = zoom_linesearch(f=fun, xk=params, pk=descent_direction,
+                              old_fval=value, gfk=grad, maxiter=self.maxls)
+        new_value = ls_state.f_k
+        new_stepsize = ls_state.a_k
+        new_grad = ls_state.g_k
+        # FIXME: zoom_linesearch currently doesn't return new_params
+        # so we have to recompute it.
+        new_params = tree_add_scalar_mul(params, new_stepsize, descent_direction)
+
+      else:
+        raise ValueError("Invalid name in 'linesearch' option.")
 
     else:
       # without line search
