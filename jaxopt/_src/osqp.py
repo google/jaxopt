@@ -962,6 +962,8 @@ class OSQP(base.Solver):
       (params, state), ``params = (primal_var, dual_var_eq, dual_var_ineq)``
     """
     assert params_obj is not None
+    if init_params is None:
+      init_params = self.init_params(None, params_obj, params_eq, params_ineq)
     init_params, hyper_params, eq_ineq_size = OSQP_to_BoxOSQP.transform(self.matvec_A_box,
                                                                         init_params, params_obj,
                                                                         params_eq, params_ineq)

@@ -2,5 +2,6 @@ absl-py>=0.7.0
 jax>=0.2.18
 jaxlib>=0.1.69
 numpy>=1.18.4
+numpy<1.23.0
 matplotlib>=2.0.1
 scipy>=1.0.0

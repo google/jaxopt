@@ -102,7 +102,6 @@ def multiclass_linear_svm_osqp(X, Y, l2reg):
                       params_eq=(None, b),
                       params_ineq=(None, h))
   
-  init_params = osqp._box_osqp.init_params(init_x=None, **hyper_params)
   sol, _ = osqp.run(init_params=None, **hyper_params)
   return sol.primal
 
