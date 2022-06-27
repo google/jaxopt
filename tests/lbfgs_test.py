@@ -203,8 +203,9 @@ class LbfgsTest(test_util.JaxoptTestCase):
 
     self.assertArraysAllClose(x1, x2, atol=1e-5)
 
-  @parameterized.product(use_gamma=[True, False])
-  def test_binary_logreg(self, use_gamma):
+  @parameterized.product(use_gamma=[True, False],
+                         linesearch=["backtracking", "zoom"])
+  def test_binary_logreg(self, use_gamma, linesearch):
     X, y = datasets.make_classification(n_samples=10, n_features=5,
                                         n_classes=2, n_informative=3,
                                         random_state=0)
@@ -212,7 +213,8 @@ class LbfgsTest(test_util.JaxoptTestCase):
     fun = objective.binary_logreg
 
     w_init = jnp.zeros(X.shape[1])
-    lbfgs = LBFGS(fun=fun, tol=1e-3, maxiter=500, use_gamma=use_gamma)
+    lbfgs = LBFGS(fun=fun, tol=1e-3, maxiter=500, use_gamma=use_gamma,
+                  linesearch=linesearch)
     # Test with keyword argument.
     w_fit, info = lbfgs.run(w_init, data=data)
 
