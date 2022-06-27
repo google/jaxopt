@@ -326,7 +326,7 @@ def projection_polyhedron(x: jnp.ndarray, hyperparams: Tuple,
   # check feasability by default; currently there is no way to return the info to the user inside @jit.
   hyperparams = dict(params_obj=(None, -x), params_eq=(A, b), params_ineq=(G, h))
   kkt_sol, state = osqp.run(**hyperparams)
-  if check_feasible and state.status == BoxOSQP.PRIMAL_INFEASIBLE:
+  if check_feasible and state.status in [BoxOSQP.PRIMAL_INFEASIBLE, BoxOSQP.DUAL_INFEASIBLE]:
     raise ValueError("The polyhedron is empty.")
   return kkt_sol.primal
 
