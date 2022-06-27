@@ -119,16 +119,16 @@ html_css_files = [
 
 
 # -- Options for myst ----------------------------------------------
-jupyter_execute_notebooks = "force"
-execution_allow_errors = False
-execution_fail_on_error = True  # Requires https://github.com/executablebooks/MyST-NB/pull/296
+nb_execution_mode = "force"
+nb_execution_allow_errors = False
+nb_execution_fail_on_error = True  # Requires https://github.com/executablebooks/MyST-NB/pull/296
 
 # Notebook cell execution timeout; defaults to 30.
-execution_timeout = 100
+nb_execution_timeout = 100
 
 # List of patterns, relative to source directory, that match notebook
 # files that will not be executed.
-execution_excludepatterns = [
+nb_execution_excludepatterns = [
     # Slow notebook
-    'notebooks/deep_learning/resnet_flax.*',
+    'notebooks/deep_learning/*.*',
 ]
