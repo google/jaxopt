@@ -1,18 +1,27 @@
 Changelog
 =========
 
-Development version
-___________________
+Version 0.4.3
+-------------
+
+New features
+~~~~~~~~~~~~
+
+- Added zoom line search in :class:`jaxopt.LBFGS`, by Mathieu Blondel. It can be enabled with the ``linesearch="zoom"`` option.
 
 Bug fixes and enhancements
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-- Add support for quadratic polynomial `fun` in :class:`jaxopt.BoxOSQP` and :class:`jaxopt.OSQP`.
+- Added support for quadratic polynomial `fun` in :class:`jaxopt.BoxOSQP` and :class:`jaxopt.OSQP`, by Louis Béthune.
+- Added a notebook for the dataset distillation example, by Amélie Héliou.
+- Fixed wrong links and deprecation warnings in notebooks, by Fabian Pedregosa.
+- Changed losses to avoid roundoff, by Jack Valmadre.
+- Fixed init_params bug in multiclass_svm example, by Louis Béthune.
 
 Contributors
 ~~~~~~~~~~~~
 
-Louis Béthune.
+Louis Béthune, Mathieu Blondel, Amélie Héliou, Fabian Pedregosa, Jack Valmadre.
 
 Version 0.4.2
 -------------
