@@ -34,7 +34,7 @@ from jaxopt.version import __version__
 # -- Project information -----------------------------------------------------
 
 project = 'JAXopt'
-copyright = '2021, the JAXopt authors'
+copyright = '2021-2022, the JAXopt authors'
 author = 'JAXopt authors'
 
 # The full version, including alpha/beta/rc tags

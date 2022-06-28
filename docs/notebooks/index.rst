@@ -58,7 +58,7 @@ Implicit Differentiation
  .. figure:: /notebooks/implicit_diff/thumbnails/plot_dataset_distillation.png
      :alt: Dataset distillation example with JAXopt.
 
-     :doc:`/notebooks/implicit_diff/plot_dataset_distillation`
+     :doc:`/notebooks/implicit_diff/dataset_distillation`
 
 .. raw:: html
 
