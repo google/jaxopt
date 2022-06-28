@@ -226,8 +226,9 @@ class LbfgsTest(test_util.JaxoptTestCase):
                                  multiclass=False)
     self.assertArraysAllClose(w_fit, w_skl, atol=5e-2)
 
-  @parameterized.product(use_gamma=[True, False])
-  def test_multiclass_logreg(self, use_gamma):
+  @parameterized.product(use_gamma=[True, False],
+                         linesearch=["backtracking", "zoom"])
+  def test_multiclass_logreg(self, use_gamma, linesearch):
     X, y = datasets.make_classification(n_samples=10, n_features=5,
                                         n_classes=3, n_informative=3,
                                         random_state=0)
@@ -238,7 +239,8 @@ class LbfgsTest(test_util.JaxoptTestCase):
     b_init = jnp.zeros(3)
     pytree_init = (W_init, b_init)
 
-    lbfgs = LBFGS(fun=fun, tol=1e-3, maxiter=500, use_gamma=use_gamma)
+    lbfgs = LBFGS(fun=fun, tol=1e-3, maxiter=500, use_gamma=use_gamma,
+                  linesearch=linesearch)
     # Test with positional argument.
     pytree_fit, info = lbfgs.run(pytree_init, data)
 

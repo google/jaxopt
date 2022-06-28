@@ -35,6 +35,7 @@ FLAGS = flags.FLAGS
 flags.DEFINE_integer("maxiter", default=30, help="Max # of iterations.")
 flags.DEFINE_integer("n_samples", default=10000, help="Number of samples.")
 flags.DEFINE_integer("n_features", default=200, help="Number of features.")
+flags.DEFINE_string("task", "binary_logreg", "Task to benchmark.")
 
 
 def binary_logreg(linesearch):
@@ -46,6 +47,27 @@ def binary_logreg(linesearch):
   data = (X, y)
   fun = jaxopt.objective.binary_logreg
   init = jnp.zeros(X.shape[1])
+  lbfgs = jaxopt.LBFGS(fun=fun, linesearch=linesearch)
+  state = lbfgs.init_state(init, data=data)
+  errors = onp.zeros(FLAGS.maxiter)
+  params = init
+
+  for it in range(FLAGS.maxiter):
+    params, state = lbfgs.update(params, state, data=data)
+    errors[it] = state.error
+
+  return errors
+
+
+def multiclass_logreg(linesearch):
+  X, y = datasets.make_classification(n_samples=FLAGS.n_samples,
+                                      n_features=FLAGS.n_features,
+                                      n_classes=5,
+                                      n_informative=5,
+                                      random_state=0)
+  data = (X, y)
+  fun = jaxopt.objective.multiclass_logreg
+  init = jnp.zeros((X.shape[1], 5))
   lbfgs = jaxopt.LBFGS(fun=fun, linesearch=linesearch)
   state = lbfgs.init_state(init, data=data)
   errors = onp.zeros(FLAGS.maxiter)
@@ -72,6 +94,20 @@ def run_binary_logreg():
   plt.show()
 
 
+def run_multiclass_logreg():
+  errors_backtracking = multiclass_logreg("backtracking")
+  errors_zoom = multiclass_logreg("zoom")
+
+  plt.figure()
+  plt.plot(jnp.arange(FLAGS.maxiter), errors_backtracking, label="backtracking")
+  plt.plot(jnp.arange(FLAGS.maxiter), errors_zoom, label="zoom")
+  plt.xlabel("Iterations")
+  plt.ylabel("Gradient error")
+  plt.yscale("log")
+  plt.legend(loc="best")
+  plt.show()
+
+
 def main(argv):
   if len(argv) > 1:
     raise app.UsageError("Too many command-line arguments.")
@@ -79,9 +115,15 @@ def main(argv):
   print("n_samples:", FLAGS.n_samples)
   print("n_features:", FLAGS.n_features)
   print("maxiter:", FLAGS.maxiter)
+  print("task:", FLAGS.task)
   print()
 
-  run_binary_logreg()
+  if FLAGS.task == "binary_logreg":
+    run_binary_logreg()
+  elif FLAGS.task == "multiclass_logreg":
+    run_multiclass_logreg()
+  else:
+    raise ValueError("Invalid task name.")
 
 
 if __name__ == '__main__':

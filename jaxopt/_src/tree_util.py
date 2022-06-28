@@ -97,6 +97,7 @@ _vdot = functools.partial(jnp.vdot, precision=jax.lax.Precision.HIGHEST)
 def _vdot_safe(a, b):
   return _vdot(jnp.asarray(a), jnp.asarray(b))
 
+
 def tree_vdot(tree_x, tree_y):
   """Compute the inner product <tree_x, tree_y>."""
   vdots = tree_map(_vdot_safe, tree_x, tree_y)
