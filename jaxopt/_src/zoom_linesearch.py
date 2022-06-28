@@ -24,6 +24,7 @@ from functools import partial
 import jax.numpy as jnp
 import jax
 from jax import lax
+from jaxopt.tree_util import tree_vdot, tree_add_scalar_mul, tree_map
 
 _dot = partial(jnp.dot, precision=lax.Precision.HIGHEST)
 
@@ -57,7 +58,10 @@ def _binary_replace(replace_bit, original_dict, new_dict, keys=None):
     keys = new_dict.keys()
   out = dict()
   for key in keys:
-    out[key] = jnp.where(replace_bit, new_dict[key], original_dict[key])
+    #out[key] = jnp.where(replace_bit, new_dict[key], original_dict[key])
+    out[key] = tree_map(lambda x, y: jnp.where(replace_bit, x, y),
+                        new_dict[key],
+                        original_dict[key])
   return out
 
 
@@ -141,7 +145,7 @@ def _zoom(restricted_func_and_grad, wolfe_one, wolfe_two, a_lo, phi_lo,
     phi_j, dphi_j, g_j = restricted_func_and_grad(a_j)
     phi_j = phi_j.astype(state.phi_lo.dtype)
     dphi_j = dphi_j.astype(state.dphi_lo.dtype)
-    g_j = g_j.astype(state.g_star.dtype)
+    #g_j = g_j.astype(state.g_star.dtype)
     state = state._replace(nfev=state.nfev + 1,
                            ngev=state.ngev + 1)
 
@@ -272,21 +276,24 @@ def zoom_linesearch(f, xk, pk, old_fval=None, old_old_fval=None, gfk=None, c1=1e
   Returns: LineSearchResults
   """
   #xk, pk = _promote_dtypes_inexact(xk, pk)
-  xk = jnp.asarray(xk)
-  pk = jnp.asarray(pk)
+  #xk = jnp.asarray(xk)
+  #pk = jnp.asarray(pk)
 
   def restricted_func_and_grad(t):
-    t = jnp.array(t, dtype=pk.dtype)
-    # FIXME: directly acept a value_and_grad function to avoid recompilations.
-    phi, g = jax.value_and_grad(f)(xk + t * pk)
-    dphi = jnp.real(_dot(g, pk))
+    #t = jnp.array(t, dtype=pk.dtype)
+
+    xkp1 = tree_add_scalar_mul(xk, t, pk)
+
+    # FIXME: directly accept a value_and_grad function to avoid recompilations.
+    phi, g = jax.value_and_grad(f)(xkp1)
+    dphi = jnp.real(tree_vdot(g, pk))
     return phi, dphi, g
 
   if old_fval is None or gfk is None:
     phi_0, dphi_0, gfk = restricted_func_and_grad(0)
   else:
     phi_0 = old_fval
-    dphi_0 = jnp.real(_dot(gfk, pk))
+    dphi_0 = jnp.real(tree_vdot(gfk, pk))
   if old_old_fval is not None:
     candidate_start_value = 1.01 * 2 * (phi_0 - old_old_fval) / dphi_0
     start_value = jnp.where(candidate_start_value > 1, 1.0, candidate_start_value)
