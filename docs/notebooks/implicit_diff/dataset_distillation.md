@@ -5,7 +5,7 @@ jupytext:
     extension: .md
     format_name: myst
     format_version: 0.13
-    jupytext_version: 1.13.6
+    jupytext_version: 1.13.8
 kernelspec:
   display_name: Python 3
   name: python3
@@ -23,8 +23,6 @@ kernelspec:
 Dataset distillation [Maclaurin et al. 2015](https://arxiv.org/pdf/1502.03492.pdf), [Wang et al. 2020](https://arxiv.org/pdf/1811.10959.pdf) aims to learn a small synthetic
 training dataset such that a model trained on this learned data set achieves
 small loss on the original training set.
-
-[*Mathieu Blondel*](https://mblondel.org/), [*Fabian Pedregosa*](https://fa.bianp.net)
 
 +++ {"id": "T_1ezvj0ut0L"}
 
