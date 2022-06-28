@@ -131,4 +131,5 @@ nb_execution_timeout = 100
 nb_execution_excludepatterns = [
     # Slow notebook
     'notebooks/deep_learning/*.*',
+    'notebooks/implicit_diff/dataset_distillation.*',
 ]
