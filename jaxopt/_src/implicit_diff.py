@@ -15,12 +15,14 @@
 """Implicit differentiation of roots and fixed points."""
 
 import inspect
+import functools
 from typing import Any
 from typing import Callable
 from typing import Optional
 from typing import Tuple
 
 import jax
+import jax.numpy as jnp
 
 from jaxopt._src import base
 from jaxopt._src import linear_solve
@@ -28,9 +30,11 @@ from jaxopt._src.tree_util import tree_add
 from jaxopt._src.tree_util import tree_mul
 from jaxopt._src.tree_util import tree_scalar_mul
 from jaxopt._src.tree_util import tree_sub
+from jaxopt._src.tree_util import tree_map
 
 
 def root_vjp(optimality_fun: Callable,
+             support_fun: Callable,
              sol: Any,
              args: Tuple,
              cotangent: Any,
@@ -41,6 +45,7 @@ def root_vjp(optimality_fun: Callable,
 
   Args:
     optimality_fun: the optimality function to use.
+    support_fun: the support function.
     sol: solution / root (pytree).
     args: tuple containing the arguments with respect to which we wish to
       differentiate ``sol`` against.
@@ -57,15 +62,18 @@ def root_vjp(optimality_fun: Callable,
     # We close over the arguments.
     return optimality_fun(sol, *args)
 
+  support = support_fun(sol)
   _, vjp_fun_sol = jax.vjp(fun_sol, sol)
 
   # Compute the multiplication A^T u = (u^T A)^T.
-  matvec = lambda u: vjp_fun_sol(u)[0]
+  def matvec(u):
+    Au = vjp_fun_sol(u)[0]
+    return tree_mul(Au, support)
 
   # The solution of A^T u = v, where
   # A = jacobian(optimality_fun, argnums=0)
   # v = -cotangent.
-  v = tree_scalar_mul(-1, cotangent)
+  v = tree_scalar_mul(-1, tree_mul(cotangent, support))
   u = solve(matvec, v)
 
   def fun_args(*args):
@@ -168,8 +176,8 @@ def _signature_bind_and_match(signature, *args, **kwargs):
   return out_args, out_kwargs, map_back
 
 
-def _custom_root(solver_fun, optimality_fun, solve, has_aux,
-                 reference_signature=None):
+def _custom_root(solver_fun, optimality_fun, support_fun, solve,
+                 has_aux, reference_signature=None):
   # When caling through `jax.custom_vjp`, jax attempts to resolve all
   # arguments passed by keyword to positions (this is in order to
   # match against a `nondiff_argnums` parameter that we do not use
@@ -233,8 +241,9 @@ def _custom_root(solver_fun, optimality_fun, solve, has_aux,
             "both of which are currently unsupported.")
 
       # Compute VJPs w.r.t. args.
-      vjps = root_vjp(optimality_fun=optimality_fun, sol=sol,
-                      args=ba_args[1:], cotangent=cotangent, solve=solve)
+      vjps = root_vjp(optimality_fun=optimality_fun, support_fun=support_fun,
+                      sol=sol, args=ba_args[1:], cotangent=cotangent,
+                      solve=solve)
       # Prepend None as the vjp for init_params.
       vjps = (None,) + vjps
 
@@ -255,6 +264,7 @@ def _custom_root(solver_fun, optimality_fun, solve, has_aux,
 
 def custom_root(optimality_fun: Callable,
                 has_aux: bool = False,
+                support_fun: Optional[Callable] = None,
                 solve: Callable = linear_solve.solve_normal_cg,
                 reference_signature: Optional[Callable] = None):
   """Decorator for adding implicit differentiation to a root solver.
@@ -264,6 +274,10 @@ def custom_root(optimality_fun: Callable,
       The invariant is ``optimality_fun(sol, *args) == 0`` at the
       solution / root ``sol``.
     has_aux: whether the decorated solver function returns auxiliary data.
+    support_fun: optional support function ``support_fun(params)``, returning
+      the support of a pytree ``params``. This function returns a pytree with
+      the same structure and dtypes as ``params``, equal to 1 for the
+      coordinates of ``params`` in the support, and 0 otherwise.
     solve: a linear solver of the form ``solve(matvec, b)``.
     reference_signature: optional function signature
       (i.e. arguments and keyword arguments), with which the
@@ -282,9 +296,12 @@ def custom_root(optimality_fun: Callable,
   if solve is None:
     solve = linear_solve.solve_normal_cg
 
+  if support_fun is None:
+    support_fun = functools.partial(tree_map, jnp.ones_like)
+
   def wrapper(solver_fun):
-    return _custom_root(solver_fun, optimality_fun, solve, has_aux,
-                        reference_signature)
+    return _custom_root(solver_fun, optimality_fun, support_fun, solve,
+                        has_aux, reference_signature)
 
   return wrapper
 

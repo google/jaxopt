@@ -21,6 +21,9 @@ import jax
 import jax.numpy as jnp
 
 from jaxopt import implicit_diff as idf
+from jaxopt import objective
+from jaxopt import prox
+from jaxopt import support
 from jaxopt._src import test_util
 
 from sklearn import datasets
@@ -44,6 +47,19 @@ def ridge_solver_with_kwargs(init_params, **kw):
   return ridge_solver(init_params, kw['lam'], kw['X'], kw['y'])
 
 
+def lasso_optimality_fun(params, lam, sol, X, y):
+  del sol  # not used
+  step = params - jax.grad(objective.least_squares)(params, (X, y))
+  return prox.prox_lasso(step, l1reg=lam, scaling=1.) - params
+
+
+def lasso_oracle_solver(init_params, lam, sol, X, y):
+  # Jax-compatible function that returns the solution of Lasso,
+  # obtained with an oracle (e.g., jaxopt.test_util.lasso_skl)
+  del init_params, lam, X, y  # not used
+  return sol
+
+
 class ImplicitDiffTest(test_util.JaxoptTestCase):
 
   def test_root_vjp(self):
@@ -52,12 +68,36 @@ class ImplicitDiffTest(test_util.JaxoptTestCase):
     lam = 5.0
     sol = ridge_solver(None, lam, X, y)
     vjp = lambda g: idf.root_vjp(optimality_fun=optimality_fun,
+                                 support_fun=jnp.ones_like,
                                  sol=sol,
                                  args=(lam, X, y),
                                  cotangent=g)[0]  # vjp w.r.t. lam
     I = jnp.eye(len(sol))
     J = jax.vmap(vjp)(I)
     J_num = test_util.ridge_solver_jac(X, y, lam, eps=1e-4)
+    self.assertArraysAllClose(J, J_num, atol=5e-2)
+
+  def test_root_vjp_support(self):
+    X, y = datasets.make_regression(n_samples=10, n_features=10,
+                                    n_informative=3, random_state=0)
+    lam = 5.0
+    sol = test_util.lasso_skl(X, y, lam, tol=1e-5, fit_intercept=False)
+    vjp = lambda g: idf.root_vjp(optimality_fun=lasso_optimality_fun,
+                                 support_fun=support.support_nonzero,
+                                 sol=sol,
+                                 args=(lam, sol, X, y),
+                                 cotangent=g)[0]  # vjp w.r.t. lam
+    I = jnp.eye(len(sol))
+    J = jax.vmap(vjp)(I)
+    self.assertArraysEqual(
+      support.support_nonzero(J),
+      support.support_nonzero(sol)
+    )
+    J_num = test_util.lasso_skl_jac(X, y, lam, eps=1e-4)
+    self.assertArraysEqual(
+      support.support_nonzero(J_num),
+      support.support_nonzero(sol)
+    )
     self.assertArraysAllClose(J, J_num, atol=5e-2)
 
   def test_root_jvp(self):
@@ -98,6 +138,28 @@ class ImplicitDiffTest(test_util.JaxoptTestCase):
     self.assertArraysAllClose(sol, sol_decorated, atol=1e-4)
     J_num = test_util.ridge_solver_jac(X, y, lam, eps=1e-4)
     J, _ = jax.jacrev(ridge_solver_decorated, argnums=1)(None, lam, X=X, y=y)
+    self.assertArraysAllClose(J, J_num, atol=5e-2)
+
+  def test_custom_root_support(self):
+    X, y = datasets.make_regression(n_samples=10, n_features=10,
+                                    n_informative=3, random_state=0)
+    lam = 5.0
+    lasso_solver_decorated = idf.custom_root(
+      optimality_fun=lasso_optimality_fun,
+      support_fun=support.support_nonzero)(lasso_oracle_solver)
+    sol = test_util.lasso_skl(X, y, lam, tol=1e-5, fit_intercept=False)
+    sol_decorated = lasso_solver_decorated(None, lam, sol, X, y)
+    self.assertArraysEqual(sol, sol_decorated)  # The solver uses an oracle
+    J = jax.jacrev(lasso_solver_decorated, argnums=1)(None, lam, sol, X, y)
+    self.assertArraysEqual(
+      support.support_nonzero(J),
+      support.support_nonzero(sol)
+    )
+    J_num = test_util.lasso_skl_jac(X, y, lam, eps=1e-4)
+    self.assertArraysEqual(
+      support.support_nonzero(J_num),
+      support.support_nonzero(sol)
+    )
     self.assertArraysAllClose(J, J_num, atol=5e-2)
 
   def test_custom_fixed_point(self):
