@@ -100,6 +100,40 @@ class ImplicitDiffTest(test_util.JaxoptTestCase):
     )
     self.assertArraysAllClose(J, J_num, atol=5e-2)
 
+  def test_root_vjp_support_jit(self):
+    X, y = datasets.make_regression(n_samples=10, n_features=10,
+                                    n_informative=3, random_state=0)
+    lam = 5.0
+    sol = test_util.lasso_skl(X, y, lam, tol=1e-5, fit_intercept=False)
+    vjp = lambda g, sol, X: idf.root_vjp(optimality_fun=lasso_optimality_fun,
+                                         support_fun=support.support_nonzero,
+                                         sol=sol,
+                                         args=(lam, sol, X, y),
+                                         cotangent=g)[0]  # vjp w.r.t. lam
+    jacobian = jax.jit(jax.vmap(vjp, in_axes=(0, None, None)))
+    I = jnp.eye(len(sol))
+    J = jacobian(I, sol, X)
+    J_num = test_util.lasso_skl_jac(X, y, lam, eps=1e-4)
+    self.assertArraysAllClose(J, J_num, atol=5e-2)
+
+    # Take an arbitrary coordinate in the support and mask it in X to get
+    # a solution with a smaller support.
+    support_idx = (sol != 0).argmax()
+    X[:, support_idx] = 0.
+    sol_sub = test_util.lasso_skl(X, y, lam, tol=1e-5, fit_intercept=False)
+    self.assertLess(
+      support.support_nonzero(sol_sub).sum(),
+      support.support_nonzero(sol).sum()
+    )
+
+    # Compute the Jacobian matrix with the permuted solution, and verify
+    # that the function `jacobian` has only been compiled once (no
+    # recompilation necessary, despite a smaller support).
+    J_sub = jacobian(I, sol_sub, X)
+    J_sub_num = test_util.lasso_skl_jac(X, y, lam, eps=1e-4)
+    self.assertArraysAllClose(J_sub, J_sub_num, atol=5e-2)
+    self.assertEqual(jacobian._cache_size(), 1)
+
   def test_root_jvp(self):
     X, y = datasets.make_regression(n_samples=10, n_features=3, random_state=0)
     optimality_fun = jax.grad(ridge_objective)
