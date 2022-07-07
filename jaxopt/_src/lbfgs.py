@@ -295,9 +295,11 @@ class LBFGS(base.IterativeSolver):
         new_grad = ls_state.grad
 
       elif self.linesearch == "zoom":
-        fun = lambda p: self._fun(p, *args, **kwargs)
-        ls_state = zoom_linesearch(f=fun, xk=params, pk=descent_direction,
-                              old_fval=value, gfk=grad, maxiter=self.maxls)
+        ls_state = zoom_linesearch(f=self._value_and_grad_with_aux,
+                                   xk=params, pk=descent_direction,
+                                   old_fval=value, gfk=grad, maxiter=self.maxls,
+                                   value_and_grad=True, has_aux=True,
+                                   args=args, kwargs=kwargs)
         new_value = ls_state.f_k
         new_stepsize = ls_state.a_k
         new_grad = ls_state.g_k

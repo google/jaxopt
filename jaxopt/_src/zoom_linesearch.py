@@ -260,12 +260,15 @@ class _LineSearchResults(NamedTuple):
   status: Union[bool, jnp.ndarray]
 
 
-def zoom_linesearch(f, xk, pk, old_fval=None, old_old_fval=None, gfk=None, c1=1e-4,
-                c2=0.9, maxiter=20):
+def zoom_linesearch(f, xk, pk, old_fval=None, old_old_fval=None, gfk=None,
+                    c1=1e-4, c2=0.9, maxiter=20, value_and_grad=False,
+                    has_aux=False, args=[], kwargs={}):
   """Inexact line search that satisfies strong Wolfe conditions.
-  Algorithm 3.5 from Wright and Nocedal, 'Numerical Optimization', 1999, pg. 59-61
+  Algorithm 3.5 from Wright and Nocedal, 'Numerical Optimization', 1999,
+  pages 59-61.
+
   Args:
-    fun: function of the form f(x) where x is a flat ndarray and returns a real
+    f: function of the form f(x) where x is a flat ndarray and returns a real
       scalar. The function should be composed of operations with vjp defined.
     x0: initial guess.
     pk: direction to search in. Assumes the direction is a descent direction.
@@ -273,19 +276,27 @@ def zoom_linesearch(f, xk, pk, old_fval=None, old_old_fval=None, gfk=None, c1=1e
     old_old_fval: unused argument, only for scipy API compliance.
     maxiter: maximum number of iterations to search
     c1, c2: Wolfe criteria constant, see ref.
+    value_and_grad: whether f returns just the value (False) or the value and
+      grad (True).
+    args, kwargs: optional positional and keywords arguments to be passed to f.
   Returns: LineSearchResults
   """
   #xk, pk = _promote_dtypes_inexact(xk, pk)
   #xk = jnp.asarray(xk)
   #pk = jnp.asarray(pk)
 
+  if value_and_grad:
+    f_value_and_grad = f
+  else:
+    f_value_and_grad = jax.value_and_grad(f, has_aux=has_aux)
+
   def restricted_func_and_grad(t):
     #t = jnp.array(t, dtype=pk.dtype)
-
     xkp1 = tree_add_scalar_mul(xk, t, pk)
-
-    # FIXME: directly accept a value_and_grad function to avoid recompilations.
-    phi, g = jax.value_and_grad(f)(xkp1)
+    if has_aux:
+      (phi, aux), g = f_value_and_grad(xkp1, *args, **kwargs)
+    else:
+      phi, g = f_value_and_grad(xkp1, *args, **kwargs)
     dphi = jnp.real(tree_vdot(g, pk))
     return phi, dphi, g
 

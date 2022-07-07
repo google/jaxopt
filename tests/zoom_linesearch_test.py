@@ -1,7 +1,7 @@
 from absl.testing import absltest, parameterized
 import scipy.optimize
 
-from jax import grad
+import jax
 import jax.numpy as jnp
 import numpy as onp
 
@@ -151,11 +151,14 @@ class ZoomLinesearchTest(test_util.JaxoptTestCase):
     xk = jnp.ones(2)
     pk = jnp.array([-0.5, -0.25])
     res = zoom_linesearch(f, xk, pk, maxiter=100)
-
-    scipy_res = scipy.optimize.line_search(f, grad(f), xk, pk)
+    res2 = zoom_linesearch(jax.value_and_grad(f), xk, pk, maxiter=100,
+                           value_and_grad=True)
+    scipy_res = scipy.optimize.line_search(f, jax.grad(f), xk, pk)
 
     self.assertAllClose(scipy_res[0], res.a_k, atol=1e-5, check_dtypes=False)
     self.assertAllClose(scipy_res[3], res.f_k, atol=1e-5, check_dtypes=False)
+    self.assertAllClose(scipy_res[0], res2.a_k, atol=1e-5, check_dtypes=False)
+    self.assertAllClose(scipy_res[3], res2.f_k, atol=1e-5, check_dtypes=False)
 
 
 if __name__ == "__main__":
