@@ -122,6 +122,7 @@ html_css_files = [
 nb_execution_mode = "force"
 nb_execution_allow_errors = False
 nb_execution_fail_on_error = True  # Requires https://github.com/executablebooks/MyST-NB/pull/296
+myst_enable_extensions = ['dollarmath'] # To display maths in notebook
 
 # Notebook cell execution timeout; defaults to 30.
 nb_execution_timeout = 100
