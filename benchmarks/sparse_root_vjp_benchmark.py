@@ -37,9 +37,9 @@ def lasso_optimality_fun(params, lam, X, y):
   return prox.prox_lasso(step, l1reg=lam, scaling=1.) - params
 
 
-def get_vjp(lam, X, y, sol, support_fun, maxiter, jit=False):
+def get_vjp(lam, X, y, sol, support_fun, maxiter, solve_fn=linear_solve.solve_cg):
     def solve(matvec, b):
-      return linear_solve.solve_cg(matvec, b, tol=1e-6, maxiter=maxiter)
+      return solve_fn(matvec, b, tol=1e-6, maxiter=maxiter)
 
     vjp = lambda g: idf.root_vjp(optimality_fun=lasso_optimality_fun,
                                  support_fun=support_fun,
@@ -47,8 +47,6 @@ def get_vjp(lam, X, y, sol, support_fun, maxiter, jit=False):
                                  args=(lam, X, y),
                                  cotangent=g,
                                  solve=solve)[0]
-    if jit:
-      vjp = jax.jit(vjp)
     return vjp
 
 
@@ -89,20 +87,24 @@ def main(argv: Sequence[str]) -> None:
   # support of the solution. This is the default behavior in JAXopt, and
   # requires solving a linear system with a 1000x1000 dense matrix. Ignoring
   # the support of the solution leads to an inacurrate Jacobian.
-  vjp = get_vjp(lam, X, y, sol, support.support_all, maxiter=1000, jit=False)
-  benchmark_vjp(vjp, X, supp=supp, desc='Jacobian w/o support')
+  vjp = get_vjp(lam, X, y, sol, support.support_all, maxiter=1000)
+  benchmark_vjp(vjp, X, supp=supp, desc='Jacobian w/o support, CG')
+
+  vjp = get_vjp(lam, X, y, sol, support.support_all, maxiter=1000,
+                solve_fn=linear_solve.solve_normal_cg)
+  benchmark_vjp(vjp, X, supp=supp, desc='Jacobian w/o support, normal CG')
 
   # Compute the Jacobian wrt. lambda, restricting the data X and the solution
   # to the support of the solution. This requires solving a linear system with
   # a 4x4 dense matrix. Restricting the support this way is not jit-friendly,
   # and will require new compilation if the size of the support changes.
-  vjp = get_vjp(lam, X[:, supp], y, sol[supp], support.support_all, maxiter=1000, jit=False)
+  vjp = get_vjp(lam, X[:, supp], y, sol[supp], support.support_all, maxiter=1000)
   benchmark_vjp(vjp, X[:, supp], desc='Jacobian w/ restricted support')
 
   # Compute the Jacobian wrt. lambda, by masking the linear system to solve
   # with the support of the solution. This requires solving a linear system with
   # a 1000x1000 sparse matrix. Masking with the support is jit-friendly.
-  vjp = get_vjp(lam, X, y, sol, support.support_nonzero, maxiter=1000, jit=False)
+  vjp = get_vjp(lam, X, y, sol, support.support_nonzero, maxiter=1000)
   benchmark_vjp(vjp, X, supp=supp, desc='Jacobian w/ masked support')
 
 
