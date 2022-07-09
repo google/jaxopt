@@ -126,7 +126,7 @@ class ImplicitDiffTest(test_util.JaxoptTestCase):
       support.support_nonzero(sol).sum()
     )
 
-    # Compute the Jacobian matrix with the permuted solution, and verify
+    # Compute the Jacobian matrix with the smaller-support solution, and verify
     # that the function `jacobian` has only been compiled once (no
     # recompilation necessary, despite a smaller support).
     J_sub = jacobian(I, sol_sub, X)
