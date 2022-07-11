@@ -102,6 +102,8 @@ The following operators are available.
     jaxopt.projection.projection_affine_set
     jaxopt.projection.projection_polyhedron
     jaxopt.projection.projection_box_section
+    jaxopt.projection.projection_transport
+    jaxopt.projection.projection_birkhoff
 
 Projections always have two arguments: the input to be projected and the
 parameters of the convex set.
@@ -113,6 +115,24 @@ Mirror descent
   :toctree: _autosummary
 
     jaxopt.MirrorDescent
+
+Kullback-Leibler projections
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The Kullback-Leibler projection onto :math:`\mathcal{C}(\upsilon)` is:
+
+.. math::
+
+    \text{proj}_{\mathcal{C}}(x', \upsilon) :=
+    \underset{x}{\text{argmin}} ~ \text{KL}(x, \exp(x')) \textrm{ subject to } x \in \mathcal{C}(\upsilon).
+
+The following operators are available.
+
+.. autosummary::
+  :toctree: _autosummary
+
+    jaxopt.projection.kl_projection_transport
+    jaxopt.projection.kl_projection_birkhoff
 
 Box constraints
 ---------------

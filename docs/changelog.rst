@@ -1,6 +1,31 @@
 Changelog
 =========
 
+Development version
+-------------------
+
+New features
+~~~~~~~~~~~~
+
+- Added optimal transport related projections:
+  :func:`projection_transport <jaxopt.projection.projection_transport>`,
+  :func:`projection_birkhoff <jaxopt.projection.projection_birkhoff>`,
+  :func:`kl_projection_transport <jaxopt.projection.kl_projection_transport>`,
+  and
+  :func:`kl_projection_birkhoff <jaxopt.projection.kl_projection_birkhoff>`,
+  by Mathieu Blondel.
+
+Bug fixes and enhancements
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- Fix LaTeX rendering issue in notebooks, by Amélie Héliou.
+- Avoid gradient recompilations in zoom line search, by Mathieu Blondel.
+
+Contributors
+~~~~~~~~~~~~
+
+Mathieu Blondel, Amélie Héliou.
+
 Version 0.4.3
 -------------
 
