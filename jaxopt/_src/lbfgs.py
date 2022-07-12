@@ -230,13 +230,19 @@ class LBFGS(base.IterativeSolver):
     Returns:
       state
     """
+    if self.has_aux:
+      _, aux = self.fun(init_params, *args, **kwargs)
+    else:
+      aux = None
+
     return LbfgsState(iter_num=jnp.asarray(0),
                       value=jnp.asarray(jnp.inf),
                       stepsize=jnp.asarray(self.max_stepsize),
                       error=jnp.asarray(jnp.inf),
                       s_history=init_history(init_params, self.history_size),
                       y_history=init_history(init_params, self.history_size),
-                      rho_history=jnp.zeros(self.history_size))
+                      rho_history=jnp.zeros(self.history_size),
+                      aux=aux)
 
   def update(self,
              params: Any,

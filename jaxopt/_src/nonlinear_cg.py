@@ -113,14 +113,17 @@ class NonlinearCG(base.IterativeSolver):
     Returns:
       state
     """
-    value, grad = self._value_and_grad_fun(init_params, *args, **kwargs)
+    (value, aux), grad = self._value_and_grad_with_aux(init_params,
+                                                       *args,
+                                                       **kwargs)
 
     return NonlinearCGState(iter_num=jnp.asarray(0),
                             stepsize=jnp.asarray(self.max_stepsize),
                             error=jnp.asarray(jnp.inf),
                             value=value,
                             grad=grad,
-                            descent_direction=tree_scalar_mul(-1.0, grad))
+                            descent_direction=tree_scalar_mul(-1.0, grad),
+                            aux=aux)
 
   def update(self,
              params: Any,
@@ -138,7 +141,10 @@ class NonlinearCG(base.IterativeSolver):
     """
 
     eps = 1e-6
-    value, grad, descent_direction = state.value, state.grad, state.descent_direction
+    value = state.value
+    grad = state.grad
+    descent_direction = state.descent_direction
+
     ls = BacktrackingLineSearch(fun=self._value_and_grad_fun,
                                 value_and_grad=True,
                                 maxiter=self.maxls,

@@ -214,17 +214,20 @@ class ArmijoSGD(base.StochasticSolver):
     Returns:
       state
     """
-    del args, kwargs  # Not used.
-
     if self.momentum == 0:
       velocity = None
     else:
       velocity = tree_zeros_like(init_params)
 
+    if self.has_aux:
+      _, aux = self.fun(init_params, *args, **kwargs)
+    else:
+      aux = None
+
     return ArmijoState(iter_num=jnp.asarray(0),
                        error=jnp.asarray(jnp.inf),
                        value=jnp.asarray(jnp.inf),
-                       aux=None,
+                       aux=aux,
                        stepsize=jnp.asarray(self.max_stepsize),
                        velocity=velocity)
 

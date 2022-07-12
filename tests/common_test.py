@@ -95,6 +95,28 @@ class CommonTest(test_util.JaxoptTestCase):
     params, state = update(params=None, state=state0)
     test_util.check_states_have_same_types(state0, state)
 
+  def test_aux_consistency(self):
+    def fun(w, X, y):
+      residuals = jnp.dot(X, w) - y
+      return jnp.sum(residuals ** 2), residuals
+
+    X, y = datasets.make_classification(n_samples=10, n_features=5, n_classes=3,
+                                        n_informative=3, random_state=0)
+
+
+    for solver in (jaxopt.OptaxSolver(opt=optax.adam(1e-3), fun=fun,
+                                      has_aux=True),
+                   jaxopt.LBFGS(fun=fun, has_aux=True),
+                   jaxopt.NonlinearCG(fun=fun, has_aux=True),
+                   jaxopt.GradientDescent(fun=fun, has_aux=True),
+                   jaxopt.ArmijoSGD(fun=fun, has_aux=True),
+                   jaxopt.PolyakSGD(fun=fun, has_aux=True),
+                   ):
+
+      params = jnp.zeros(X.shape[1])
+      state1 = solver.init_state(params, X, y)
+      params, state2 = solver.update(params, state1, X, y)
+      self.assertEqual(type(state1.aux), type(state2.aux))
 
 if __name__ == '__main__':
   absltest.main()
