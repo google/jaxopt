@@ -378,6 +378,58 @@ class ProjectionTest(test_util.JaxoptTestCase):
     J2 = jax.jacrev(projection.projection_box_section)(x, params)
     self.assertArraysAllClose(J, J2)
 
+  def _sinkhorn(self, cost_matrix, marginals_a, marginals_b, maxiter=1000):
+    eps = 1.0
+    K = onp.exp(-cost_matrix / eps)
+    f = onp.zeros_like(marginals_a)
+    for it in range(maxiter):
+      exp_f = onp.exp(f / eps)
+      g = eps * onp.log(marginals_b) - eps * onp.log(K.T.dot(exp_f))
+      exp_g = onp.exp(g / eps)
+      f = eps * onp.log(marginals_a) - eps * onp.log(K.dot(exp_g))
+    exp_f = onp.exp(f / eps)
+    return exp_f[:, onp.newaxis] * K * exp_g
+
+  def test_projection_transport(self):
+    rng = onp.random.RandomState(0)
+    sim_matrix = rng.rand(5, 6)
+    marginals_a = rng.rand(5)
+    marginals_a /= jnp.sum(marginals_a)
+    marginals_b = rng.rand(6)
+    marginals_b /= jnp.sum(marginals_b)
+
+    T1 = projection.projection_transport(sim_matrix, marginals_a, marginals_b)
+    T2 = projection.kl_projection_transport(sim_matrix, marginals_a, marginals_b)
+
+    for T in (T1, T2):
+      self.assertEqual(T.shape, (5, 6))
+      self.assertArraysAllClose(jnp.sum(T, axis=1), marginals_a, atol=1e-3)
+      self.assertArraysAllClose(jnp.sum(T, axis=0), marginals_b, atol=1e-5)
+      self.assertAllClose(jnp.sum(T), 1.0)
+
+    # Compare with Sinkhorn.
+    T3 = self._sinkhorn(cost_matrix=-sim_matrix, marginals_a=marginals_a,
+                        marginals_b=marginals_b)
+    self.assertArraysAllClose(T2, T3, atol=1e-4)
+
+  def test_projection_birkhoff(self):
+    rng = onp.random.RandomState(0)
+
+    sim_matrix = rng.rand(5, 5)
+    sim_matrix = 0.5 * (sim_matrix + sim_matrix.T)
+    P1 = projection.projection_birkhoff(sim_matrix)
+    P2 = projection.kl_projection_birkhoff(sim_matrix)
+
+    # Check that P is a doubly-stochastic matrix.
+    for P in (P1, P2):
+      self.assertEqual(P.shape, (5, 5))
+      self.assertArraysAllClose(jnp.sum(P, axis=1), jnp.ones(5), atol=1e-3)
+      self.assertArraysAllClose(jnp.sum(P, axis=0), jnp.ones(5))
+
+    # Check that input = output if input is already a doubly stochastic matrix.
+    doubly_stochastic_matrix = jnp.array([[0.6, 0.4], [0.4, 0.6]])
+    solution1 = projection.projection_birkhoff(doubly_stochastic_matrix)
+    self.assertArraysAllClose(doubly_stochastic_matrix, solution1)
 
 if __name__ == '__main__':
   absltest.main()

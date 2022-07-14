@@ -15,14 +15,17 @@
 """Projection operators."""
 
 from typing import Any
+from typing import Callable
 from typing import Tuple
 
 import jax
 import jax.numpy as jnp
+from jax.scipy.special import logsumexp
 
 from jaxopt._src.bisection import Bisection
-from jaxopt._src.osqp import OSQP, BoxOSQP
 from jaxopt._src.eq_qp import EqualityConstrainedQP
+from jaxopt._src.lbfgs import LBFGS
+from jaxopt._src.osqp import OSQP, BoxOSQP
 from jaxopt._src import tree_util
 
 
@@ -385,3 +388,218 @@ def projection_box_section(x: jnp.ndarray,
       raise ValueError("beta should satisfy dot(w, beta) >= c")
 
   return jnp.clip(w * _root_proj_box_sec(x, hyperparams) + x, alpha, beta)
+
+
+def _max_l2(x, marginal_b, gamma):
+  scale = gamma * marginal_b
+  p = projection_simplex(x / scale)
+  return jnp.dot(x, p) - 0.5 * scale * jnp.dot(p, p)
+
+
+def _max_ent(x, marginal_b, gamma):
+  return gamma * logsumexp(x / gamma) - gamma * jnp.log(marginal_b)
+
+
+_max_l2_vmap = jax.vmap(_max_l2, in_axes=(1, 0, None))
+_max_l2_grad_vmap = jax.vmap(jax.grad(_max_l2), in_axes=(1, 0, None))
+
+
+_max_ent_vmap = jax.vmap(_max_ent, in_axes=(1, 0, None))
+_max_ent_grad_vmap = jax.vmap(jax.grad(_max_ent), in_axes=(1, 0, None))
+
+
+def _make_semi_dual(max_vmap, gamma=1.0):
+  # Semi-dual objective, see equation (10) in
+  # https://arxiv.org/abs/1710.06276
+  def fun(alpha, cost_matrix, marginals_a, marginals_b):
+    X = alpha[:, jnp.newaxis] - cost_matrix
+    ret = jnp.dot(marginals_b, max_vmap(X, marginals_b, gamma))
+    ret -= jnp.dot(alpha, marginals_a)
+    return ret
+  return fun
+
+
+def _regularized_transport(cost_matrix,
+                           marginals_a,
+                           marginals_b,
+                           make_solver,
+                           max_vmap,
+                           max_grad_vmap,
+                           gamma=1.0):
+
+  size_a, size_b = cost_matrix.shape
+
+  if len(marginals_a.shape) >= 2:
+    raise ValueError("marginals_a should be a vector.")
+
+  if len(marginals_b.shape) >= 2:
+    raise ValueError("marginals_b should be a vector.")
+
+  if size_a != marginals_a.shape[0] or size_b != marginals_b.shape[0]:
+    raise ValueError("cost_matrix and marginals must have matching shapes.")
+
+  if make_solver is None:
+    make_solver = lambda fun: LBFGS(fun=fun, tol=1e-3, maxiter=500,
+                                    linesearch="zoom")
+
+  gamma = 1.0
+  semi_dual = _make_semi_dual(max_vmap, gamma=gamma)
+  solver = make_solver(semi_dual)
+  alpha_init = jnp.zeros(size_a)
+
+  # Optimal dual potentials.
+  alpha = solver.run(alpha_init,
+                     cost_matrix=cost_matrix,
+                     marginals_a=marginals_a,
+                     marginals_b=marginals_b).params
+
+  # Optimal primal transportation plan.
+  X = alpha[:, jnp.newaxis] - cost_matrix
+  P = max_grad_vmap(X, marginals_b, gamma).T * marginals_b
+
+  return P
+
+
+def projection_transport(sim_matrix: jnp.ndarray,
+                         marginals_a: jnp.ndarray,
+                         marginals_b: jnp.ndarray,
+                         make_solver: Callable = None):
+  r"""Projection onto the transportation polytope.
+
+  We solve
+
+  .. math::
+
+    \underset{P \ge 0}{\text{argmin}} ~ ||P - S||_2^2 \quad
+    \textrm{subject to} \quad P^\top \mathbf{1} = a, P \mathbf{1} = b
+
+  or equivalently
+
+  .. math::
+
+    \underset{P \ge 0}{\text{argmin}} ~ \langle P, C \rangle
+    + \frac{1}{2} \|P\|_2^2 \quad
+    \textrm{subject to} \quad P^\top \mathbf{1} = a, P \mathbf{1} = b
+
+  where :math:`S` is a similarity matrix, :math:`C` is a cost matrix
+  and :math:`S = -C`.
+
+  This implementation solves the semi-dual (see equation 10 in reference below)
+  using LBFGS but the solver can be overidden using the ``make_solver`` option.
+
+  For an entropy-regularized version, see
+  :func:`kl_projection_transport <jaxopt.projection.kl_projection_transport>`.
+
+  Args:
+    sim_matrix: similarity matrix, shape=(size_a, size_b).
+    marginals_a: marginals a, shape=(size_a,).
+    marginals_b: marginals b, shape=(size_b,).
+    make_solver: a function of the form make_solver(fun),
+      for creating an iterative solver to minimize fun.
+  Returns:
+    P: transportation matrix, shape=(size_a, size_b).
+  References:
+    Smooth and Sparse Optimal Transport.
+    Mathieu Blondel, Vivien Seguy, Antoine Rolet.
+    In Proceedings of Artificial Intelligence and Statistics (AISTATS), 2018.
+    https://arxiv.org/abs/1710.06276
+  """
+  return _regularized_transport(cost_matrix=-sim_matrix,
+                                marginals_a=marginals_a,
+                                marginals_b=marginals_b,
+                                make_solver=make_solver,
+                                max_vmap=_max_l2_vmap,
+                                max_grad_vmap=_max_l2_grad_vmap)
+
+
+def kl_projection_transport(sim_matrix: jnp.ndarray,
+                            marginals_a: jnp.ndarray,
+                            marginals_b: jnp.ndarray,
+                            make_solver: Callable = None):
+  r"""Kullback-Leibler projection onto the transportation polytope.
+
+  We solve
+
+  .. math::
+    \underset{P > 0}{\text{argmin}} ~ \text{KL}(P, \exp(S)) \quad
+    \textrm{subject to} \quad P^\top \mathbf{1} = a, P \mathbf{1} = b
+
+  or equivalently
+
+  .. math::
+
+    \underset{P > 0}{\text{argmin}} ~ \langle P, C \rangle
+    + \langle P, \log P \rangle \quad
+    \textrm{subject to} \quad P^\top \mathbf{1} = a, P \mathbf{1} = b
+
+  where :math:`S` is a similarity matrix, :math:`C` is a cost matrix
+  and :math:`S = -C`.
+
+  This implementation solves the semi-dual (see equation 10 in reference below)
+  using LBFGS but the solver can be overidden using the ``make_solver`` option.
+
+  For an l2-regularized version, see
+  :func:`projection_transport <jaxopt.projection.projection_transport>`.
+
+  Args:
+    sim_matrix: similarity matrix, shape=(size_a, size_b).
+    marginals_a: marginals a, shape=(size_a,).
+    marginals_b: marginals b, shape=(size_b,).
+    make_solver: a function of the form make_solver(fun),
+      for creating an iterative solver to minimize fun.
+  Returns:
+    P: transportation matrix, shape=(size_a, size_b).
+  References:
+    Smooth and Sparse Optimal Transport.
+    Mathieu Blondel, Vivien Seguy, Antoine Rolet.
+    In Proceedings of Artificial Intelligence and Statistics (AISTATS), 2018.
+    https://arxiv.org/abs/1710.06276
+  """
+  return _regularized_transport(cost_matrix=-sim_matrix,
+                                marginals_a=marginals_a,
+                                marginals_b=marginals_b,
+                                make_solver=make_solver,
+                                max_vmap=_max_ent_vmap,
+                                max_grad_vmap=_max_ent_grad_vmap)
+
+
+def projection_birkhoff(sim_matrix: jnp.ndarray,
+                        make_solver: Callable = None):
+  r"""Projection onto the Birkhoff polytope, the set of doubly stochastic
+  matrices.
+
+  This function is a special case of
+  :func:`projection_transport <jaxopt.projection.projection_transport>`.
+
+  Args:
+    sim_matrix: similarity matrix, shape=(size, size).
+  Returns:
+    P: doubly-stochastic matrix, shape=(size, size).
+  """
+  marginals_a = jnp.ones(sim_matrix.shape[0])
+  marginals_b = jnp.ones(sim_matrix.shape[1])
+  return projection_transport(sim_matrix=sim_matrix,
+                              marginals_a=marginals_a,
+                              marginals_b=marginals_b,
+                              make_solver=make_solver)
+
+
+def kl_projection_birkhoff(sim_matrix: jnp.ndarray,
+                           make_solver: Callable = None):
+  r"""Kullback-Leibler projection onto the Birkhoff polytope,
+  the set of doubly stochastic matrices.
+
+  This function is a special case of
+  :func:`kl_projection_transport <jaxopt.projection.kl_projection_transport>`.
+
+  Args:
+    sim_matrix: similarity matrix, shape=(size, size).
+  Returns:
+    P: doubly-stochastic matrix, shape=(size, size).
+  """
+  marginals_a = jnp.ones(sim_matrix.shape[0])
+  marginals_b = jnp.ones(sim_matrix.shape[1])
+  return kl_projection_transport(sim_matrix=sim_matrix,
+                                 marginals_a=marginals_a,
+                                 marginals_b=marginals_b,
+                                 make_solver=make_solver)

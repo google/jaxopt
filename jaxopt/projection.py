@@ -26,3 +26,7 @@ from jaxopt._src.projection import projection_halfspace
 from jaxopt._src.projection import projection_affine_set
 from jaxopt._src.projection import projection_polyhedron
 from jaxopt._src.projection import projection_box_section
+from jaxopt._src.projection import projection_transport
+from jaxopt._src.projection import projection_birkhoff
+from jaxopt._src.projection import kl_projection_transport
+from jaxopt._src.projection import kl_projection_birkhoff
