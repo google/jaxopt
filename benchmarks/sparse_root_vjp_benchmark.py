@@ -56,9 +56,12 @@ def benchmark_vjp(vjp, X, supp=None, desc=''):
   result.block_until_ready()
   delta_t = time.time() - t0
 
+  size_support = onp.sum(result != 0)
+
   if supp is not None:
     result = result[supp]
-  print(f'{desc} ({delta_t:.3f} sec.): {result}')
+  print(f'{desc} ({delta_t:.3f} sec.): {result} '
+        f'(size of the support: {size_support:d})')
 
 
 def main(argv: Sequence[str]) -> None:
