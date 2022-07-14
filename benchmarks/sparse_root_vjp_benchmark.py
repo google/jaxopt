@@ -83,13 +83,13 @@ def main(argv: Sequence[str]) -> None:
   optimality = tree_util.tree_l2_norm(lasso_optimality_fun(sol, lam, X, y))
   print(f'Optimality of the solution (L2-norm): {optimality:.5f}')
 
-  jac_num = test_util.lasso_skl_jac(X, y, lam, eps=1e-8)
+  jac_num = test_util.lasso_skl_jac(X, y, lam, tol=1e-8, eps=1e-8)
   print(f'Numerical Jacobian: {jac_num[supp]}')
 
   # Compute the Jacobian wrt. lambda, without using the information about the
   # support of the solution. This is the default behavior in JAXopt, and
   # requires solving a linear system with a 1000x1000 dense matrix. Ignoring
-  # the support of the solution leads to an inacurrate Jacobian.
+  # the support of the solution with CG leads to an inacurrate Jacobian.
   vjp = get_vjp(lam, X, y, sol, support.support_all, maxiter=1000)
   benchmark_vjp(vjp, X, supp=supp, desc='Jacobian w/o support, CG')
 
