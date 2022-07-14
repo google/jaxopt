@@ -73,7 +73,7 @@ def main(argv: Sequence[str]) -> None:
   print(f'Number of samples: {X.shape[0]:d}')
   print(f'Number of features: {X.shape[1]:d}')
 
-  lam = 1e-3 * onp.max(X.T @ y)
+  lam = 1e-3 * onp.max(onp.abs(X.T @ y)) / X.shape[0]
   print(f'Value of lambda: {lam:.5f}')
 
   sol = test_util.lasso_skl(X, y, lam, tol=1e-6, fit_intercept=False)
