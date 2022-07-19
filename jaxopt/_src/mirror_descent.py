@@ -123,9 +123,16 @@ class MirrorDescent(base.IterativeSolver):
     Returns:
       state
     """
-    del hyperparams_proj, args, kwargs  # Not used.
+    del hyperparams_proj  # Not used.
+
+    if self.has_aux:
+      _, aux = self.fun(init_params, *args, **kwargs)
+    else:
+      aux = None
+
     return MirrorDescentState(iter_num=jnp.asarray(0),
-                              error=jnp.asarray(jnp.inf))
+                              error=jnp.asarray(jnp.inf),
+                              aux=aux)
 
   def _error(self, x, x_fun_grad, hyperparams_proj):
     next_x = self.projection_grad(x, x_fun_grad, 1.0, hyperparams_proj)

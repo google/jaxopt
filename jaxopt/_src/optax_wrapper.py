@@ -89,12 +89,17 @@ class OptaxSolver(base.StochasticSolver):
     Returns:
       state
     """
-    del args, kwargs  # Not used.
     opt_state = self.opt.init(init_params)
+
+    if self.has_aux:
+      _, aux = self.fun(init_params, *args, **kwargs)
+    else:
+      aux = None
+
     return OptaxState(iter_num=jnp.asarray(0),
                       value=jnp.asarray(jnp.inf),
                       error=jnp.asarray(jnp.inf),
-                      aux=None,
+                      aux=aux,
                       internal_state=opt_state)
 
   def _apply_updates(self, params, updates):

@@ -158,18 +158,25 @@ class ProximalGradient(base.IterativeSolver):
     Returns:
       state
     """
-    del hyperparams_prox, args, kwargs  # Not used.
+    del hyperparams_prox  # Not used.
+
+    if self.has_aux:
+      _, aux = self.fun(init_params, *args, **kwargs)
+    else:
+      aux = None
 
     if self.acceleration:
       state = ProxGradState(iter_num=jnp.asarray(0),
                             velocity=init_params,
                             t=jnp.asarray(1.0),
                             stepsize=jnp.asarray(1.0),
-                            error=jnp.asarray(jnp.inf))
+                            error=jnp.asarray(jnp.inf),
+                            aux=aux)
     else:
       state = ProxGradState(iter_num=jnp.asarray(0),
                             stepsize=jnp.asarray(1.0),
-                            error=jnp.asarray(jnp.inf))
+                            error=jnp.asarray(jnp.inf),
+                            aux=aux)
 
     return state
 

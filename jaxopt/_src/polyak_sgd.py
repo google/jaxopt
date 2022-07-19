@@ -119,7 +119,10 @@ class PolyakSGD(base.StochasticSolver):
     Returns:
       state
     """
-    del args, kwargs  # Not used.
+    if self.has_aux:
+      _, aux = self.fun(init_params, *args, **kwargs)
+    else:
+      aux = None
 
     if self.momentum == 0:
       velocity = None
@@ -130,7 +133,7 @@ class PolyakSGD(base.StochasticSolver):
                           error=jnp.asarray(jnp.inf),
                           value=jnp.asarray(jnp.inf),
                           stepsize=jnp.asarray(1.0),
-                          aux=None,
+                          aux=aux,
                           velocity=velocity)
 
   def update(self,
