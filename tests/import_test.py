@@ -32,6 +32,10 @@ class ImportTest(test_util.JaxoptTestCase):
     jaxopt.projection.projection_simplex
     from jaxopt.projection import projection_simplex
 
+  def test_support(self):
+    jaxopt.support.support_all
+    from jaxopt.support import support_all
+
   def test_tree_util(self):
     from jaxopt.tree_util import tree_vdot
 

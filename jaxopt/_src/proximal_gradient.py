@@ -31,6 +31,7 @@ import jax.numpy as jnp
 from jaxopt._src import base
 from jaxopt._src import loop
 from jaxopt._src.prox import prox_none
+from jaxopt._src.support import support_all
 from jaxopt._src.tree_util import tree_add_scalar_mul
 from jaxopt._src.tree_util import tree_l2_norm
 from jaxopt._src.tree_util import tree_sub
@@ -104,6 +105,11 @@ class ProximalGradient(base.IterativeSolver):
     prox: proximity operator associated with the function ``non_smooth``.
       It should be of the form ``prox(params, hyperparams_prox, scale=1.0)``.
       See ``jaxopt.prox`` for examples.
+    support: a function of the form ``support(params)``, returning
+      the support of a pytree ``params``. This function returns a pytree with
+      the same structure and dtypes as ``params``, equal to 1 for the
+      coordinates of ``params`` in the support, and 0 otherwise.
+      See ``jaxopt.support`` for examples.
     stepsize: a stepsize to use (if <= 0, use backtracking line search),
       or a callable specifying the **positive** stepsize to use at each iteration.
     maxiter: maximum number of proximal gradient descent iterations.
@@ -130,6 +136,7 @@ class ProximalGradient(base.IterativeSolver):
   """
   fun: Callable
   prox: Callable = prox_none
+  support: Callable = support_all
   stepsize: Union[float, Callable] = 0.0
   maxiter: int = 500
   maxls: int = 15

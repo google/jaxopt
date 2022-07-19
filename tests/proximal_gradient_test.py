@@ -25,6 +25,7 @@ from jaxopt import implicit_diff
 from jaxopt import objective
 from jaxopt import projection
 from jaxopt import prox
+from jaxopt import support
 from jaxopt import ProximalGradient
 from jaxopt._src import test_util
 from jaxopt import tree_util as tu
@@ -116,6 +117,34 @@ class ProximalGradientTest(test_util.JaxoptTestCase):
       return pg.run(w_skl, hyperparams_prox=hyperparams_prox, data=data).params
 
     jac_prox = jax.jacrev(wrapper)(lam)
+    self.assertArraysAllClose(jac_num, jac_prox, atol=1e-3)
+
+  def test_lasso_implicit_diff_sparse(self):
+    X, y = datasets.make_regression(n_samples=10, n_features=10,
+                                    n_informative=3, random_state=0)
+    lam = 10.0
+    data = (X, y)
+
+    fun = objective.least_squares
+    jac_num = test_util.lasso_skl_jac(X, y, lam)
+    w_skl = test_util.lasso_skl(X, y, lam)
+    self.assertArraysEqual(
+      support.support_nonzero(jac_num),
+      support.support_nonzero(w_skl)
+    )
+
+    pg = ProximalGradient(fun=fun, prox=prox.prox_lasso,
+                          support=support.support_nonzero, tol=1e-3,
+                          maxiter=200, acceleration=True, implicit_diff=True)
+
+    def wrapper(hyperparams_prox):
+      return pg.run(w_skl, hyperparams_prox, data).params
+
+    jac_prox = jax.jacrev(wrapper)(lam)
+    self.assertArraysEqual(
+      support.support_nonzero(jac_prox),
+      support.support_nonzero(w_skl)
+    )
     self.assertArraysAllClose(jac_num, jac_prox, atol=1e-3)
 
   def test_stepsize_schedule(self):
