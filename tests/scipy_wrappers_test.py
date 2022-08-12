@@ -113,8 +113,7 @@ class ScipyMinimizeTest(test_util.JaxoptTestCase):
     self.default_l2reg = float(self.n_samples)
 
     self.solver_kwargs = {'method': 'L-BFGS-B',
-                          'tol': 1e-5,
-                          'options': {'maxiter': 500}}
+                          'tol': 1e-5, 'maxiter': 500}
 
     def logreg_fun(params, *args, **kwargs):
       params = tree_util.tree_leaves(params)
@@ -125,6 +124,11 @@ class ScipyMinimizeTest(test_util.JaxoptTestCase):
       return objective.l2_multiclass_logreg_with_intercept(
           (params['W'], params['b']), *args, **kwargs)
     self.logreg_with_intercept_fun = logreg_with_intercept_fun
+
+  def test_maxiter_api(self):
+    # tests that ScipyMinimize raises an exception when given contradictory arguments
+    with self.assertRaises(ValueError):
+      ScipyMinimize(fun=self.logreg_fun, maxiter=500, options={'maxiter': 100})
 
   def test_logreg(self):
     lbfgs = ScipyMinimize(fun=self.logreg_fun,
@@ -235,8 +239,7 @@ class ScipyBoundedMinimizeTest(test_util.JaxoptTestCase):
     self.fun = fun
 
     self.solver_kwargs = {'method': 'L-BFGS-B',
-                          'tol': 1e-3,
-                          'options': {'maxiter': 500}}
+                          'tol': 1e-3, 'maxiter': 500}
 
   def _scipy_sol(self, init_params, **kwargs):
     return osp.optimize.lsq_linear(self.data[0], self.data[1], **kwargs).x

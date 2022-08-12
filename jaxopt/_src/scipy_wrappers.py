@@ -17,6 +17,8 @@
 # TODO(fllinares): add support for `LinearConstraint`s.
 # TODO(fllinares): add support for methods requiring Hessian / Hessian prods.
 # TODO(fllinares): possibly hardcode `dtype` attribute, as likely useless.
+# TODO(pedregosa): add a 'maxiter' keyword option for all wrappers,
+#   currently only ScipyMinimize exposes this option.
 """
 
 import abc
@@ -200,6 +202,8 @@ class ScipyWrapper(base.Solver):
 
   Attributes:
     method: the `method` argument for `scipy.optimize`.
+    maxiter: Maximum number of iterations to perform. Depending on the method,
+      each iteration may use several function evaluations.
     dtype: if not None, cast all NumPy arrays to this dtype. Note that some
       methods relying on FORTRAN code, such as the `L-BFGS-B` solver for
       `scipy.optimize.minimize`, require casting to float64.
@@ -267,6 +271,7 @@ class ScipyMinimize(ScipyWrapper):
   fun: Callable = None
   tol: Optional[float] = None
   options: Optional[Dict[str, Any]] = None
+  maxiter: int = 500
 
   def optimality_fun(self, sol, *args, **kwargs):
     """Optimality function mapping compatible with `@custom_root`."""
@@ -328,6 +333,12 @@ class ScipyMinimize(ScipyWrapper):
     if self.jit:
       self._grad_fun = jax.jit(self._grad_fun)
       self._value_and_grad_fun = jax.jit(self._value_and_grad_fun)
+
+    if self.options is None:
+      self.options = {}
+    if 'maxiter' in self.options:
+      raise ValueError("Cannot pass maxiter through options dictionary, use maxiter keyword argument instead.")
+    self.options['maxiter'] = self.maxiter
 
 
 @dataclass(eq=False)
