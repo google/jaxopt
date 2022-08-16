@@ -113,7 +113,7 @@ class ScipyMinimizeTest(test_util.JaxoptTestCase):
     self.default_l2reg = float(self.n_samples)
 
     self.solver_kwargs = {'method': 'L-BFGS-B',
-                          'tol': 1e-3,
+                          'tol': 1e-5,
                           'options': {'maxiter': 500}}
 
     def logreg_fun(params, *args, **kwargs):

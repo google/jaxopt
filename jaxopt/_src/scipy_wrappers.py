@@ -289,6 +289,7 @@ class ScipyMinimize(ScipyWrapper):
 
     res = osp.optimize.minimize(scipy_fun, jnp_to_onp(init_params, self.dtype),
                                 jac=True,
+                                tol=self.tol,
                                 bounds=bounds,
                                 method=self.method,
                                 options=self.options)
