@@ -182,13 +182,12 @@ class LevenbergMarquardt(base.IterativeSolver):
       Data Fitting" by K. Madsen & H. B. Nielsen for details.
     """
 
-    def gain_ratio_test_true_func(params, damping_factor,
-                                  increase_factor, residual, gradient,
-                                  updated_params):
+    def gain_ratio_test_true_func(params, damping_factor, increase_factor,
+                                  residual, gradient, updated_params, aux):
 
       params = updated_params
 
-      residual = self._fun(params, *args, **kwargs)
+      residual, aux = self._fun_with_aux(params, *args, **kwargs)
 
       # Calculate gradient based on Eq. 6.6 of "Introduction to optimization
       # and data fitting" g=JT * r, where J is jacobian and r is residual.
@@ -198,15 +197,14 @@ class LevenbergMarquardt(base.IterativeSolver):
                                                     (2 * gain_ratio - 1)**3)
       increase_factor = 2
 
-      return params, damping_factor, increase_factor, gradient, residual
+      return params, damping_factor, increase_factor, gradient, residual, aux
 
-    def gain_ratio_test_false_func(params, damping_factor,
-                                   increase_factor, residual, gradient,
-                                   updated_params):
+    def gain_ratio_test_false_func(params, damping_factor, increase_factor,
+                                   residual, gradient, updated_params, aux):
 
       damping_factor = damping_factor * increase_factor
       increase_factor = 2 * increase_factor
-      return params, damping_factor, increase_factor, gradient, residual
+      return params, damping_factor, increase_factor, gradient, residual, aux
 
     # Calling the jax condition function:
     # Note that only the parameters that are used in the rest of the program
@@ -227,15 +225,15 @@ class LevenbergMarquardt(base.IterativeSolver):
         lambda x: (1.0 - gain_ratio_test_is_met) * x,
         gain_ratio_test_not_met_ret)
 
-    params, damping_factor, increase_factor, gradient, residual = jax.tree_map(
-        lambda x, y: x + y, gain_ratio_test_is_met_ret,
-        gain_ratio_test_not_met_ret)
+    params, damping_factor, increase_factor, gradient, residual, aux = (
+        jax.tree_map(lambda x, y: x + y, gain_ratio_test_is_met_ret,
+                     gain_ratio_test_not_met_ret))
 
-    return params, damping_factor, increase_factor, gradient, residual
+    return params, damping_factor, increase_factor, gradient, residual, aux
 
   def update_state_using_delta_params(self, loss_curr, params, delta_params,
                                       contribution_ratio_diff, damping_factor,
-                                      increase_factor, gradient, residual,
+                                      increase_factor, gradient, residual, aux,
                                       *args, **kwargs):
     """The function to return state variables based on delta_params.
 
@@ -259,18 +257,18 @@ class LevenbergMarquardt(base.IterativeSolver):
     gain_ratio = (loss_curr - loss_next) / gain_ratio_denom
 
     gain_ratio_test_init_state = (params, damping_factor, increase_factor,
-                                  residual, gradient, updated_params)
+                                  residual, gradient, updated_params, aux)
 
     # Calling the jax condition function:
     # Note that only the parameters that are used in the rest of the program
     # are returned by this function.
 
-    params, damping_factor, increase_factor, gradient, residual = (
+    params, damping_factor, increase_factor, gradient, residual, aux = (
         self.update_state_using_gain_ratio(gain_ratio, contribution_ratio_diff,
                                            gain_ratio_test_init_state, *args,
                                            **kwargs))
 
-    return params, damping_factor, increase_factor, gradient, residual
+    return params, damping_factor, increase_factor, gradient, residual, aux
 
   def update(self, params, state: NamedTuple, *args, **kwargs) -> base.OptStep:
     """Performs one iteration of the least-squares solver.
@@ -329,13 +327,13 @@ class LevenbergMarquardt(base.IterativeSolver):
     delta_params = -delta_params
 
     # Checking if the dparams satisfy the "sufficiently small" criteria.
-    params, damping_factor, increase_factor, gradient, residual = (
+    params, damping_factor, increase_factor, gradient, residual, aux = (
         self.update_state_using_delta_params(loss_curr, params, delta_params,
                                              contribution_ratio_diff,
                                              state.damping_factor,
                                              state.increase_factor,
                                              state.gradient, state.residual,
-                                             *args, **kwargs))
+                                             state.aux, *args, **kwargs))
 
     state = LevenbergMarquardtState(
         iter_num=state.iter_num + 1,
@@ -345,14 +343,15 @@ class LevenbergMarquardt(base.IterativeSolver):
         residual=residual,
         loss=0.5 * jnp.dot(residual, residual),
         delta=delta_params,
-        gradient=gradient)
+        gradient=gradient,
+        aux=aux)
 
     return base.OptStep(params=params, state=state)
 
   def __post_init__(self):
     if self.has_aux:
-      self._fun = lambda *a, **kw: self.residual_fun(*a, **kw)[0]
-      self._fun_with_aux = self.fun
+      self._fun_with_aux = self.residual_fun
+      self._fun = lambda *a, **kw: self._fun_with_aux(*a, **kw)[0]
     else:
       self._fun = self.residual_fun
       self._fun_with_aux = lambda *a, **kw: (self.residual_fun(*a, **kw), None)
