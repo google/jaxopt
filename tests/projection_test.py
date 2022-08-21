@@ -19,6 +19,7 @@ import jax.numpy as jnp
 
 from jaxopt import projection
 from jaxopt._src import test_util
+from jaxopt._src.lbfgs import LBFGS
 from jaxopt import OSQP
 
 import numpy as onp
@@ -397,20 +398,27 @@ class ProjectionTest(test_util.JaxoptTestCase):
     marginals_a /= jnp.sum(marginals_a)
     marginals_b = rng.rand(6)
     marginals_b /= jnp.sum(marginals_b)
+    make_solver = lambda fun: LBFGS(
+        fun=fun, tol=1e-12, maxiter=10000, linesearch="zoom")
 
-    T1 = projection.projection_transport(sim_matrix, marginals_a, marginals_b)
-    T2 = projection.kl_projection_transport(sim_matrix, marginals_a, marginals_b)
+    for use_semi_dual in [False, True]:
+      T1 = projection.projection_transport(
+          sim_matrix, marginals_a, marginals_b, make_solver,
+          use_semi_dual=use_semi_dual)
+      T2 = projection.kl_projection_transport(
+          sim_matrix, marginals_a, marginals_b, make_solver,
+          use_semi_dual=use_semi_dual)
 
-    for T in (T1, T2):
-      self.assertEqual(T.shape, (5, 6))
-      self.assertArraysAllClose(jnp.sum(T, axis=1), marginals_a, atol=1e-3)
-      self.assertArraysAllClose(jnp.sum(T, axis=0), marginals_b, atol=1e-5)
-      self.assertAllClose(jnp.sum(T), 1.0)
+      for T in (T1, T2):
+        self.assertEqual(T.shape, (5, 6))
+        self.assertArraysAllClose(jnp.sum(T, axis=1), marginals_a, atol=1e-3)
+        self.assertArraysAllClose(jnp.sum(T, axis=0), marginals_b, atol=1e-5)
+        self.assertAllClose(jnp.sum(T), 1.0)
 
-    # Compare with Sinkhorn.
-    T3 = self._sinkhorn(cost_matrix=-sim_matrix, marginals_a=marginals_a,
-                        marginals_b=marginals_b)
-    self.assertArraysAllClose(T2, T3, atol=1e-4)
+      # Compare with Sinkhorn.
+      T3 = self._sinkhorn(cost_matrix=-sim_matrix, marginals_a=marginals_a,
+                          marginals_b=marginals_b)
+      self.assertArraysAllClose(T2, T3, atol=1e-4)
 
   def test_projection_birkhoff(self):
     rng = onp.random.RandomState(0)
