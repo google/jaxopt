@@ -99,7 +99,7 @@ NUM_CLASSES = 1000
 
 
 ### Type aliases.
-ArrayDType = jax._src.numpy.lax_numpy._ScalarMeta  # pylint: disable=protected-access
+ArrayDType = type[Any]
 Batch = Mapping[str, Any]
 DataIter = Iterator[Batch]
 LearningRateFn = Callable[[int], Numeric]
