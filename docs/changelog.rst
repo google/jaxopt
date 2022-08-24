@@ -15,6 +15,8 @@ New features
   :func:`kl_projection_birkhoff <jaxopt.projection.kl_projection_birkhoff>`,
   by Mathieu Blondel.
 
+- Implement maxiter keyword argument in :class:`jaxopt.ScipyMinimize` by Fabian Pedregosa.
+
 Bug fixes and enhancements
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -24,7 +26,7 @@ Bug fixes and enhancements
 Contributors
 ~~~~~~~~~~~~
 
-Mathieu Blondel, Amélie Héliou.
+Mathieu Blondel, Amélie Héliou, Fabian Pedregosa.
 
 Version 0.4.3
 -------------
