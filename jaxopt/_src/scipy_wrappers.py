@@ -17,7 +17,7 @@
 # TODO(fllinares): add support for `LinearConstraint`s.
 # TODO(fllinares): add support for methods requiring Hessian / Hessian prods.
 # TODO(fllinares): possibly hardcode `dtype` attribute, as likely useless.
-# TODO(pedregosa): add a 'maxiter' keyword option for all wrappers,
+# TODO(pedregosa): add a 'maxiter' and 'callback' keyword option for all wrappers,
 #   currently only ScipyMinimize exposes this option.
 """
 
@@ -259,6 +259,8 @@ class ScipyMinimize(ScipyWrapper):
         * 'trust-krylov'
     tol: the `tol` argument for `scipy.optimize.minimize`.
     options: the `options` argument for `scipy.optimize.minimize`.
+    callback: called after each iteration, as callback(xk), where xk is the
+      current parameter vector.
     dtype: if not None, cast all NumPy arrays to this dtype. Note that some
       methods relying on FORTRAN code, such as the `L-BFGS-B` solver for
       `scipy.optimize.minimize`, require casting to float64.
@@ -269,6 +271,7 @@ class ScipyMinimize(ScipyWrapper):
       objective.
   """
   fun: Callable = None
+  callback: Callable = None
   tol: Optional[float] = None
   options: Optional[Dict[str, Any]] = None
   maxiter: int = 500
@@ -282,6 +285,14 @@ class ScipyMinimize(ScipyWrapper):
     # Sets up the "JAX-SciPy" bridge.
     pytree_topology = pytree_topology_from_example(init_params)
     onp_to_jnp = make_onp_to_jnp(pytree_topology)
+
+    # wrap the callback so its arguments are of the same kind as fun
+    if self.callback is not None:
+      def scipy_callback(x_onp: onp.ndarray):
+        x_jnp = onp_to_jnp(x_onp)
+        return self.callback(x_jnp)
+    else:
+      scipy_callback = None
 
     def scipy_fun(x_onp: onp.ndarray) -> Tuple[onp.ndarray, onp.ndarray]:
       x_jnp = onp_to_jnp(x_onp)
@@ -297,6 +308,7 @@ class ScipyMinimize(ScipyWrapper):
                                 tol=self.tol,
                                 bounds=bounds,
                                 method=self.method,
+                                callback=scipy_callback,
                                 options=self.options)
 
     params = tree_util.tree_map(jnp.asarray, onp_to_jnp(res.x))
