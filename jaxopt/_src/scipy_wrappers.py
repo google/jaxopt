@@ -450,13 +450,20 @@ class ScipyRootFinding(ScipyWrapper):
                                          pytree_topology,
                                          self.dtype)
 
-    def scipy_fun(x_onp: onp.ndarray) -> Tuple[onp.ndarray, onp.ndarray]:
+    def scipy_fun(x_onp: onp.ndarray, scipy_args: Any) -> Tuple[onp.ndarray, onp.ndarray]:
+      # scipy_args is unused but must appear in the signature since
+      # the `args` argument passed to osp.optimize.root is not None.
+      del scipy_args  # unused
       x_jnp = onp_to_jnp(x_onp)
       value_jnp = self.optimality_fun(x_jnp, *args, **kwargs)
       jacs_jnp = self._jac_fun(x_jnp, *args, **kwargs)
       return jnp_to_onp(value_jnp, self.dtype), jac_jnp_to_onp(jacs_jnp)
 
+    # Argument `args` is unused but must be not None to ensure that some sanity checks are performed
+    # correctly in Scipy for optimizers that don't use the Jacobian (such as Broyden).
+    # See the related issue: https://github.com/google/jaxopt/issues/290
     res = osp.optimize.root(scipy_fun, jnp_to_onp(init_params, self.dtype),
+                            args=(None,),  
                             jac=True,
                             tol=self.tol,
                             method=self.method,
