@@ -26,6 +26,7 @@ import jax.numpy as jnp
 
 from jaxopt._src import base
 from jaxopt._src.backtracking_linesearch import BacktrackingLineSearch
+from jaxopt._src.zoom_linesearch import zoom_linesearch
 from jaxopt.tree_util import tree_vdot
 from jaxopt.tree_util import tree_scalar_mul
 from jaxopt.tree_util import tree_add_scalar_mul
@@ -40,24 +41,29 @@ class NonlinearCGState(NamedTuple):
   stepsize: float
   error: float
   value: float
-  grad: any
-  descent_direction: jnp.ndarray
+  grad: Any
+  descent_direction: Any
   aux: Optional[Any] = None
 
 
 @dataclass(eq=False)
 class NonlinearCG(base.IterativeSolver):
-  """
-    Nonlinear Conjugate Gradient Solver.
+  """Nonlinear conjugate gradient solver.
+
   Attributes:
     fun: a smooth function of the form ``fun(x, *args, **kwargs)``.
+    has_aux: whether function fun outputs one (False) or more values (True).
+      When True it will be assumed by default that fun(...)[0] is the objective.
+
+    maxiter: maximum number of proximal gradient descent iterations.
+    tol: tolerance of the stopping criterion.
+
     method: which variant to calculate the beta parameter in Nonlinear CG.
       "polak-ribiere", "fletcher-reeves", "hestenes-stiefel"
       (default: "polak-ribiere")
-    has_aux: whether function fun outputs one (False) or more values (True).
-      When True it will be assumed by default that fun(...)[0] is the objective.
-    maxiter: maximum number of proximal gradient descent iterations.
-    tol: tolerance of the stopping criterion.
+
+    linesearch: the type of line search to use: "backtracking" for backtracking
+      line search or "zoom" for zoom line search.
     maxls: maximum number of iterations to use in the line search.
     decrease_factor: factor by which to decrease the stepsize during line search
       (default: 0.8).
@@ -65,6 +71,7 @@ class NonlinearCG(base.IterativeSolver):
       (default: 1.2).
     max_stepsize: upper bound on stepsize.
     min_stepsize: lower bound on stepsize.
+
     implicit_diff: whether to enable implicit diff or autodiff of unrolled
       iterations.
     implicit_diff_solve: the linear system solver to use.
@@ -85,6 +92,7 @@ class NonlinearCG(base.IterativeSolver):
   tol: float = 1e-3
 
   method: str = "polak-ribiere"  # same as SciPy
+  linesearch: str = "zoom"
   condition: str = "strong-wolfe"
   maxls: int = 15
   decrease_factor: float = 0.8
@@ -145,28 +153,42 @@ class NonlinearCG(base.IterativeSolver):
     grad = state.grad
     descent_direction = state.descent_direction
 
-    ls = BacktrackingLineSearch(fun=self._value_and_grad_fun,
-                                value_and_grad=True,
-                                maxiter=self.maxls,
-                                decrease_factor=self.decrease_factor,
-                                condition=self.condition,
-                                max_stepsize=self.max_stepsize)
+    if self.linesearch == "backtracking":
+      ls = BacktrackingLineSearch(fun=self._value_and_grad_fun,
+                                  value_and_grad=True,
+                                  maxiter=self.maxls,
+                                  decrease_factor=self.decrease_factor,
+                                  condition=self.condition,
+                                  max_stepsize=self.max_stepsize)
 
-    init_stepsize = jnp.where(state.stepsize <= self.min_stepsize,
-                              # If stepsize became too small, we restart it.
-                              self.max_stepsize,
-                              # Otherwise, we increase a bit the previous one.
-                              state.stepsize * self.increase_factor)
+      init_stepsize = jnp.where(state.stepsize <= self.min_stepsize,
+                                # If stepsize became too small, we restart it.
+                                self.max_stepsize,
+                                # Otherwise, we increase a bit the previous one.
+                                state.stepsize * self.increase_factor)
 
-    new_stepsize, ls_state = ls.run(init_stepsize,
-                                    params,
-                                    value,
-                                    grad,
-                                    None, # descent_direction
-                                    *args, **kwargs)
+      new_stepsize, ls_state = ls.run(init_stepsize,
+                                      params,
+                                      value,
+                                      grad,
+                                      None, # descent_direction
+                                      *args, **kwargs)
+
+    elif self.linesearch == "zoom":
+      ls_state = zoom_linesearch(f=self._value_and_grad_with_aux,
+                                 xk=params, pk=descent_direction,
+                                 old_fval=value, gfk=grad, maxiter=self.maxls,
+                                 value_and_grad=True, has_aux=True,
+                                 args=args, kwargs=kwargs)
+      new_stepsize = ls_state.a_k
+
+    else:
+      raise ValueError("Invalid name in 'linesearch' option.")
 
     new_params = tree_add_scalar_mul(params, new_stepsize, descent_direction)
-    (new_value, new_aux), new_grad = self._value_and_grad_with_aux(new_params, *args, **kwargs)
+    (new_value, new_aux), new_grad = self._value_and_grad_with_aux(new_params,
+                                                                   *args,
+                                                                   **kwargs)
 
     if self.method == "polak-ribiere":
       # See Numerical Optimization, second edition, equation (5.44).
@@ -186,9 +208,12 @@ class NonlinearCG(base.IterativeSolver):
       dTg = jnp.where(dTg >= eps, dTg, eps)
       new_beta = tree_div(tree_vdot(new_grad, grad_diff), dTg)
     else:
-      raise ValueError("method should be either 'polak-ribiere', 'fletcher-reeves', or 'hestenes-stiefel'")
+      raise ValueError("method argument should be either 'polak-ribiere', "
+                       "'fletcher-reeves', or 'hestenes-stiefel'.")
 
-    new_descent_direction = tree_add_scalar_mul(tree_scalar_mul(-1, new_grad), new_beta, descent_direction)
+    new_descent_direction = tree_add_scalar_mul(tree_scalar_mul(-1, new_grad),
+                                                new_beta,
+                                                descent_direction)
     new_state = NonlinearCGState(iter_num=state.iter_num + 1,
                                  stepsize=jnp.asarray(new_stepsize),
                                  error=tree_l2_norm(grad),

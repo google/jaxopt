@@ -72,15 +72,18 @@ class NonlinearCGTest(test_util.JaxoptTestCase):
 
   @parameterized.product(method=["fletcher-reeves",
                                  "polak-ribiere",
-                                 "hestenes-stiefel"])
-  def test_binary_logreg(self, method):
+                                 "hestenes-stiefel"],
+                         linesearch=["backtracking", "zoom"])
+  def test_binary_logreg(self, method, linesearch):
     X, y = datasets.make_classification(n_samples=10, n_features=5, n_classes=2,
                                         n_informative=3, random_state=0)
     data = (X, y)
     fun = objective.binary_logreg
 
     w_init = jnp.zeros(X.shape[1])
-    cg_model = NonlinearCG(fun=fun, tol=1e-3, maxiter=100, method=method)
+    cg_model = NonlinearCG(fun=fun, tol=1e-3, maxiter=100, method=method,
+                           linesearch=linesearch)
+
     # Test with positional argument.
     w_fit, info = cg_model.run(w_init, data)
 
