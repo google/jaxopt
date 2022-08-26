@@ -399,13 +399,30 @@ def _max_l2(x, marginal_b, gamma):
 def _max_ent(x, marginal_b, gamma):
   return gamma * logsumexp(x / gamma) - gamma * jnp.log(marginal_b)
 
-
 _max_l2_vmap = jax.vmap(_max_l2, in_axes=(1, 0, None))
 _max_l2_grad_vmap = jax.vmap(jax.grad(_max_l2), in_axes=(1, 0, None))
 
-
 _max_ent_vmap = jax.vmap(_max_ent, in_axes=(1, 0, None))
 _max_ent_grad_vmap = jax.vmap(jax.grad(_max_ent), in_axes=(1, 0, None))
+
+
+def _delta_l2(x, gamma=1.0):
+  # Solution to Eqn. (6) in https://arxiv.org/abs/1710.06276 with squared l2
+  # regularization (see Table 1 in the paper).
+  z = (0.5 / gamma) * jnp.dot(jax.nn.relu(x), jax.nn.relu(x))
+  return z
+
+
+def _delta_ent(x, gamma):
+  # Solution to Eqn. (6) in https://arxiv.org/abs/1710.06276 with negative
+  # entropy regularization.
+  return gamma * jnp.exp((x / gamma) - 1).sum()
+
+_delta_l2_vmap = jax.vmap(_delta_l2, in_axes=(1, None))
+_delta_l2_grad_vmap = jax.vmap(jax.grad(_delta_l2), in_axes=(1, None))
+
+_delta_ent_vmap = jax.vmap(_delta_ent, in_axes=(1, None))
+_delta_ent_grad_vmap = jax.vmap(jax.grad(_delta_ent), in_axes=(1, None))
 
 
 def _make_semi_dual(max_vmap, gamma=1.0):
@@ -419,7 +436,34 @@ def _make_semi_dual(max_vmap, gamma=1.0):
   return fun
 
 
-def _regularized_transport(cost_matrix,
+def _make_dual(delta_vmap, gamma):
+  r"""Make the objective function of dual variables.
+
+  Args:
+    delta_vmap: The smoothed version of delta function, acting on each column of
+      its matrix-valued input.
+    gamma: A regularization constant.
+  Returns:
+    A cost function of dual variables. Cf. Equation (7) in
+      https://arxiv.org/abs/1710.06276
+  """
+
+  def fun(alpha_beta, cost_matrix, marginals_a, marginals_b):
+    alpha, beta = alpha_beta
+    alpha_column = alpha[:, jnp.newaxis]
+    beta_row = beta[jnp.newaxis, :]
+    # Make a dual constraint matrix, whose (i,j)-th entry is
+    # alpha[i] + beta[j] - c[i,j]. JAXopt solvers minimize functions hence
+    # the sign is the opposite of Eqn (7)"
+    dual_constraint_matrix = alpha_column + beta_row - cost_matrix
+    delta_dual_constraints = delta_vmap(dual_constraint_matrix, gamma)
+    dual_loss = delta_dual_constraints.sum() - jnp.dot(
+        alpha, marginals_a) - jnp.dot(beta, marginals_b)
+    return dual_loss
+  return fun
+
+
+def _regularized_transport_semi_dual(cost_matrix,
                            marginals_a,
                            marginals_b,
                            make_solver,
@@ -427,6 +471,23 @@ def _regularized_transport(cost_matrix,
                            max_grad_vmap,
                            gamma=1.0):
 
+  r"""Regularized transport in the semi-dual formulation, detailed in Proposition 2 of https://arxiv.org/abs/1710.06276.
+
+  Args:
+    cost_matrix: The cost matrix of size (m, n).
+    marginals_a: The marginals of size (m,)
+    marginals_b: The marginals of size (n,)
+    make_solver: A function that makes the optimization algorithm
+    max_vmap:  A function that computes the regularized max on columns of
+      its matrix-valued input
+    max_grad_vmap:  A function that computes gradient of regularized max
+      on columns of its matrix-valued input
+    gamma: A parameter that controls the strength of regularization.
+
+  Returns:
+    The optimized plan. See the text under Eqn. (10) of 
+      https://arxiv.org/abs/1710.06276
+  """
   size_a, size_b = cost_matrix.shape
 
   if len(marginals_a.shape) >= 2:
@@ -442,7 +503,6 @@ def _regularized_transport(cost_matrix,
     make_solver = lambda fun: LBFGS(fun=fun, tol=1e-3, maxiter=500,
                                     linesearch="zoom")
 
-  gamma = 1.0
   semi_dual = _make_semi_dual(max_vmap, gamma=gamma)
   solver = make_solver(semi_dual)
   alpha_init = jnp.zeros(size_a)
@@ -460,10 +520,72 @@ def _regularized_transport(cost_matrix,
   return P
 
 
+def _regularized_transport_dual(cost_matrix,
+                                marginals_a,
+                                marginals_b,
+                                make_solver,
+                                delta_vmap,
+                                delta_grad_vmap,
+                                gamma=1.0):
+  r"""Regularized transport in the dual formulation, detailed in Proposition 1 of https://arxiv.org/abs/1710.06276.
+
+  Args:
+    cost_matrix: The cost matrix of size (m, n).
+    marginals_a: The marginals of size (m,)
+    marginals_b: The marginals of size (n,)
+    make_solver: A function that makes the optimization algorithm
+    delta_vmap:  A function that computes the regularized delta on columns of
+      its matrix-valued input
+    delta_grad_vmap:  A function that computes gradient of regularized delta
+      on columns of its matrix-valued input
+    gamma: A parameter that controls the strength of regularization.
+
+  Returns:
+    The optimized plan. See the text under Eqn. (7) of
+      https://arxiv.org/abs/1710.06276
+
+  """
+
+  size_a, size_b = cost_matrix.shape
+
+  if len(marginals_a.shape) >= 2:
+    raise ValueError("marginals_a should be a vector.")
+
+  if len(marginals_b.shape) >= 2:
+    raise ValueError("marginals_b should be a vector.")
+
+  if size_a != marginals_a.shape[0] or size_b != marginals_b.shape[0]:
+    raise ValueError("cost_matrix and marginals must have matching shapes.")
+
+  if make_solver is None:
+    make_solver = lambda fun: LBFGS(fun=fun, tol=1e-3, maxiter=500,
+                                    linesearch="zoom")
+
+  dual = _make_dual(delta_vmap, gamma=gamma)
+  solver = make_solver(dual)
+  alpha_beta_init = (jnp.zeros(size_a), jnp.zeros(size_b))
+
+  # Optimal dual potentials.
+  alpha_beta = solver.run(init_params=alpha_beta_init,
+                          cost_matrix=cost_matrix,
+                          marginals_a=marginals_a,
+                          marginals_b=marginals_b).params
+
+  # Optimal primal transportation plan.
+  alpha, beta = alpha_beta
+  alpha_column = alpha[:, jnp.newaxis]
+  beta_row = beta[jnp.newaxis, :]
+  # The (i,j)-th entry of dual_constraint_matrix is alpha[i] + beta[j] - c[i,j].
+  dual_constraint_matrix = alpha_column + beta_row - cost_matrix
+  plan = delta_grad_vmap(dual_constraint_matrix, gamma).T
+  return plan
+
+
 def projection_transport(sim_matrix: jnp.ndarray,
                          marginals_a: jnp.ndarray,
                          marginals_b: jnp.ndarray,
-                         make_solver: Callable = None):
+                         make_solver: Callable = None,
+                         use_semi_dual: bool = True):
   r"""Projection onto the transportation polytope.
 
   We solve
@@ -496,26 +618,41 @@ def projection_transport(sim_matrix: jnp.ndarray,
     marginals_b: marginals b, shape=(size_b,).
     make_solver: a function of the form make_solver(fun),
       for creating an iterative solver to minimize fun.
+    use_semi_dual: if true, use the semi-dual formulation in
+      Equation (10) of https://arxiv.org/abs/1710.06276. Otherwise, use
+      the dual-formulation in Equation (7).
+
   Returns:
-    P: transportation matrix, shape=(size_a, size_b).
+    plan: transportation matrix, shape=(size_a, size_b).
   References:
     Smooth and Sparse Optimal Transport.
     Mathieu Blondel, Vivien Seguy, Antoine Rolet.
     In Proceedings of Artificial Intelligence and Statistics (AISTATS), 2018.
     https://arxiv.org/abs/1710.06276
   """
-  return _regularized_transport(cost_matrix=-sim_matrix,
-                                marginals_a=marginals_a,
-                                marginals_b=marginals_b,
-                                make_solver=make_solver,
-                                max_vmap=_max_l2_vmap,
-                                max_grad_vmap=_max_l2_grad_vmap)
+  if use_semi_dual:
+    plan = _regularized_transport_semi_dual(cost_matrix=-sim_matrix,
+                                  marginals_a=marginals_a,
+                                  marginals_b=marginals_b,
+                                  make_solver=make_solver,
+                                  max_vmap=_max_l2_vmap,
+                                  max_grad_vmap=_max_l2_grad_vmap)
+  else:
+    plan = _regularized_transport_dual(cost_matrix=-sim_matrix,
+                                       marginals_a=marginals_a,
+                                       marginals_b=marginals_b,
+                                       make_solver=make_solver,
+                                       delta_vmap=_delta_l2_vmap,
+                                       delta_grad_vmap=_delta_l2_grad_vmap)
+  return plan
 
 
 def kl_projection_transport(sim_matrix: jnp.ndarray,
                             marginals_a: jnp.ndarray,
                             marginals_b: jnp.ndarray,
-                            make_solver: Callable = None):
+                            make_solver: Callable = None,
+                            use_semi_dual: bool = True):
+
   r"""Kullback-Leibler projection onto the transportation polytope.
 
   We solve
@@ -547,24 +684,40 @@ def kl_projection_transport(sim_matrix: jnp.ndarray,
     marginals_b: marginals b, shape=(size_b,).
     make_solver: a function of the form make_solver(fun),
       for creating an iterative solver to minimize fun.
+    use_semi_dual: if true, use the semi-dual formulation in
+      Equation (10) of https://arxiv.org/abs/1710.06276. Otherwise, use
+      the dual-formulation in Equation (7).
   Returns:
-    P: transportation matrix, shape=(size_a, size_b).
+    plan: transportation matrix, shape=(size_a, size_b).
   References:
     Smooth and Sparse Optimal Transport.
     Mathieu Blondel, Vivien Seguy, Antoine Rolet.
     In Proceedings of Artificial Intelligence and Statistics (AISTATS), 2018.
     https://arxiv.org/abs/1710.06276
   """
-  return _regularized_transport(cost_matrix=-sim_matrix,
-                                marginals_a=marginals_a,
-                                marginals_b=marginals_b,
-                                make_solver=make_solver,
-                                max_vmap=_max_ent_vmap,
-                                max_grad_vmap=_max_ent_grad_vmap)
 
+  if use_semi_dual:
+    plan = _regularized_transport_semi_dual(
+        cost_matrix=-sim_matrix,
+        marginals_a=marginals_a,
+        marginals_b=marginals_b,
+        make_solver=make_solver,
+        max_vmap=_max_ent_vmap,
+        max_grad_vmap=_max_ent_grad_vmap)
+  else:
+    plan = _regularized_transport_dual(
+        cost_matrix=-sim_matrix,
+        marginals_a=marginals_a,
+        marginals_b=marginals_b,
+        make_solver=make_solver,
+        delta_vmap=_delta_ent_vmap,
+        delta_grad_vmap=_delta_ent_grad_vmap)
+  return plan
 
 def projection_birkhoff(sim_matrix: jnp.ndarray,
-                        make_solver: Callable = None):
+                        make_solver: Callable = None,
+                        use_semi_dual: bool = True):
+
   r"""Projection onto the Birkhoff polytope, the set of doubly stochastic
   matrices.
 
@@ -573,19 +726,28 @@ def projection_birkhoff(sim_matrix: jnp.ndarray,
 
   Args:
     sim_matrix: similarity matrix, shape=(size, size).
+    make_solver: a function of the form make_solver(fun),
+      for creating an iterative solver to minimize fun.
+    use_semi_dual: if true, use the semi-dual formulation in
+      Equation (10) of https://arxiv.org/abs/1710.06276. Otherwise, use
+      the dual-formulation in Equation (7).
   Returns:
     P: doubly-stochastic matrix, shape=(size, size).
   """
   marginals_a = jnp.ones(sim_matrix.shape[0])
   marginals_b = jnp.ones(sim_matrix.shape[1])
+
   return projection_transport(sim_matrix=sim_matrix,
                               marginals_a=marginals_a,
                               marginals_b=marginals_b,
-                              make_solver=make_solver)
+                              make_solver=make_solver,
+                              use_semi_dual=use_semi_dual)
 
 
 def kl_projection_birkhoff(sim_matrix: jnp.ndarray,
-                           make_solver: Callable = None):
+                           make_solver: Callable = None,
+                           use_semi_dual: bool = True):
+
   r"""Kullback-Leibler projection onto the Birkhoff polytope,
   the set of doubly stochastic matrices.
 
@@ -594,6 +756,11 @@ def kl_projection_birkhoff(sim_matrix: jnp.ndarray,
 
   Args:
     sim_matrix: similarity matrix, shape=(size, size).
+    make_solver: a function of the form make_solver(fun),
+      for creating an iterative solver to minimize fun.
+    use_semi_dual: if true, use the semi-dual formulation in
+      Equation (10) of https://arxiv.org/abs/1710.06276. Otherwise, use
+      the dual-formulation in Equation (7).
   Returns:
     P: doubly-stochastic matrix, shape=(size, size).
   """
@@ -602,4 +769,5 @@ def kl_projection_birkhoff(sim_matrix: jnp.ndarray,
   return kl_projection_transport(sim_matrix=sim_matrix,
                                  marginals_a=marginals_a,
                                  marginals_b=marginals_b,
-                                 make_solver=make_solver)
+                                 make_solver=make_solver,
+                                 use_semi_dual=use_semi_dual)
