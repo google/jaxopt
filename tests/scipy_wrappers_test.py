@@ -371,6 +371,13 @@ class ScipyRootFindingTest(test_util.JaxoptTestCase):
       jac_idf = [list(blk_row) for blk_row in jac_idf]
     jac_idf = jnp.block(jac_idf)
     self.assertArraysAllClose(jac_theo, jac_idf, atol=1e-3)
+    
+  def test_broyden(self):
+    # non regression test based on issue https://github.com/google/jaxopt/issues/290
+    def simple_root(x):
+      return x**2 - 1
+    root = ScipyRootFinding(method="broyden1", optimality_fun=simple_root)
+    pytree_fit, _ = root.run(jnp.zeros(5))
 
 
 class ScipyLeastSquaresTest(test_util.JaxoptTestCase):
