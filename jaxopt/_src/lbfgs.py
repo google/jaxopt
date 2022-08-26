@@ -197,7 +197,7 @@ class LBFGS(base.IterativeSolver):
   tol: float = 1e-3
 
   stepsize: Union[float, Callable] = 0.0
-  linesearch: str = "backtracking"
+  linesearch: str = "zoom"
   condition: str = "strong-wolfe"
   maxls: int = 15
   decrease_factor: float = 0.8
