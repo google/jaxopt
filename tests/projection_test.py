@@ -403,10 +403,10 @@ class ProjectionTest(test_util.JaxoptTestCase):
 
     for use_semi_dual in [False, True]:
       T1 = projection.projection_transport(
-          sim_matrix, marginals_a, marginals_b, make_solver,
+          sim_matrix, (marginals_a, marginals_b), make_solver,
           use_semi_dual=use_semi_dual)
       T2 = projection.kl_projection_transport(
-          sim_matrix, marginals_a, marginals_b, make_solver,
+          sim_matrix, (marginals_a, marginals_b), make_solver,
           use_semi_dual=use_semi_dual)
 
       for T in (T1, T2):
