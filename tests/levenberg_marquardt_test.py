@@ -104,6 +104,21 @@ class LevenbergMarquardtTest(test_util.JaxoptTestCase):
                               onp.array([0.999948, 0.999894], float))
     self.assertAllClose(optimize_info.state.iter_num, 14)
 
+  @unittest.skipIf(jax.config.jax_enable_x64, "test requires X32")
+  @parameterized.product(materialize_jac=[True, False])
+  def test_rosenbrock_x32_materialize_jac(self, materialize_jac):
+
+    lm = LevenbergMarquardt(
+        residual_fun=_rosenbrock,
+        damping_parameter=1e-3,
+        maxiter=16,
+        materialize_jac=materialize_jac)
+    optimize_info = lm.run(onp.array([-1.2, 1]))
+
+    self.assertArraysAllClose(optimize_info.params,
+                              onp.array([0.999948, 0.999894], float))
+    self.assertAllClose(optimize_info.state.iter_num, 14)
+
   # This unit test is for checking rosenbrock function based on the example
   # provided by K. Madsen & H. B. Nielsen in the book "Introduction to
   # Optimization and Data Fitting" Example 6.9. page 123.
@@ -125,15 +140,36 @@ class LevenbergMarquardtTest(test_util.JaxoptTestCase):
         atol=1e-11)
     self.assertAllClose(optimize_info.state.iter_num, 16)
 
-  @unittest.skipIf(jax.config.jax_enable_x64, 'test requires X32')
-  @parameterized.product(geodesic=[True, False])
-  def test_double_exponential_fit_x32(self, geodesic):
+  @unittest.skipIf(not jax.config.jax_enable_x64, "test requires X64")
+  @parameterized.product(materialize_jac=[True, False])
+  def test_rosenbrock_x64_materialize_jac(self, materialize_jac):
+
+    lm = LevenbergMarquardt(
+        residual_fun=_rosenbrock,
+        damping_parameter=1e-3,
+        stop_criterion='madsen-nielsen',
+        xtol=1e-12,
+        gtol=1e-8,
+        maxiter=16,
+        materialize_jac=materialize_jac)
+    optimize_info = lm.run(onp.array([-1.2, 1]))
+
+    self.assertArraysAllClose(
+        optimize_info.params - onp.array([1, 1]),
+        onp.array([-4.07e-09, -8.16e-09]),
+        atol=1e-11)
+    self.assertAllClose(optimize_info.state.iter_num, 16)
+
+  @unittest.skipIf(jax.config.jax_enable_x64, "test requires X32")
+  @parameterized.product(materialize_jac=[True, False], geodesic=[True, False])
+  def test_double_exponential_fit_x32(self, materialize_jac, geodesic):
     lm = LevenbergMarquardt(
         residual_fun=_double_exponential_residual,
         damping_parameter=1e-3,
         tol=1e-5,
         maxiter=200,
         solver='cholesky',
+        materialize_jac=materialize_jac,
         geodesic=geodesic)
     optimize_info = lm.run(
         onp.asarray([2, -2, 2, 3], dtype=float),
