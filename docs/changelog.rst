@@ -1,8 +1,8 @@
 Changelog
 =========
 
-Development version
--------------------
+Version 0.5
+-----------
 
 New features
 ~~~~~~~~~~~~
@@ -13,20 +13,23 @@ New features
   :func:`kl_projection_transport <jaxopt.projection.kl_projection_transport>`,
   and
   :func:`kl_projection_birkhoff <jaxopt.projection.kl_projection_birkhoff>`,
-  by Mathieu Blondel.
-
-- Implement maxiter keyword argument in :class:`jaxopt.ScipyMinimize` by Fabian Pedregosa.
+  by Mathieu Blondel (semi-dual formulation) and Tianlin Liu (dual formulation).
 
 Bug fixes and enhancements
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 - Fix LaTeX rendering issue in notebooks, by Amélie Héliou.
 - Avoid gradient recompilations in zoom line search, by Mathieu Blondel.
+- Fix unused Jacobian issue in :class:`jaxopt.ScipyRootFinding`, by Louis Béthune.
+- Use zoom line search by default in :class:`jaxopt.LBFGS` and :class:`jaxopt.NonlinearCG`, by Mathieu Blondel.
+- Pass tolerance argument to :class:`jaxopt.ScipyMinimize`, by pipme.
+- Handle has_aux in :class:`jaxopt.LevenbergMarquardt`, by Keunhong Park.
+- Add maxiter keyword argument in :class:`jaxopt.ScipyMinimize`, by Fabian Pedregosa.
 
 Contributors
 ~~~~~~~~~~~~
 
-Mathieu Blondel, Amélie Héliou, Fabian Pedregosa.
+Louis Béthune, Mathieu Blondel, Amélie Héliou, Keunhong Park, Fabian Pedregosa, pipme.
 
 Version 0.4.3
 -------------
