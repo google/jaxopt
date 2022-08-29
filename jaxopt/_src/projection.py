@@ -471,7 +471,7 @@ def _regularized_transport_semi_dual(cost_matrix,
                            max_grad_vmap,
                            gamma=1.0):
 
-  r"""Regularized transport in the semi-dual formulation, detailed in Proposition 2 of https://arxiv.org/abs/1710.06276.
+  r"""Regularized transport in the semi-dual formulation.
 
   Args:
     cost_matrix: The cost matrix of size (m, n).
@@ -485,7 +485,7 @@ def _regularized_transport_semi_dual(cost_matrix,
     gamma: A parameter that controls the strength of regularization.
 
   Returns:
-    The optimized plan. See the text under Eqn. (10) of 
+    The optimized plan. See the text under Eqn. (10) of
       https://arxiv.org/abs/1710.06276
   """
   size_a, size_b = cost_matrix.shape
@@ -527,7 +527,7 @@ def _regularized_transport_dual(cost_matrix,
                                 delta_vmap,
                                 delta_grad_vmap,
                                 gamma=1.0):
-  r"""Regularized transport in the dual formulation, detailed in Proposition 1 of https://arxiv.org/abs/1710.06276.
+  r"""Regularized transport in the dual formulation.
 
   Args:
     cost_matrix: The cost matrix of size (m, n).
@@ -582,8 +582,7 @@ def _regularized_transport_dual(cost_matrix,
 
 
 def projection_transport(sim_matrix: jnp.ndarray,
-                         marginals_a: jnp.ndarray,
-                         marginals_b: jnp.ndarray,
+                         marginals: Tuple,
                          make_solver: Callable = None,
                          use_semi_dual: bool = True):
   r"""Projection onto the transportation polytope.
@@ -614,8 +613,9 @@ def projection_transport(sim_matrix: jnp.ndarray,
 
   Args:
     sim_matrix: similarity matrix, shape=(size_a, size_b).
-    marginals_a: marginals a, shape=(size_a,).
-    marginals_b: marginals b, shape=(size_b,).
+    marginals: a tuple (marginals_a, marginals_b),
+      where marginals_a has shape=(size_a,) and
+      marginals_b has shape=(size_b,).
     make_solver: a function of the form make_solver(fun),
       for creating an iterative solver to minimize fun.
     use_semi_dual: if true, use the semi-dual formulation in
@@ -630,6 +630,8 @@ def projection_transport(sim_matrix: jnp.ndarray,
     In Proceedings of Artificial Intelligence and Statistics (AISTATS), 2018.
     https://arxiv.org/abs/1710.06276
   """
+  marginals_a, marginals_b = marginals
+
   if use_semi_dual:
     plan = _regularized_transport_semi_dual(cost_matrix=-sim_matrix,
                                   marginals_a=marginals_a,
@@ -648,8 +650,7 @@ def projection_transport(sim_matrix: jnp.ndarray,
 
 
 def kl_projection_transport(sim_matrix: jnp.ndarray,
-                            marginals_a: jnp.ndarray,
-                            marginals_b: jnp.ndarray,
+                            marginals: Tuple,
                             make_solver: Callable = None,
                             use_semi_dual: bool = True):
 
@@ -680,8 +681,9 @@ def kl_projection_transport(sim_matrix: jnp.ndarray,
 
   Args:
     sim_matrix: similarity matrix, shape=(size_a, size_b).
-    marginals_a: marginals a, shape=(size_a,).
-    marginals_b: marginals b, shape=(size_b,).
+    marginals: a tuple (marginals_a, marginals_b),
+      where marginals_a has shape=(size_a,) and
+      marginals_b has shape=(size_b,).
     make_solver: a function of the form make_solver(fun),
       for creating an iterative solver to minimize fun.
     use_semi_dual: if true, use the semi-dual formulation in
@@ -695,6 +697,7 @@ def kl_projection_transport(sim_matrix: jnp.ndarray,
     In Proceedings of Artificial Intelligence and Statistics (AISTATS), 2018.
     https://arxiv.org/abs/1710.06276
   """
+  marginals_a, marginals_b = marginals
 
   if use_semi_dual:
     plan = _regularized_transport_semi_dual(
@@ -713,6 +716,7 @@ def kl_projection_transport(sim_matrix: jnp.ndarray,
         delta_vmap=_delta_ent_vmap,
         delta_grad_vmap=_delta_ent_grad_vmap)
   return plan
+
 
 def projection_birkhoff(sim_matrix: jnp.ndarray,
                         make_solver: Callable = None,
@@ -736,10 +740,8 @@ def projection_birkhoff(sim_matrix: jnp.ndarray,
   """
   marginals_a = jnp.ones(sim_matrix.shape[0])
   marginals_b = jnp.ones(sim_matrix.shape[1])
-
   return projection_transport(sim_matrix=sim_matrix,
-                              marginals_a=marginals_a,
-                              marginals_b=marginals_b,
+                              marginals=(marginals_a, marginals_b),
                               make_solver=make_solver,
                               use_semi_dual=use_semi_dual)
 
@@ -767,7 +769,6 @@ def kl_projection_birkhoff(sim_matrix: jnp.ndarray,
   marginals_a = jnp.ones(sim_matrix.shape[0])
   marginals_b = jnp.ones(sim_matrix.shape[1])
   return kl_projection_transport(sim_matrix=sim_matrix,
-                                 marginals_a=marginals_a,
-                                 marginals_b=marginals_b,
+                                 marginals=(marginals_a, marginals_b),
                                  make_solver=make_solver,
                                  use_semi_dual=use_semi_dual)
