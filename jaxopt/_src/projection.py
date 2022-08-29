@@ -14,6 +14,7 @@
 
 """Projection operators."""
 
+from functools import partial
 from typing import Any
 from typing import Callable
 from typing import Tuple
@@ -134,6 +135,76 @@ def projection_simplex(x: jnp.ndarray, value: float = 1.0) -> jnp.ndarray:
   if value is None:
     value = 1.0
   return value * _projection_unit_simplex(x / value)
+
+
+@partial(jax.custom_jvp, nondiff_argnums=(1, 2))
+def _projection_unit_sparse_simplex(
+    x: jnp.ndarray, max_nz: int,
+    use_approx_max_nz: bool = False) -> jnp.ndarray:
+  """Projection onto the unit simplex with cardinality constraint (maximum number of non-zero elements)."""
+
+  # Top max_nz values (in an decreasing order) and their corresponding indices
+  if use_approx_max_nz:
+    max_nz_values, max_nz_indices = jax.lax.approx_max_k(x, max_nz)
+  else:
+    max_nz_values, max_nz_indices = jax.lax.top_k(x, max_nz)
+
+  # Projection the sorted top k values onto the unit simplex
+  cumsum_max_nz_values = jnp.cumsum(max_nz_values)
+  ind = jnp.arange(max_nz) + 1
+  cond = 1 / ind + (max_nz_values - cumsum_max_nz_values / ind) > 0
+  idx = jnp.count_nonzero(cond)
+  max_nz_simplex_projection = jax.nn.relu(
+      1 / idx + (max_nz_values - cumsum_max_nz_values[idx - 1] / idx))
+
+  # Put the projection of max_nz_values to their original indices;
+  # set all other indices zero.
+  sparse_simplex_projection = jnp.sum(
+      max_nz_simplex_projection[ :, jnp.newaxis] * jax.nn.one_hot(
+          max_nz_indices, len(x), dtype=x.dtype), axis=0)
+
+  return  sparse_simplex_projection
+
+@_projection_unit_sparse_simplex.defjvp
+def _projection_unit_sparse_simplex_jvp(
+    max_nz, use_approx_max_nz, primals, tangents):
+  x, = primals
+  x_dot, = tangents
+  primal_out = _projection_unit_sparse_simplex(x, max_nz, use_approx_max_nz)
+  supp = primal_out > 0
+  card = jnp.count_nonzero(supp)
+  tangent_out = supp * x_dot - (jnp.dot(supp, x_dot) / card) * supp
+  return primal_out, tangent_out
+
+
+def projection_sparse_simplex(
+    x: jnp.ndarray, max_nz: int,
+    use_approx_max_nz: bool = False, value: float = 1.0) -> jnp.ndarray:
+  r"""Projection onto the simplex with cardinality constraint (maximum number of non-zero elements).
+
+  .. math::
+    \underset{p}{\text{argmin}} ~ ||x - p||_2^2 \quad \textrm{subject to} \quad
+    p \ge 0, p^\top 1 = \text{value}, ||p||_0 \le \text{max_nz}
+
+  Args:
+    x: vector to project, an array of shape (n,).
+    max_nz: max nonzero values to keep
+    use_approx_max_nz: when set to True, use `jax.lax.approx_max_k` to return
+      max values and their indices in an approximate manner (default: False).
+    value: value p should sum to (default: 1.0).
+  Returns:
+    projected vector, an array with the same shape as ``x``.
+
+  References:
+    Sparse projections onto the simplex
+    Anastasios Kyrillidis, Stephen Becker, Volkan Cevher and, Christoph Koch
+    ICML 2013
+    https://arxiv.org/abs/1206.1529
+  """
+  if value is None:
+    value = 1.0
+  return value * _projection_unit_sparse_simplex(
+      x / value, max_nz=max_nz, use_approx_max_nz=use_approx_max_nz)
 
 
 def projection_l1_sphere(x: jnp.ndarray, value: float = 1.0) -> jnp.ndarray:
