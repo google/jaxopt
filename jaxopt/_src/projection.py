@@ -392,12 +392,17 @@ def projection_box_section(x: jnp.ndarray,
 
 def _max_l2(x, marginal_b, gamma):
   scale = gamma * marginal_b
-  p = projection_simplex(x / scale)
+  x_scale = x / scale
+  p = projection_simplex(x_scale)
+  # From Danskin's theorem, we do not need to backpropagate
+  # through projection_simplex.
+  p = jax.lax.stop_gradient(p)
   return jnp.dot(x, p) - 0.5 * scale * jnp.dot(p, p)
 
 
 def _max_ent(x, marginal_b, gamma):
   return gamma * logsumexp(x / gamma) - gamma * jnp.log(marginal_b)
+
 
 _max_l2_vmap = jax.vmap(_max_l2, in_axes=(1, 0, None))
 _max_l2_grad_vmap = jax.vmap(jax.grad(_max_l2), in_axes=(1, 0, None))
