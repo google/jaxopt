@@ -439,5 +439,51 @@ class ProjectionTest(test_util.JaxoptTestCase):
     solution1 = projection.projection_birkhoff(doubly_stochastic_matrix)
     self.assertArraysAllClose(doubly_stochastic_matrix, solution1)
 
+  def test_projection_sparse_simplex(self):
+    def top_k(x, k):
+      """Preserve the top-k entries of the vector x and put -inf values elsewhere.
+
+      Args:
+        x: (N,) array.
+        k: integer.
+      Returns:
+        A array that preserves the top-k entries of and 0 elsewhere
+      """
+
+      _, top_k_indices = jax.lax.top_k(x, k)
+      log_mask = jnp.log(jax.nn.one_hot(top_k_indices, len(x), dtype=x.dtype))
+      return jnp.max(x[None, :] + log_mask, axis=0)
+
+    dim_data = 100
+    random_data = jax.random.normal(jax.random.PRNGKey(0), (dim_data,))
+
+    # Check that the forward passes of projection_sparse_simplex_exact
+    # and projection_simplex_sparse_approx_topk give correct results.
+    for value in [1.0, 2.0]:
+      ground_truth_composition = lambda x: projection.projection_simplex(  ## pylint: disable=g-long-lambda
+          top_k(x, k=10), value=value)
+      projection_sparse_simplex_exact = (
+          lambda x: projection.projection_sparse_simplex(  ## pylint: disable=g-long-lambda
+              x, max_nz=10, value=value, use_approx_max_nz=False))
+      projection_sparse_simplex_approx = (
+          lambda x: projection.projection_sparse_simplex(  ## pylint: disable=g-long-lambda
+              x, max_nz=10, value=value, use_approx_max_nz=True))
+
+      self.assertArraysAllClose(
+          projection_sparse_simplex_exact(random_data),
+          ground_truth_composition(random_data))
+      self.assertArraysAllClose(
+          projection_sparse_simplex_approx(random_data),
+          ground_truth_composition(random_data))
+
+      # Check that the backward passes of projection_sparse_simplex_exact
+      # and projection_sparse_simplex_approx give correct results.
+      self.assertArraysAllClose(
+          jax.jacobian(projection_sparse_simplex_exact)(random_data),
+          jax.jacobian(ground_truth_composition)(random_data))
+
+      self.assertArraysAllClose(
+          jax.jacobian(projection_sparse_simplex_approx)(random_data),
+          jax.jacobian(ground_truth_composition)(random_data))
 if __name__ == '__main__':
   absltest.main()
