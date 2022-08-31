@@ -130,6 +130,23 @@ class ScipyMinimizeTest(test_util.JaxoptTestCase):
     with self.assertRaises(ValueError):
       ScipyMinimize(fun=self.logreg_fun, maxiter=500, options={'maxiter': 100})
 
+  def test_callback(self):
+    # test the callback API
+    trace = []
+    def cb(xk):
+      # check that xk is a pytree with the right attributes
+      self.assertIn('W', xk)
+      self.assertIn('b', xk)
+      trace.append(1)
+    solver = ScipyMinimize(fun=self.logreg_with_intercept_fun, callback=cb)
+    pytree_init = {'W': jnp.zeros([self.n_features, self.n_classes]),
+                   'b': jnp.zeros([self.n_classes])}
+    solver.run(pytree_init, l2reg=self.default_l2reg, data=self.data)
+
+    # if the cb function has been called at least once, the trace list will have
+    # at least one element
+    self.assertNotEmpty(trace)
+
   def test_logreg(self):
     lbfgs = ScipyMinimize(fun=self.logreg_fun,
                           **self.solver_kwargs)
