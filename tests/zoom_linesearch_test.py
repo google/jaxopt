@@ -1,12 +1,10 @@
 from absl.testing import absltest, parameterized
-import scipy.optimize
-
 import jax
 import jax.numpy as jnp
-import numpy as onp
-
 from jaxopt._src import test_util
 from jaxopt._src.zoom_linesearch import zoom_linesearch
+import numpy as onp
+import scipy.optimize
 
 
 class ZoomLinesearchTest(test_util.JaxoptTestCase):
@@ -159,6 +157,21 @@ class ZoomLinesearchTest(test_util.JaxoptTestCase):
     self.assertAllClose(scipy_res[3], res.f_k, atol=1e-5, check_dtypes=False)
     self.assertAllClose(scipy_res[0], res2.a_k, atol=1e-5, check_dtypes=False)
     self.assertAllClose(scipy_res[3], res2.f_k, atol=1e-5, check_dtypes=False)
+
+  def test_correct_dtypes(self):
+    def f(x):
+      return  jnp.cos(jnp.sum(jnp.exp(-x)) ** 2)
+
+    with jax.experimental.enable_x64():
+      xk = jnp.ones(2, dtype=jnp.float32)
+      pk = jnp.array([-0.5, -0.25], dtype=jnp.float32)
+      res = zoom_linesearch(f, xk, pk, maxiter=100)
+      for name in ("failed",):
+        self.assertEqual(getattr(res, name).dtype, jnp.bool_)
+      for name in ("k", "nit", "nfev", "ngev"):
+        self.assertEqual(getattr(res, name).dtype, jnp.int64)
+      for name in ("a_k", "f_k", "g_k"):
+        self.assertEqual(getattr(res, name).dtype, jnp.float32)
 
 
 if __name__ == "__main__":

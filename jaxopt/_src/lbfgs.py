@@ -37,6 +37,7 @@ from jaxopt.tree_util import tree_scalar_mul
 from jaxopt.tree_util import tree_sub
 from jaxopt.tree_util import tree_sum
 from jaxopt.tree_util import tree_l2_norm
+from jaxopt._src.tree_util import tree_single_dtype
 
 
 def inv_hessian_product_leaf(v: jnp.ndarray,
@@ -123,7 +124,7 @@ def compute_gamma(s_history: Any, y_history: Any, last: int):
 
 
 def init_history(pytree, history_size):
-  fun = lambda leaf: jnp.zeros((history_size,) + leaf.shape)
+  fun = lambda leaf: jnp.zeros((history_size,) + leaf.shape, dtype=leaf.dtype)
   return tree_map(fun, pytree)
 
 
@@ -230,18 +231,18 @@ class LBFGS(base.IterativeSolver):
     Returns:
       state
     """
-    if self.has_aux:
-      _, aux = self.fun(init_params, *args, **kwargs)
-    else:
-      aux = None
-
-    return LbfgsState(iter_num=jnp.asarray(0),
-                      value=jnp.asarray(jnp.inf),
-                      stepsize=jnp.asarray(self.max_stepsize),
-                      error=jnp.asarray(jnp.inf),
+    out = self.fun(init_params, *args, **kwargs)
+    value, aux = out if self.has_aux else (out, None)
+    if value.size != 1:
+      raise ValueError("The function to optimize did not return a scalar.")
+    dtype = tree_single_dtype(init_params)
+    return LbfgsState(iter_num=jnp.asarray(0, dtype=jnp.int32),
+                      value=jnp.full([], jnp.inf, dtype=value.dtype),
+                      stepsize=jnp.asarray(self.max_stepsize, dtype=dtype),
+                      error=jnp.full([], jnp.inf, dtype=dtype),
                       s_history=init_history(init_params, self.history_size),
                       y_history=init_history(init_params, self.history_size),
-                      rho_history=jnp.zeros(self.history_size),
+                      rho_history=jnp.zeros(self.history_size, dtype=dtype),
                       aux=aux)
 
   def update(self,

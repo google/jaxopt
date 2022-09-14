@@ -207,3 +207,14 @@ def tree_mean(tree):
   """Mean reduction for trees."""
   leaves_avg = tree_map(jnp.mean, tree)
   return tree_sum(leaves_avg) / len(tree_leaves(leaves_avg))
+
+
+def tree_single_dtype(tree):
+  """The dtype for all values in e tree."""
+  dtypes = set(p.dtype for p in jax.tree_util.tree_leaves(tree))
+  if not dtypes:
+    raise ValueError('The provided tree has no leaves.')
+  elif len(dtypes) == 1:
+    return dtypes.pop()
+  else:
+    raise ValueError('Found more than one dtype in the tree.')
