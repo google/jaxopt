@@ -25,6 +25,7 @@ import jax.numpy as jnp
 import jax
 from jax import lax
 from jaxopt.tree_util import tree_vdot, tree_add_scalar_mul, tree_map
+from jaxopt._src.tree_util import tree_single_dtype
 
 _dot = partial(jnp.dot, precision=lax.Precision.HIGHEST)
 
@@ -104,7 +105,7 @@ def _zoom(restricted_func_and_grad, wolfe_one, wolfe_two, a_lo, phi_lo,
       dphi_hi=dphi_hi,
       a_rec=(a_lo + a_hi) / 2.,
       phi_rec=(phi_lo + phi_hi) / 2.,
-      a_star=jnp.ones([], dtype=phi_lo.dtype),
+      a_star=1.,
       phi_star=phi_lo,
       dphi_star=dphi_lo,
       g_star=g_0,
@@ -291,7 +292,9 @@ def zoom_linesearch(f, xk, pk, old_fval=None, old_old_fval=None, gfk=None,
     f_value_and_grad = jax.value_and_grad(f, has_aux=has_aux)
 
   def restricted_func_and_grad(t):
-    #t = jnp.array(t, dtype=pk.dtype)
+    dtype = tree_single_dtype(xk)
+    if dtype is not None:
+      t = jnp.asarray(t, dtype=dtype)
     xkp1 = tree_add_scalar_mul(xk, t, pk)
     if has_aux:
       (phi, aux), g = f_value_and_grad(xkp1, *args, **kwargs)

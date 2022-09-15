@@ -259,9 +259,10 @@ class LbfgsTest(test_util.JaxoptTestCase):
     # the Rosenbrock function is zero at its minimum
     self.assertLessEqual(fun(x), 1e-2)
 
-  def test_correct_dtypes(self):
+  @parameterized.product(out_dtype=[jnp.float32, jnp.float64])
+  def test_correct_dtypes(self, out_dtype):
     def f(x):
-      return  jnp.cos(jnp.sum(jnp.exp(-x)) ** 2)
+      return  jnp.cos(jnp.sum(jnp.exp(-x)) ** 2).astype(out_dtype)
 
     with jax.experimental.enable_x64():
       x0 = jnp.ones([5, 5], dtype=jnp.float32)
@@ -269,10 +270,11 @@ class LbfgsTest(test_util.JaxoptTestCase):
       x, state = lbfgs.run(x0)
       self.assertEqual(x.dtype, jnp.float32)
       for name in ("iter_num",):
-        self.assertEqual(getattr(state, name).dtype, jnp.int32)
-      for name in ("value", "stepsize", "error", "s_history", "y_history",
-                   "rho_history"):
-        self.assertEqual(getattr(state, name).dtype, jnp.float32)
+        self.assertEqual(getattr(state, name).dtype, jnp.int64)
+      for name in ("error", "s_history", "y_history", "rho_history"):
+        self.assertEqual(getattr(state, name).dtype, jnp.float32, name)
+      for name in ("value", "stepsize"):
+        self.assertEqual(getattr(state, name).dtype, out_dtype, name)
 
 
 if __name__ == '__main__':

@@ -231,15 +231,15 @@ class LBFGS(base.IterativeSolver):
     Returns:
       state
     """
-    out = self.fun(init_params, *args, **kwargs)
-    value, aux = out if self.has_aux else (out, None)
-    if value.size != 1:
-      raise ValueError("The function to optimize did not return a scalar.")
+    if self.has_aux:
+      _, aux = self.fun(init_params, *args, **kwargs)
+    else:
+      aux = None
     dtype = tree_single_dtype(init_params)
-    return LbfgsState(iter_num=jnp.asarray(0, dtype=jnp.int32),
-                      value=jnp.full([], jnp.inf, dtype=value.dtype),
+    return LbfgsState(iter_num=jnp.asarray(0),
+                      value=jnp.asarray(jnp.inf),
                       stepsize=jnp.asarray(self.max_stepsize, dtype=dtype),
-                      error=jnp.full([], jnp.inf, dtype=dtype),
+                      error=jnp.asarray(jnp.inf),
                       s_history=init_history(init_params, self.history_size),
                       y_history=init_history(init_params, self.history_size),
                       rho_history=jnp.zeros(self.history_size, dtype=dtype),
@@ -312,7 +312,8 @@ class LBFGS(base.IterativeSolver):
         new_grad = ls_state.g_k
         # FIXME: zoom_linesearch currently doesn't return new_params
         # so we have to recompute it.
-        new_params = tree_add_scalar_mul(params, new_stepsize, descent_direction)
+        t = new_stepsize.astype(tree_single_dtype(params))
+        new_params = tree_add_scalar_mul(params, t, descent_direction)
 
       else:
         raise ValueError("Invalid name in 'linesearch' option.")

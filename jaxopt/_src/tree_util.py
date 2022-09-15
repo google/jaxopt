@@ -211,10 +211,10 @@ def tree_mean(tree):
 
 def tree_single_dtype(tree):
   """The dtype for all values in e tree."""
-  dtypes = set(p.dtype for p in jax.tree_util.tree_leaves(tree))
+  dtypes = set(p.dtype for p in jax.tree_util.tree_leaves(tree)
+               if isinstance(p, jnp.ndarray))
   if not dtypes:
-    raise ValueError('The provided tree has no leaves.')
-  elif len(dtypes) == 1:
+    return None
+  if len(dtypes) == 1:
     return dtypes.pop()
-  else:
-    raise ValueError('Found more than one dtype in the tree.')
+  raise ValueError('Found more than one dtype in the tree.')

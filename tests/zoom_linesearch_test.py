@@ -158,9 +158,10 @@ class ZoomLinesearchTest(test_util.JaxoptTestCase):
     self.assertAllClose(scipy_res[0], res2.a_k, atol=1e-5, check_dtypes=False)
     self.assertAllClose(scipy_res[3], res2.f_k, atol=1e-5, check_dtypes=False)
 
-  def test_correct_dtypes(self):
+  @parameterized.product(out_dtype=[jnp.float32, jnp.float64])
+  def test_correct_dtypes(self, out_dtype):
     def f(x):
-      return  jnp.cos(jnp.sum(jnp.exp(-x)) ** 2)
+      return  jnp.cos(jnp.sum(jnp.exp(-x)) ** 2).astype(out_dtype)
 
     with jax.experimental.enable_x64():
       xk = jnp.ones(2, dtype=jnp.float32)
@@ -170,8 +171,10 @@ class ZoomLinesearchTest(test_util.JaxoptTestCase):
         self.assertEqual(getattr(res, name).dtype, jnp.bool_)
       for name in ("k", "nit", "nfev", "ngev"):
         self.assertEqual(getattr(res, name).dtype, jnp.int64)
-      for name in ("a_k", "f_k", "g_k"):
-        self.assertEqual(getattr(res, name).dtype, jnp.float32)
+      for name in ("g_k",):
+        self.assertEqual(getattr(res, name).dtype, jnp.float32, name)
+      for name in ("a_k", "f_k"):
+        self.assertEqual(getattr(res, name).dtype, out_dtype)
 
 
 if __name__ == "__main__":
