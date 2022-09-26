@@ -19,15 +19,15 @@ Installation
 
 To install the latest release of JAXopt, use the following command::
 
-    $ pip install jaxopt
+    pip install jaxopt
 
 To install the **development** version, use the following command instead::
 
-    $ pip install git+https://github.com/google/jaxopt
+    pip install git+https://github.com/google/jaxopt
 
 Alternatively, it can be be installed from sources with the following command::
 
-    $ python setup.py install
+    python setup.py install
 
 .. toctree::
    :maxdepth: 1
