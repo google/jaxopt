@@ -133,4 +133,5 @@ nb_execution_excludepatterns = [
     # Slow notebook
     'notebooks/deep_learning/*.*',
     'notebooks/implicit_diff/dataset_distillation.*',
+    'notebooks/implicit_diff/maml.*',
 ]

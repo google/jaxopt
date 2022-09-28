@@ -65,3 +65,18 @@ Implicit Differentiation
     </div>
 
 
+
+.. raw:: html
+
+    <div class="sphx-glr-thumbcontainer" tooltip="Few-shot Adaptation with Model Agnostic Meta-Learning (MAML)">
+
+.. only:: html
+
+ .. figure:: /notebooks/implicit_diff/thumbnails/maml.png
+     :alt: Few-shot Adaptation with Model Agnostic Meta-Learning (MAML)
+
+     :doc:`/notebooks/implicit_diff/maml`
+
+.. raw:: html
+
+    </div>
