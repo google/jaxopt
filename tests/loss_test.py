@@ -13,20 +13,22 @@
 # limitations under the License.
 
 from absl.testing import absltest
-
 import jax
 from jax.nn import softmax
 from jax.nn import softplus
+import jax.numpy as jnp
 from jax.scipy.special import expit as sigmoid
 from jax.scipy.special import logsumexp
-import jax.numpy as jnp
-
 from jaxopt import loss
 from jaxopt import projection
 from jaxopt._src import test_util
-
 import numpy as onp
 
+def one_hot_argmax(inputs: jnp.array) -> jnp.array:
+  """An argmax one-hot function for arbitrary shapes."""
+  inputs_flat = jnp.reshape(inputs, (-1))
+  flat_one_hot = jax.nn.one_hot(jnp.argmax(inputs_flat), inputs_flat.shape[0])
+  return jnp.reshape(flat_one_hot, inputs.shape)
 
 class LossTest(test_util.JaxoptTestCase):
 
@@ -176,6 +178,31 @@ class LossTest(test_util.JaxoptTestCase):
     self.assertAllClose(0.0, loss.huber_loss(1, 1, .1))
     self.assertAllClose(.1 * (1.0- .5 * .1), loss.huber_loss(4, 3, .1))
     self.assertAllClose(0.125, loss.huber_loss(0, .5))
+
+  def test_fenchel_young_reg(self):
+    # Checks the behavior of the Fenchel-Young loss.
+    fy_loss = loss.make_fenchel_young_loss(logsumexp)
+    rng = jax.random.PRNGKey(0)
+    rngs = jax.random.split(rng, 2)
+    theta_true = jax.random.uniform(rngs[0], (8, 5))
+    y_true = jax.vmap(jax.nn.softmax)(theta_true)
+    theta_random = jax.random.uniform(rngs[1], (8, 5))
+    y_random = jax.vmap(jax.nn.softmax)(theta_random)
+    fy_min = jax.vmap(fy_loss)(y_true, theta_true)
+    fy_random = jax.vmap(fy_loss)(y_true, theta_random)
+    # Checks that the loss is minimized for true value of the parameters.
+    self.assertGreater(fy_random[0], fy_min[0])
+    self.assertGreater(jnp.mean(fy_random), jnp.mean(fy_min))
+    grad_random = jax.vmap(jax.grad(fy_loss, argnums=1))(y_true, theta_random)
+    # Checks that the gradient of the loss takes the correct form.
+    self.assertArraysAllClose(grad_random, y_random - y_true)
+    y_one_hot = jax.vmap(one_hot_argmax)(theta_true)
+    int_one_hot = jnp.where(y_one_hot == 1.)[1]
+    loss_one_hot = jax.vmap(fy_loss)(y_one_hot, theta_random)
+    log_loss = jax.vmap(loss.multiclass_logistic_loss)(int_one_hot, 
+                                                       theta_random)
+    # Checks that the FY loss associated to logsumexp is correct.
+    self.assertArraysAllClose(loss_one_hot, log_loss)
 
 
 if __name__ == '__main__':

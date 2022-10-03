@@ -14,6 +14,8 @@
 
 """Loss functions."""
 
+from typing import Callable
+
 import jax
 from jax.nn import softplus
 import jax.numpy as jnp
@@ -104,3 +106,35 @@ def multiclass_sparsemax_loss(label: int, scores: jnp.ndarray) -> float:
   scores = (scores - scores[label]).at[label].set(0.0)
   return (jnp.dot(proba, jnp.where(proba, scores, 0.0))
           + 0.5 * (1.0 - jnp.dot(proba, proba)))
+
+
+def make_fenchel_young_loss(max_fun: Callable[[jnp.array], float]):
+  """Creates a Fenchel-Young loss from a max function.
+
+  Args:
+    max_fun: the max function on which the Fenchel-Young loss is built.
+
+  Returns:
+    A Fenchel-Young loss function with the same signature.
+
+  Example:
+    Given a max function, e.g. the log sum exp
+
+      from jax.scipy.special import logsumexp
+
+      FY_loss = make_fy_loss(max_fun=logsumexp)
+
+    Then FY loss is the Fenchel-Young loss, given for F = max_fun by
+
+      FY_loss(y_true, scores) = F(scores) - <scores, y_true>
+
+    Its gradient, computed automatically, is given by
+
+      grad FY_loss = y_eps(scores) - y_true
+
+    where y_eps is the gradient of F, the argmax.
+  """
+
+  def fy_loss(y_true, scores, *args, **kwargs):
+    return max_fun(scores, *args, **kwargs) - jnp.vdot(y_true, scores)
+  return fy_loss

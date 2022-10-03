@@ -21,6 +21,7 @@ import jax.numpy as jnp
 
 from jaxopt import perturbations
 from jaxopt._src import test_util
+from jaxopt import loss
 
 
 def one_hot_argmax(inputs: jnp.array) -> jnp.array:
@@ -371,6 +372,41 @@ class PerturbationsMaxTest(test_util.JaxoptTestCase):
 
     gradient = jax.grad(loss_example)(values, rngs[1])
     self.assertEqual(gradient.shape, values.shape)
+
+  def test_fenchel_young_pert(self):
+    # Checks the behavior of the FL loss with perturbed optimizers. 
+    pert_max_one_hot = perturbations.make_perturbed_max(one_hot_argmax,
+                                                        num_samples=50000,
+                                                        sigma=1.)
+    # Artificially high values of num_samples to test asymptotic behavior.
+    fy_loss_pert = loss.make_fenchel_young_loss(pert_max_one_hot)
+    rngs = jax.random.split(self.rng, 2)
+    rngs_batch = jax.random.split(self.rng, 8)
+    theta_true = jax.random.uniform(rngs[0], (8, 5))
+    pert_argmax = perturbations.make_perturbed_argmax(argmax_fun=one_hot_argmax,
+                                                      num_samples=50000,
+                                                      sigma=1.)
+    y_true = jax.vmap(pert_argmax)(theta_true, rngs_batch)
+    theta_random = jax.random.uniform(rngs[1], (8, 5))
+    y_random = jax.vmap(pert_argmax)(theta_random, rngs_batch)
+    fy_min = jax.vmap(fy_loss_pert)(y_true, theta_true, rngs_batch)
+    fy_random = jax.vmap(fy_loss_pert)(y_true, theta_random, rngs_batch)
+    # Checks that the loss is minimized for true value of the parameters.
+    self.assertGreater(fy_random[0], fy_min[0])
+    self.assertGreater(jnp.mean(fy_random), jnp.mean(fy_min))
+    grad_random = jax.vmap(jax.grad(fy_loss_pert, argnums=1))(y_true,
+                                                              theta_random,
+                                                              rngs_batch)
+    # Checks that the gradient of the loss takes the correct form.
+    self.assertArraysAllClose(grad_random, y_random - y_true)
+    y_one_hot = jax.vmap(one_hot_argmax)(theta_true)
+    int_one_hot = jnp.where(y_one_hot == 1.)[1]
+    loss_one_hot = jax.vmap(fy_loss_pert)(y_one_hot, theta_random, rngs_batch)
+    log_loss = jax.vmap(loss.multiclass_logistic_loss)(int_one_hot,
+                                                       theta_random)
+    # Checks that the FY loss associated to simple perturbed argmax is correct.
+    self.assertArraysAllClose(loss_one_hot, log_loss + jnp.euler_gamma,
+                              rtol=1e-2)
 
 
 if __name__ == '__main__':
