@@ -33,19 +33,33 @@ class GradientDescent(ProximalGradient):
     fun: a smooth function of the form ``fun(parameters, *args, **kwargs)``,
       where ``parameters`` are the model parameters w.r.t. which we minimize
       the function and the rest are fixed auxiliary parameters.
-    stepsize: a stepsize to use (if <= 0, use backtracking line search),
-      or a callable specifying the **positive** stepsize to use at each iteration.
+    value_and_grad: whether ``fun`` just returns the value (False) or both
+      the value and gradient (True).
+    has_aux: whether ``fun`` outputs auxiliary data or not.
+      If ``has_aux`` is False, ``fun`` is expected to be
+        scalar-valued.
+      If ``has_aux`` is True, then we have one of the following
+        two cases.
+      If ``value_and_grad`` is False, the output should be
+      ``value, aux = fun(...)``.
+      If ``value_and_grad == True``, the output should be
+      ``(value, aux), grad = fun(...)``.
+      At each iteration of the algorithm, the auxiliary outputs are stored
+        in ``state.aux``.
+
+    stepsize: a stepsize to use (if <= 0, use backtracking line search), or a
+      callable specifying the **positive** stepsize to use at each iteration.
     maxiter: maximum number of proximal gradient descent iterations.
     maxls: maximum number of iterations to use in the line search.
     tol: tolerance to use.
+
     acceleration: whether to use acceleration (also known as FISTA) or not.
     verbose: whether to print error on every iteration or not.
       Warning: verbose=True will automatically disable jit.
+
     implicit_diff: whether to enable implicit diff or autodiff of unrolled
       iterations.
     implicit_diff_solve: the linear system solver to use.
-    has_aux: whether function fun outputs one (False) or more values (True).
-      When True it will be assumed by default that fun(...)[0] is the objective.
   """
 
   def init_state(self,

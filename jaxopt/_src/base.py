@@ -56,6 +56,43 @@ class KKTSolution(NamedTuple):
   dual_ineq: Optional[Any] = None
 
 
+def _make_funs_with_aux(fun: Callable,
+                        value_and_grad: bool,
+                        has_aux: bool):
+  """
+  This utility creates fun, grad_fun and value_and_grad_fun functions
+  with aux output. If `has_aux` is False, then a None aux is returned.
+  If `value_and_grad` is True, `fun` is assumed to return both a value and a
+  gradient.
+  """
+  if value_and_grad:
+    # Case when `fun` is a user-provided `value_and_grad`.
+
+    if has_aux:
+      fun_ = lambda *a, **kw: fun(*a, **kw)[0]
+      value_and_grad_fun = fun
+    else:
+      fun_ = lambda *a, **kw: (fun(*a, **kw)[0], None)
+      def value_and_grad_fun(*a, **kw):
+        v, g = fun(*a, **kw)
+        return (v, None), g
+
+  else:
+    # Case when `fun` is just a scalar-valued function.
+    if has_aux:
+      fun_ = fun
+    else:
+      fun_ = lambda p, *a, **kw: (fun(p, *a, **kw), None)
+
+    value_and_grad_fun = jax.value_and_grad(fun_, has_aux=True)
+
+  def grad_fun(*a, **kw):
+    (v, a), g = value_and_grad_fun(*a, **kw)
+    return g, a
+
+  return fun_, grad_fun, value_and_grad_fun
+
+
 class Solver(abc.ABC):
   """Base class for solvers.
 

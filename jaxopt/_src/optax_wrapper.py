@@ -47,25 +47,39 @@ class OptaxSolver(base.StochasticSolver):
       ``*args`` and ``**kwargs`` are additional arguments.
     opt: the optimizer to use, an optax.GradientTransformation, which is just a
       NamedTuple with ``init`` and ``update`` functions.
+    value_and_grad: whether ``fun`` just returns the value (False) or both
+      the value and gradient (True).
+    has_aux: whether ``fun`` outputs auxiliary data or not.
+      If ``has_aux`` is False, ``fun`` is expected to be
+        scalar-valued.
+      If ``has_aux`` is True, then we have one of the following
+        two cases.
+      If ``value_and_grad`` is False, the output should be
+      ``value, aux = fun(...)``.
+      If ``value_and_grad == True``, the output should be
+      ``(value, aux), grad = fun(...)``.
+      At each iteration of the algorithm, the auxiliary outputs are stored
+        in ``state.aux``.
+
     pre_update: a function to execute before Optax's update.
       The function signature must be
       ``params, state = pre_update(params, state, *args, **kwargs)``.
+
     maxiter: maximum number of solver iterations.
     tol: tolerance to use.
     verbose: whether to print error on every iteration or not. verbose=True will
       automatically disable jit.
+
     implicit_diff: whether to enable implicit diff or autodiff of unrolled
       iterations.
     implicit_diff_solve: the linear system solver to use.
-    has_aux: whether ``fun`` outputs one (False) or more values (True).
-      When True it will be assumed by default that ``fun(...)[0]``
-      is the objective value. The auxiliary outputs are stored in
-      ``state.aux``.
+
     jit: whether to JIT-compile the optimization loop (default: "auto").
     unroll: whether to unroll the optimization loop (default: "auto").
   """
   fun: Callable
   opt: NamedTuple
+  value_and_grad: bool = False
   pre_update: Optional[Callable] = None
   maxiter: int = 500
   tol: float = 1e-3
@@ -142,14 +156,9 @@ class OptaxSolver(base.StochasticSolver):
     return self._grad_fun(params, *args, **kwargs)[0]
 
   def __post_init__(self):
-    # Handle has_aux once for all.
-    if self.has_aux:
-      fun_with_aux = self.fun
-    else:
-      fun_with_aux = lambda p, *a, **kw: (self.fun(p, *a, **kw), None)
-
-    # Pre-compile useful functions.
-    self._value_and_grad_fun = jax.value_and_grad(fun_with_aux, has_aux=True)
-    self._grad_fun = jax.grad(fun_with_aux, has_aux=True)
+    _, self._grad_fun, self._value_and_grad_fun = \
+      base._make_funs_with_aux(fun=self.fun,
+                               value_and_grad=self.value_and_grad,
+                               has_aux=self.has_aux)
 
     self.reference_signature = self.fun

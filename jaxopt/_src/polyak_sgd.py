@@ -59,23 +59,34 @@ class PolyakSGD(base.StochasticSolver):
     fun: a function of the form ``fun(params, *args, **kwargs)``, where
       ``params`` are parameters of the model,
       ``*args`` and ``**kwargs`` are additional arguments.
+    has_aux: whether ``fun`` outputs auxiliary data or not.
+      If ``has_aux`` is False, ``fun`` is expected to be
+        scalar-valued.
+      If ``has_aux`` is True, then we have one of the following
+        two cases.
+      If ``value_and_grad`` is False, the output should be
+      ``value, aux = fun(...)``.
+      If ``value_and_grad == True``, the output should be
+      ``(value, aux), grad = fun(...)``.
+      At each iteration of the algorithm, the auxiliary outputs are stored
+        in ``state.aux``.
+
     max_stepsize: a maximum step size to use.
     delta: a value to add in the denominator of the update (default: 0).
     momentum: momentum parameter, 0 corresponding to no momentum.
     pre_update: a function to execute before the solver's update.
       The function signature must be
       ``params, state = pre_update(params, state, *args, **kwargs)``.
+
     maxiter: maximum number of solver iterations.
     tol: tolerance to use.
     verbose: whether to print error on every iteration or not. verbose=True will
       automatically disable jit.
+
     implicit_diff: whether to enable implicit diff or autodiff of unrolled
       iterations.
     implicit_diff_solve: the linear system solver to use.
-    has_aux: whether ``fun`` outputs one (False) or more values (True).
-      When True it will be assumed by default that ``fun(...)[0]``
-      is the objective value. The auxiliary outputs are stored in
-      ``state.aux``.
+
     jit: whether to JIT-compile the optimization loop (default: "auto").
     unroll: whether to unroll the optimization loop (default: "auto").
 
@@ -93,16 +104,21 @@ class PolyakSGD(base.StochasticSolver):
     https://arxiv.org/abs/2002.10542
   """
   fun: Callable
+  value_and_grad: bool = False
+  has_aux: bool = False
+
   max_stepsize: float = 1.0
   delta: float = 0.0
   momentum: float = 0.0
   pre_update: Optional[Callable] = None
+
   maxiter: int = 500
   tol: float = 1e-3
   verbose: int = 0
+
   implicit_diff: bool = False
   implicit_diff_solve: Optional[Callable] = None
-  has_aux: bool = False
+
   jit: base.AutoOrBoolean = "auto"
   unroll: base.AutoOrBoolean = "auto"
 
@@ -187,14 +203,9 @@ class PolyakSGD(base.StochasticSolver):
     return hash(self.attribute_values())
 
   def __post_init__(self):
-    # Handle has_aux once for all.
-    if self.has_aux:
-      fun_with_aux = self.fun
-    else:
-      fun_with_aux = lambda p, *a, **kw: (self.fun(p, *a, **kw), None)
-
-    # Pre-compile useful functions.
-    self._value_and_grad_fun = jax.value_and_grad(fun_with_aux, has_aux=True)
-    self._grad_fun = jax.grad(fun_with_aux, has_aux=True)
+    _, self._grad_fun, self._value_and_grad_fun = \
+      base._make_funs_with_aux(fun=self.fun,
+                               value_and_grad=self.value_and_grad,
+                               has_aux=self.has_aux)
 
     self.reference_signature = self.fun

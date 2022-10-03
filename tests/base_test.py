@@ -17,7 +17,7 @@ from absl.testing import absltest
 import jax
 import jax.numpy as jnp
 
-from jaxopt import base
+from jaxopt._src import base
 from jaxopt._src import test_util
 
 import numpy as onp
@@ -178,6 +178,60 @@ class BaseTest(test_util.JaxoptTestCase):
     self.assertAllClose(ref3, f_jit_s(3))
     self.assertAllClose(ref0, f_jit_d(0))
     self.assertAllClose(ref3, f_jit_d(3))
+
+  def test_make_funs_with_aux(self):
+    def fun_with_aux(w, a, b):
+      res = w * a - b
+      return res ** 2, res
+
+    def fun(w, a, b):
+      return fun_with_aux(w, a, b)[0]
+
+    fun1, grad1, vg1 = base._make_funs_with_aux(fun_with_aux,
+                                                value_and_grad=False,
+                                                has_aux=True)
+    fun2, grad2, vg2 = base._make_funs_with_aux(fun,
+                                                value_and_grad=False,
+                                                has_aux=False)
+    fun3, grad3, vg3 = base._make_funs_with_aux(jax.value_and_grad(fun_with_aux,
+                                                                   has_aux=True),
+                                                value_and_grad=True,
+                                                has_aux=True)
+    fun4, grad4, vg4 = base._make_funs_with_aux(jax.value_and_grad(fun),
+                                                value_and_grad=True,
+                                                has_aux=False)
+
+    w, a, b = jnp.array([1.0, 2.0, 3.0])
+
+    v1, aux1 = fun1(w, a, b)
+    v2, aux2 = fun2(w, a, b)
+    v3, aux3 = fun3(w, a, b)
+    v4, aux4 = fun4(w, a, b)
+    self.assertAllClose(v1, v2)
+    self.assertAllClose(v1, v3)
+    self.assertAllClose(v1, v4)
+    self.assertAllClose(aux1, aux3)
+
+    g1, aux1 = grad1(w, a, b)
+    g2, aux2 = grad2(w, a, b)
+    g3, aux3 = grad3(w, a, b)
+    g4, aux4 = grad4(w, a, b)
+    self.assertAllClose(g1, g2)
+    self.assertAllClose(g1, g3)
+    self.assertAllClose(g1, g4)
+    self.assertAllClose(aux1, aux3)
+
+    (v1, aux1), g1 = vg1(w, a, b)
+    (v2, aux2), g2 = vg2(w, a, b)
+    (v3, aux3), g3 = vg3(w, a, b)
+    (v4, aux4), g4 = vg4(w, a, b)
+    self.assertAllClose(v1, v2)
+    self.assertAllClose(v1, v3)
+    self.assertAllClose(v1, v4)
+    self.assertAllClose(g1, g2)
+    self.assertAllClose(g1, g3)
+    self.assertAllClose(g1, g4)
+    self.assertAllClose(aux1, aux3)
 
 
 if __name__ == '__main__':
