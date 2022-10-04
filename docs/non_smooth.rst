@@ -82,6 +82,23 @@ and autodiff of unrolled iterations if ``implicit_diff=False``.  See the
    * :ref:`sphx_glr_auto_examples_implicit_diff_lasso_implicit_diff.py`
    * :ref:`sphx_glr_auto_examples_implicit_diff_sparse_coding.py`
 
+When using implicit differentiation, you can optionally specify a support
+function ``support`` to give a hint to the linear solver called in ``root_vjp``
+and only solve the linear system restricted to the support of the solution::
+
+  from jaxopt.support import support_nonzero
+
+  def solution(l1reg):
+    pg = ProximalGradient(fun=least_squares, prox=prox_lasso,
+                          support=support_nonzero, implicit_diff=True)
+    return pg.run(w_init, hyperparams_prox=l1reg, data=(X, y)).params
+
+  # Both the solution & the Jacobian have the same support
+  print(solution(l1reg))
+  print(jax.jacobian(solution)(l1reg))
+
+See the :ref:`implicit differentiation <implicit_diff>` section for more details.
+
 .. _block_coordinate_descent:
 
 Block coordinate descent
@@ -134,3 +151,24 @@ The following operators are available.
     jaxopt.prox.prox_group_lasso
     jaxopt.prox.prox_ridge
     jaxopt.prox.prox_non_negative_ridge
+
+.. _support_functions:
+
+Support functions
+-----------------
+
+Support functions of the form :math:`S(x)` that returns 1 for all the
+coordinates of :math:`x` in the support, and 0 otherwise:
+
+.. math::
+
+  S(x)_{j} := \begin{cases} 1 & \textrm{if $x_{j} \in S$} \\ 0 & \textrm{otherwise} \end{cases}
+
+The following support functions are available.
+
+.. autosummary::
+  :toctree: _autosummary
+
+    jaxopt.support.support_all
+    jaxopt.support.support_nonzero
+    jaxopt.support.support_group_nonzero

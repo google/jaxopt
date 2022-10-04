@@ -58,6 +58,26 @@ We can also compose ``ridge_reg_solution`` with other functions::
    * :ref:`sphx_glr_auto_examples_implicit_diff_lasso_implicit_diff.py`
    * :ref:`sphx_glr_auto_examples_implicit_diff_sparse_coding.py`
 
+Non-smooth functions
+--------------------
+
+When the function :math:`f(x, \theta)` is non-smooth (e.g., in Lasso), implicit
+differentiation can still be applied to compute the Jacobian
+:math:`\partial x^\star(\theta)`. However, the linear system to solve to obtain
+the Jacobian (or, alternatively, the vector-Jacobian product) must be restricted
+to the (generalized) *support* :math:`S` of the solution :math:`x^\star`. To
+give a hint to the linear solver called in ``root_vjp``, you may specify a
+support function ``support`` that will restrict the linear system to the support
+of the solution.
+
+The ``support`` function must return a pytree with the same structure and dtype
+as the solution, where ``support(x)`` is equal to 1 for the coordinates :math:`j`
+in the support (:math:`x_{j} \in S`), and 0 otherwise. The support function
+depends on the non-smooth function being optimized; see :ref:`support functions
+<support_functions>` for examples of support functions. Note that the
+support function merely masks out coordinates outside of the support, making it
+fully compatible with ``jit`` compilation.
+
 Custom solvers
 --------------
 
@@ -92,3 +112,8 @@ of roots of functions.
    <https://arxiv.org/abs/2105.15183>`_,
    Mathieu Blondel, Quentin Berthet, Marco Cuturi, Roy Frostig, Stephan Hoyer, Felipe Llinares-López, Fabian Pedregosa, Jean-Philippe Vert.
    ArXiv preprint.
+
+ * `Implicit Differentiation for Fast Hyperparameter Selection in Non-Smooth Convex Learning
+   <https://www.jmlr.org/papers/volume23/21-0486/21-0486.pdf>`_,
+   Quentin Bertrand, Quentin Klopfenstein, Mathurin Massias, Mathieu Blondel, Samuel Vaiter, Alexandre Gramfort, Joseph Salmon.
+   Journal of Machine Learning Research (JMLR).
