@@ -40,14 +40,30 @@ class ProjectedGradient(base.IterativeSolver):
     projection: projection operator associated with the constraints.
       It should be of the form ``projection(params, hyperparams_proj)``.
       See ``jaxopt.projection`` for examples.
+    value_and_grad: whether ``fun`` just returns the value (False) or both
+      the value and gradient (True).
+    has_aux: whether ``fun`` outputs auxiliary data or not.
+      If ``has_aux`` is False, ``fun`` is expected to be
+        scalar-valued.
+      If ``has_aux`` is True, then we have one of the following
+        two cases.
+      If ``value_and_grad`` is False, the output should be
+      ``value, aux = fun(...)``.
+      If ``value_and_grad == True``, the output should be
+      ``(value, aux), grad = fun(...)``.
+      At each iteration of the algorithm, the auxiliary outputs are stored
+        in ``state.aux``.
+
     stepsize: a stepsize to use (if <= 0, use backtracking line search),
       or a callable specifying the **positive** stepsize to use at each iteration.
     maxiter: maximum number of projected gradient descent iterations.
     maxls: maximum number of iterations to use in the line search.
     tol: tolerance to use.
+
     acceleration: whether to use acceleration (also known as FISTA) or not.
     verbose: whether to print error on every iteration or not.
       Warning: verbose=True will automatically disable jit.
+
     implicit_diff: whether to enable implicit diff or autodiff of unrolled
       iterations.
     implicit_diff_solve: the linear system solver to use.
@@ -58,16 +74,21 @@ class ProjectedGradient(base.IterativeSolver):
   """
   fun: Callable
   projection: Callable
+  value_and_grad: bool = False
+  has_aux: bool = False
+
   stepsize: Union[float, Callable] = 0.0
   maxiter: int = 500
   maxls: int = 15
   tol: float = 1e-3
+
   acceleration: bool = True
   decrease_factor: float = 0.5
   verbose: int = 0
+
   implicit_diff: bool = True
   implicit_diff_solve: Optional[Callable] = None
-  has_aux: bool = False
+
   jit: base.AutoOrBoolean = "auto"
   unroll: base.AutoOrBoolean = "auto"
 
@@ -123,6 +144,8 @@ class ProjectedGradient(base.IterativeSolver):
 
     self._pg = ProximalGradient(fun=self.fun,
                                 prox=prox_fun,
+                                value_and_grad=self.value_and_grad,
+                                has_aux=self.has_aux,
                                 stepsize=self.stepsize,
                                 maxiter=self.maxiter,
                                 maxls=self.maxls,
@@ -131,6 +154,5 @@ class ProjectedGradient(base.IterativeSolver):
                                 decrease_factor=self.decrease_factor,
                                 verbose=self.verbose,
                                 implicit_diff=self.implicit_diff,
-                                has_aux=self.has_aux,
                                 jit=self.jit,
                                 unroll=self.unroll)

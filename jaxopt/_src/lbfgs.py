@@ -151,8 +151,19 @@ class LBFGS(base.IterativeSolver):
 
   Attributes:
     fun: a smooth function of the form ``fun(x, *args, **kwargs)``.
-    has_aux: whether function fun outputs one (False) or more values (True).
-      When True it will be assumed by default that fun(...)[0] is the objective.
+    value_and_grad: whether ``fun`` just returns the value (False) or both
+      the value and gradient (True).
+    has_aux: whether ``fun`` outputs auxiliary data or not.
+      If ``has_aux`` is False, ``fun`` is expected to be
+        scalar-valued.
+      If ``has_aux`` is True, then we have one of the following
+        two cases.
+      If ``value_and_grad`` is False, the output should be
+      ``value, aux = fun(...)``.
+      If ``value_and_grad == True``, the output should be
+      ``(value, aux), grad = fun(...)``.
+      At each iteration of the algorithm, the auxiliary outputs are stored
+        in ``state.aux``.
 
     maxiter: maximum number of proximal gradient descent iterations.
     tol: tolerance of the stopping criterion.
@@ -192,6 +203,7 @@ class LBFGS(base.IterativeSolver):
   """
 
   fun: Callable
+  value_and_grad: bool = False
   has_aux: bool = False
 
   maxiter: int = 500
@@ -355,24 +367,16 @@ class LBFGS(base.IterativeSolver):
 
   def optimality_fun(self, params, *args, **kwargs):
     """Optimality function mapping compatible with ``@custom_root``."""
-    return self._grad_fun(params, *args, **kwargs)
+    return self._value_and_grad_fun(params, *args, **kwargs)[1]
 
   def _value_and_grad_fun(self, params, *args, **kwargs):
     (value, aux), grad = self._value_and_grad_with_aux(params, *args, **kwargs)
     return value, grad
 
-  def _grad_fun(self, params, *args, **kwargs):
-    return self._value_and_grad_fun(params, *args, **kwargs)[1]
-
   def __post_init__(self):
-    if self.has_aux:
-      self._fun = lambda *a, **kw: self.fun(*a, **kw)[0]
-      fun_with_aux = self.fun
-    else:
-      self._fun = self.fun
-      fun_with_aux = lambda *a, **kw: (self.fun(*a, **kw), None)
-
-    self._value_and_grad_with_aux = jax.value_and_grad(fun_with_aux,
-                                                       has_aux=True)
+    _, _, self._value_and_grad_with_aux = \
+      base._make_funs_with_aux(fun=self.fun,
+                               value_and_grad=self.value_and_grad,
+                               has_aux=self.has_aux)
 
     self.reference_signature = self.fun

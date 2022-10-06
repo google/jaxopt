@@ -104,6 +104,20 @@ class ProximalGradient(base.IterativeSolver):
     prox: proximity operator associated with the function ``non_smooth``.
       It should be of the form ``prox(params, hyperparams_prox, scale=1.0)``.
       See ``jaxopt.prox`` for examples.
+    value_and_grad: whether ``fun`` just returns the value (False) or both
+      the value and gradient (True).
+    has_aux: whether ``fun`` outputs auxiliary data or not.
+      If ``has_aux`` is False, ``fun`` is expected to be
+        scalar-valued.
+      If ``has_aux`` is True, then we have one of the following
+        two cases.
+      If ``value_and_grad`` is False, the output should be
+      ``value, aux = fun(...)``.
+      If ``value_and_grad == True``, the output should be
+      ``(value, aux), grad = fun(...)``.
+      At each iteration of the algorithm, the auxiliary outputs are stored
+        in ``state.aux``.
+
     stepsize: a stepsize to use (if <= 0, use backtracking line search),
       or a callable specifying the **positive** stepsize to use at each iteration.
     maxiter: maximum number of proximal gradient descent iterations.
@@ -113,11 +127,11 @@ class ProximalGradient(base.IterativeSolver):
     decrease_factor: factor by which to reduce the stepsize during line search.
     verbose: whether to print error on every iteration or not.
       Warning: verbose=True will automatically disable jit.
+
     implicit_diff: whether to enable implicit diff or autodiff of unrolled
       iterations.
     implicit_diff_solve: the linear system solver to use.
-    has_aux: whether function fun outputs one (False) or more values (True).
-      When True it will be assumed by default that fun(...)[0] is the objective.
+
     jit: whether to JIT-compile the optimization loop (default: "auto").
     unroll: whether to unroll the optimization loop (default: "auto").
 
@@ -130,6 +144,9 @@ class ProximalGradient(base.IterativeSolver):
   """
   fun: Callable
   prox: Callable = prox_none
+  value_and_grad: bool = False
+  has_aux: bool = False
+
   stepsize: Union[float, Callable] = 0.0
   maxiter: int = 500
   maxls: int = 15
@@ -137,9 +154,10 @@ class ProximalGradient(base.IterativeSolver):
   acceleration: bool = True
   decrease_factor: float = 0.5
   verbose: int = 0
+
   implicit_diff: bool = True
   implicit_diff_solve: Optional[Callable] = None
-  has_aux: bool = False
+
   jit: base.AutoOrBoolean = "auto"
   unroll: base.AutoOrBoolean = "auto"
 
@@ -292,15 +310,11 @@ class ProximalGradient(base.IterativeSolver):
     return grad, aux
 
   def __post_init__(self):
-    if self.has_aux:
-      self._fun = lambda *a, **kw: self.fun(*a, **kw)[0]
-      fun_with_aux = self.fun
-    else:
-      self._fun = self.fun
-      fun_with_aux = lambda *a, **kw: (self.fun(*a, **kw), None)
-
-    self._value_and_grad_with_aux = jax.value_and_grad(fun_with_aux,
-                                                       has_aux=True)
+    fun_with_aux, _, self._value_and_grad_with_aux = \
+      base._make_funs_with_aux(fun=self.fun,
+                               value_and_grad=self.value_and_grad,
+                               has_aux=self.has_aux)
+    fun_without_aux = lambda *a, **kw: fun_with_aux(*a, **kw)[0]
 
     # Sets up reference signature.
     fun = getattr(self.fun, "subfun", self.fun)
@@ -313,8 +327,8 @@ class ProximalGradient(base.IterativeSolver):
 
     jit, unroll = self._get_loop_options()
 
-    fista_ls_with_fun= partial(fista_line_search, self._fun, self._prox_grad,
-                               jit, unroll)
+    fista_ls_with_fun= partial(fista_line_search, fun_without_aux,
+                               self._prox_grad, jit, unroll)
 
     if jit:
       jitted_fista_ls_with_fun = jax.jit(fista_ls_with_fun, static_argnums=(0,))

@@ -140,6 +140,20 @@ class ArmijoSGD(base.StochasticSolver):
     fun: a function of the form ``fun(params, *args, **kwargs)``, where
       ``params`` are parameters of the model,
       ``*args`` and ``**kwargs`` are additional arguments.
+    value_and_grad: whether ``fun`` just returns the value (False) or both
+      the value and gradient (True).
+    has_aux: whether ``fun`` outputs auxiliary data or not.
+      If ``has_aux`` is False, ``fun`` is expected to be
+        scalar-valued.
+      If ``has_aux`` is True, then we have one of the following
+        two cases.
+      If ``value_and_grad`` is False, the output should be
+      ``value, aux = fun(...)``.
+      If ``value_and_grad == True``, the output should be
+      ``(value, aux), grad = fun(...)``.
+      At each iteration of the algorithm, the auxiliary outputs are stored
+        in ``state.aux``.
+
     aggressiveness: controls "agressiveness" of optimizer. (default: 0.9)
       Bigger values encourage bigger stepsize. Must belong to open interval
       (0,1).  If ``aggressiveness>0.5`` the learning_rate is guaranteed to be at
@@ -159,23 +173,23 @@ class ArmijoSGD(base.StochasticSolver):
       - "goldstein": re-use previous stepsize and increase until curvature
         condition is fulfilled.  Higher runtime cost than "increase" but better
         theoretical guarantees.
+
     momentum: momentum parameter, 0 corresponding to no momentum.
     max_stepsize: a maximum step size to use. (default: 1.)
     pre_update: a function to execute before the solver's update.
       The function signature must be
       ``params, state = pre_update(params, state, *args, **kwargs)``.
+
     maxiter: maximum number of solver iterations.
     maxls: maximum number of steps in line search.
     tol: tolerance to use.
     verbose: whether to print error on every iteration or not. verbose=True will
       automatically disable jit.
+
     implicit_diff: whether to enable implicit diff or autodiff of unrolled
       iterations.
     implicit_diff_solve: the linear system solver to use.
-    has_aux: whether ``fun`` outputs one (False) or more values (True).
-      When True it will be assumed by default that ``fun(...)[0]``
-      is the objective value. The auxiliary outputs are stored in
-      ``state.aux``.
+
     jit: whether to JIT-compile the optimization loop (default: "auto").
     unroll: whether to unroll the optimization loop (default: "auto").
 
@@ -187,20 +201,27 @@ class ArmijoSGD(base.StochasticSolver):
     Advances in neural information processing systems, 32, pp.3732-3745.
   """
   fun: Callable
+  value_and_grad: bool = False
+  has_aux: bool = False
+
   aggressiveness: float = 0.9  # default value recommanded by authors
   decrease_factor: float = 0.8  # default value recommanded by authors
   increase_factor: float = 1.5  # default value recommanded by authors
   reset_option: str = "increase"
+
   momentum: float = 0.0
   max_stepsize: float = 1.0
+
   pre_update: Optional[Callable] = None
+
   maxiter: int = 500
   maxls: int = 15
   tol: float = 1e-3
   verbose: int = 0
+
   implicit_diff: bool = False
   implicit_diff_solve: Optional[Callable] = None
-  has_aux: bool = False
+
   jit: base.AutoOrBoolean = "auto"
   unroll: base.AutoOrBoolean = "auto"
 
@@ -304,16 +325,11 @@ class ArmijoSGD(base.StochasticSolver):
 
     self._coef = 1 - self.aggressiveness
 
-    if self.has_aux:
-      self._fun = lambda *a, **kw: self.fun(*a, **kw)[0]
-      fun_with_aux = self.fun
-    else:
-      self._fun = self.fun
-      fun_with_aux = lambda *a, **kw: (self.fun(*a, **kw), None)
+    fun_with_aux, _, self._value_and_grad_with_aux = \
+      base._make_funs_with_aux(fun=self.fun,
+                               value_and_grad=self.value_and_grad,
+                               has_aux=self.has_aux)
 
-    self._fun_with_aux = fun_with_aux
-    self._value_and_grad_with_aux = jax.value_and_grad(fun_with_aux,
-                                                       has_aux=True)
     self.reference_signature = self.fun
 
     jit, unroll = self._get_loop_options()
