@@ -36,6 +36,7 @@ Solvers
 .. autosummary::
   :toctree: _autosummary
 
+    jaxopt.BFGS
     jaxopt.GradientDescent
     jaxopt.LBFGS
     jaxopt.ScipyMinimize
