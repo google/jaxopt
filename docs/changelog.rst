@@ -1,11 +1,20 @@
 Changelog
 =========
 
+Main branch
+-----------
 
 New features
 ~~~~~~~~~~~~
+
 - Added example :doc:`/notebooks/deep_learning/maml` by Fabian Pedregosa based on initial code by Paul Vicol and Eric Jiang.
 
+Deprecations
+~~~~~~~~~~~~
+
+- ``jaxopt.QuadraticProgramming`` is now fully removed. Use
+  :class:`jaxopt.CvxpyQP`, :class:`jaxopt.OSQP`, :class:`jaxopt.BoxOSQP` and
+  :class:`jaxopt.EqualityConstrainedQP` instead.
 
 Version 0.5
 -----------
