@@ -330,12 +330,20 @@ class LevenbergMarquardt(base.IterativeSolver):
     # where J is jacobian and r" is second order directional derivative.
     if self.materialize_jac:
       damping_term = state.damping_factor * jnp.identity(params.size)
-      reg_hess = jnp.linalg.inv(state.jtj + damping_term)
-      velocity = reg_hess @ state.gradient
+      # Note that instead of taking the inverse of jtj_corr and multiply that
+      # by state.gradient, we are using `solve`, which uses LU decomposition of
+      # jtj_corr and uses that to obtain velocity. This has the advantage of
+      # lower number of floating point operations and therefore less numerical
+      # error which can be helpful for the case of single precision arithmatics.
+      jtj_corr = state.jtj + damping_term
+      velocity = jnp.linalg.solve(jtj_corr, state.gradient)
       delta_params = velocity
       if self.geodesic:
         rpp = (state.hess_res @ velocity) @ velocity
-        acceleration = (reg_hess @ state.jt) @ rpp
+        # Note the same as above here that we could use inverse of jtj_corr but
+        # chose to use solve for higher performance and lower numerical error.
+        acceleration = jnp.linalg.solve(jtj_corr, state.jt)
+        acceleration = acceleration @ rpp
         delta_params += 0.5*acceleration
     else:
       matvec = lambda v: self._jtj_op(params, v, *args, **kwargs)
