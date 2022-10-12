@@ -55,6 +55,7 @@ class CommonTest(test_util.JaxoptTestCase):
                    jaxopt.AndersonAcceleration(fixed_point_fun=fixed_point_fun),
                    jaxopt.AndersonWrapper(fpi),
                    jaxopt.ArmijoSGD(fun=fun),
+                   jaxopt.BFGS(fun),
                    jaxopt.LBFGS(fun=fun)):
 
       hash(solver)  # Checks that hash works.
@@ -106,6 +107,7 @@ class CommonTest(test_util.JaxoptTestCase):
 
     for solver in (jaxopt.OptaxSolver(opt=optax.adam(1e-3), fun=fun,
                                       has_aux=True),
+                   jaxopt.BFGS(fun=fun, has_aux=True),
                    jaxopt.LBFGS(fun=fun, has_aux=True),
                    jaxopt.NonlinearCG(fun=fun, has_aux=True),
                    jaxopt.GradientDescent(fun=fun, has_aux=True),
