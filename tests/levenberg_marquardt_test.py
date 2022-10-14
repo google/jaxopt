@@ -160,8 +160,7 @@ class LevenbergMarquardtTest(test_util.JaxoptTestCase):
         atol=1e-11)
     self.assertAllClose(optimize_info.state.iter_num, 16)
 
-  @unittest.skipIf(True, "failing test")
-  #@unittest.skipIf(jax.config.jax_enable_x64, "test requires X32")
+  @unittest.skipIf(jax.config.jax_enable_x64, "test requires X32")
   @parameterized.product(materialize_jac=[True, False], geodesic=[True, False])
   def test_double_exponential_fit_x32(self, materialize_jac, geodesic):
     lm = LevenbergMarquardt(
