@@ -211,7 +211,7 @@ def main(argv):
   start = datetime.now().replace(microsecond=0)
 
   # Run training loop.
-  state = solver.init_state(params)
+  state = solver.init_state(params, FLAGS.l2reg, next(test_ds), batch_stats)
   jitted_update = jax.jit(solver.update)
 
   for _ in range(solver.maxiter):
