@@ -92,6 +92,7 @@ The following operators are available.
     jaxopt.projection.projection_non_negative
     jaxopt.projection.projection_box
     jaxopt.projection.projection_simplex
+    jaxopt.projection.projection_sparse_simplex
     jaxopt.projection.projection_l1_sphere
     jaxopt.projection.projection_l1_ball
     jaxopt.projection.projection_l2_sphere

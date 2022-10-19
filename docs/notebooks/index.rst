@@ -28,7 +28,7 @@ Deep learning
 
 .. raw:: html
 
-    <div class="sphx-glr-thumbcontainer" tooltip="Adversarial training with jaxopt.">
+    <div class="sphx-glr-thumbcontainer" tooltip="Adversarial training with JAXopt.">
 
 .. only:: html
 
