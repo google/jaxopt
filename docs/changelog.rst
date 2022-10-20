@@ -1,13 +1,28 @@
 Changelog
 =========
 
-Main branch
------------
+Version 0.5.5
+-------------
 
 New features
 ~~~~~~~~~~~~
 
-- Added example :doc:`/notebooks/deep_learning/maml` by Fabian Pedregosa based on initial code by Paul Vicol and Eric Jiang.
+- Added MAML example by Fabian Pedregosa based on initial code by Paul Vicol and Eric Jiang.
+- Added the possibility to stop LBFGS after a line search failure, by Zaccharie Ramzi.
+- Added gamma to LBFGS state, by Zaccharie Ramzi.
+- Added :class:`jaxopt.BFGS`, by Mathieu Blondel.
+- Added value_and_grad option to all gradient-based solvers, by Mathieu Blondel.
+- Added Fenchel-Young loss, by Quentin Berthet.
+- Added :func:`projection_sparse_simplex <jaxopt.projection.projection_sparse_simplex>`, by Tianlin Liu.
+
+Bug fixes and enhancements
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- Fixed missing args,kwargs in resnet example, by Louis Béthune.
+- Corrected the implicit diff examples, by Zaccharie Ramzi.
+- Small optimization in l2-regularized semi-dual OT, by Mathieu Blondel.
+- Numerical stability improvements in :class:`jaxopt.LevenbergMarquardt`, by Amir Saadat.
+- Dtype consistency in LBFGS, by Alex Botev.
 
 Deprecations
 ~~~~~~~~~~~~
@@ -15,6 +30,11 @@ Deprecations
 - ``jaxopt.QuadraticProgramming`` is now fully removed. Use
   :class:`jaxopt.CvxpyQP`, :class:`jaxopt.OSQP`, :class:`jaxopt.BoxOSQP` and
   :class:`jaxopt.EqualityConstrainedQP` instead.
+
+Contributors
+~~~~~~~~~~~~
+
+Alex Botev, Amir Saadat, Fabian Pedregosa, Louis Béthune, Mathieu Blondel, Quentin Berthet, Tianlin Liu, Zaccharie Ramzi.
 
 Version 0.5
 -----------

@@ -46,7 +46,6 @@ Alternatively, it can be be installed from sources with the following command::
    implicit_diff
    objective_and_loss
    line_search
-   developer
 
 .. toctree::
    :maxdepth: 1
@@ -69,6 +68,7 @@ Alternatively, it can be be installed from sources with the following command::
    changelog
    Source code <https://github.com/google/jaxopt>
    Issue tracker <https://github.com/google/jaxopt/issues>
+   developer
 
 Support
 -------
