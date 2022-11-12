@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from absl.testing import absltest
+from absl.testing import parameterized
 
 import jax
 import jax.numpy as jnp
@@ -108,7 +109,9 @@ class EqualityConstrainedQPTest(test_util.JaxoptTestCase):
     self.assertArraysAllClose(primal_sol, expected)
     self.assertAllClose(qp.l2_optimality_error(sol, **hyperparams), 0.0)
 
-  def test_eq_constrained_qp_with_pytrees(self):
+  @parameterized.product(refine_regularization=[0., 1e-6])
+  def test_eq_constrained_qp_with_pytrees(self, refine_regularization):
+    # refine_regularization != 0. triggers a non regression test for issue #311
     rng = onp.random.RandomState(0)
     Q = rng.randn(7, 7)
     Q = onp.dot(Q, Q.T)
@@ -131,7 +134,8 @@ class EqualityConstrainedQPTest(test_util.JaxoptTestCase):
 
     # With pytrees directly.
     hyperparams = dict(params_obj=(Q, c), params_eq=(A, b))
-    qp = EqualityConstrainedQP(matvec_Q=matvec_Q, matvec_A=matvec_A)
+    qp = EqualityConstrainedQP(matvec_Q=matvec_Q, matvec_A=matvec_A,
+                               refine_regularization=refine_regularization)
     # sol.primal has the same pytree structure as the output of matvec_Q.
     # sol.dual_eq has the same pytree structure as the output of matvec_A.
     sol_pytree = qp.run(**hyperparams).params
