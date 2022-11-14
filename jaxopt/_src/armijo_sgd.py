@@ -198,15 +198,15 @@ class ArmijoSGD(base.StochasticSolver):
     Lacoste-Julien, S., 2019.
     Painless stochastic gradient: Interpolation, line-search, and convergence
     rates.
-    Advances in neural information processing systems, 32, pp.3732-3745.
+    Advances in Neural Information Processing Systems 32.
   """
   fun: Callable
   value_and_grad: bool = False
   has_aux: bool = False
 
-  aggressiveness: float = 0.9  # default value recommanded by authors
-  decrease_factor: float = 0.8  # default value recommanded by authors
-  increase_factor: float = 1.5  # default value recommanded by authors
+  aggressiveness: float = 0.9  # default value recommended by Vaswani et al.
+  decrease_factor: float = 0.8  # default value recommended by Vaswani et al.
+  increase_factor: float = 1.5  # default value recommended by Vaswani et al.
   reset_option: str = "increase"
 
   momentum: float = 0.0
