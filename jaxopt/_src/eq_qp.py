@@ -25,7 +25,7 @@ import jax
 
 from jaxopt._src import base
 from jaxopt._src import implicit_diff as idf
-from jaxopt._src.tree_util import tree_add, tree_sub
+from jaxopt._src.tree_util import tree_add, tree_sub, tree_add_scalar_mul
 from jaxopt._src.tree_util import tree_vdot, tree_negative, tree_l2_norm
 from jaxopt._src.linear_operator import _make_linear_operator
 from jaxopt._src.cvxpy_wrapper import _check_params
@@ -143,7 +143,9 @@ class EqualityConstrainedQP(base.Solver):
     def matvec_regularized_qp(_, x):
       primal, dual_eq = x
       Stop, Sbottom = matvec(x)
-      return Stop + ridge * primal, Sbottom - ridge * dual_eq
+      a = tree_add_scalar_mul(Stop, ridge, primal)
+      b = tree_add_scalar_mul(Sbottom, -ridge, dual_eq)
+      return a, b
 
     solver = IterativeRefinement(
       matvec_A=matvec_qp,
