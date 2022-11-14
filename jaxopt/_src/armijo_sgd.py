@@ -299,7 +299,7 @@ class ArmijoSGD(base.StochasticSolver):
     next_state = ArmijoState(iter_num=state.iter_num+1,
                              error=error,
                              value=f_next,
-                             aux=state.aux,
+                             aux=aux,
                              stepsize=stepsize,
                              velocity=next_velocity)
 
