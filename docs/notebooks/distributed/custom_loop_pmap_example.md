@@ -1,6 +1,5 @@
 ---
 jupytext:
-  formats: ipynb,md:myst
   text_representation:
     extension: .md
     format_name: myst
@@ -34,6 +33,7 @@ kernelspec:
 [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/google/jaxopt/blob/main/docs/notebooks/distributed/pmap_example.ipynb)
 
 +++ {"id": "N3RErasEJpMo"}
+
 
 `jax.pmap` example using JAXopt.
 =========================================
