@@ -1,5 +1,6 @@
 ---
 jupytext:
+  formats: ipynb,md:myst
   text_representation:
     extension: .md
     format_name: myst
@@ -30,10 +31,9 @@ kernelspec:
 
 +++ {"id": "nCt2V9cCR-CF"}
 
-[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/google/jaxopt/blob/main/docs/notebooks/distributed/pmap_example.ipynb)
+[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/google/jaxopt/blob/main/docs/notebooks/distributed/custom_loop_pmap_example.ipynb)
 
 +++ {"id": "N3RErasEJpMo"}
-
 
 `jax.pmap` example using JAXopt.
 =========================================
@@ -112,7 +112,7 @@ from sklearn import datasets
 colab:
   base_uri: https://localhost:8080/
 id: iMxI2ZU0JnJO
-outputId: 1b39a28f-f27a-43fd-90ae-fdfaa6dd9ef5
+outputId: 762fb71d-802b-4be1-8dc7-0edd62ab36ca
 ---
 jax.tools.colab_tpu.setup_tpu()
 jax.local_devices()
@@ -319,7 +319,7 @@ colab:
   base_uri: https://localhost:8080/
   height: 1000
 id: byYCECkWPcbe
-outputId: c8923e10-a528-4fa3-f42d-d4bdcfbe4c46
+outputId: 74b197e5-df83-40f9-ac07-cbe983324fb4
 ---
 print("num_samples:", NUM_SAMPLES)
 print("num_features:", NUM_FEATURES)
