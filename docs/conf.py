@@ -94,6 +94,7 @@ exclude_patterns = [
     '**.ipynb_checkpoints',
     # Ignore markdown source for notebooks; myst-nb builds from the ipynb
     'notebooks/deep_learning/*.md',
+    'notebooks/distributed/*.md',
     'notebooks/implicit_diff/*.md']
 
 
@@ -132,6 +133,7 @@ nb_execution_timeout = 100
 nb_execution_excludepatterns = [
     # Slow notebook
     'notebooks/deep_learning/*.*',
+    'notebooks/distributed/*.*',
     'notebooks/implicit_diff/dataset_distillation.*',
     'notebooks/implicit_diff/maml.*',
 ]

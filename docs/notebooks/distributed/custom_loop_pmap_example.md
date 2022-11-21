@@ -46,7 +46,7 @@ on synthetic data. General aspects to pay attention to include:
 * How `jax.pmap` can be used to transform the solver's `update` method to easily
   write custom data-parallel training loops.
 
-Running the notebook on Google Colab:
+To obtain the best performance on Google Colab we recommend:
 1. In `Change runtime type` under the menu `Runtime`, select `TPU` for the `Hardware accelerator` option.
 2. Connect to the runtime and run all cells. 
 
@@ -112,7 +112,7 @@ from sklearn import datasets
 colab:
   base_uri: https://localhost:8080/
 id: iMxI2ZU0JnJO
-outputId: 762fb71d-802b-4be1-8dc7-0edd62ab36ca
+outputId: 97d0bdd8-5b35-4766-ff0d-f020de40f79c
 ---
 jax.tools.colab_tpu.setup_tpu()
 jax.local_devices()
@@ -131,7 +131,7 @@ Array = Union[np.ndarray, jax.Array]
 +++ {"id": "gbqilnNSNpw1"}
 
 # Auxiliary functions
-A MWE of how all-reduce mean/sum OPs can be introduced into JAXopt solver's `update` method by overriding `jax.value_and_grad`. Note that more complex wrappers are of course possible.
+A minimal working example of how all-reduce mean/sum OPs can be introduced into JAXopt solver's `update` method by overriding `jax.value_and_grad`. Note that more complex wrappers are of course possible.
 
 ```{code-cell}
 :id: awxxl498NwMI
@@ -162,7 +162,7 @@ def shard_array(array: Array) -> jax.Array:
 +++ {"id": "4Pph9LUAOmhi"}
 
 # Custom-loop
-Shows a comparison of how single-device and data-parallel SPMD differ in a vanilla JAXopt custom training loop
+The following code uses data-parallelism in the train loop. Through the `use_pmap` keyword argument we can deactivate this parallelism. We'll use this feature later to benchmark the impact of parallelism.
 
 ```{code-cell}
 :id: tv1n_kkJO0Pf
@@ -206,8 +206,8 @@ def fit(
                         value_and_grad=True,
                         stepsize=stepsize,
                         linesearch=linesearch)
-  # As usual, apply the `jax.pmap` transform to the function to be computed in
-  # a distributed manner (the solver's `update` method in this case). Otherwise,
+  # Apply the `jax.pmap` transform to the function to be computed in a 
+  # distributed manner (the solver's `update` method in this case). Otherwise,
   # we JIT compile it.
   if use_pmap:
     update = jax.pmap(solver.update, axis_name='b')
@@ -319,7 +319,7 @@ colab:
   base_uri: https://localhost:8080/
   height: 1000
 id: byYCECkWPcbe
-outputId: 74b197e5-df83-40f9-ac07-cbe983324fb4
+outputId: 48b17428-0dff-4573-a8c4-d8c59f0f6c74
 ---
 print("num_samples:", NUM_SAMPLES)
 print("num_features:", NUM_FEATURES)
