@@ -247,13 +247,14 @@ class LbfgsTest(test_util.JaxoptTestCase):
     # Check optimality conditions.
     self.assertLessEqual(info.error, 1e-2)
 
-  def test_Rosenbrock(self):
+  @parameterized.product(implicit_diff=[True, False])
+  def test_Rosenbrock(self, implicit_diff):
     # optimize the Rosenbrock function.
     def fun(x, *args, **kwargs):
       return sum(100.0*(x[1:] - x[:-1]**2.0)**2.0 + (1 - x[:-1])**2.0)
 
     x0 = jnp.zeros(2)
-    lbfgs = LBFGS(fun=fun, tol=1e-3, maxiter=500)
+    lbfgs = LBFGS(fun=fun, tol=1e-3, maxiter=500, implicit_diff=implicit_diff)
     x, _ = lbfgs.run(x0)
 
     # the Rosenbrock function is zero at its minimum

@@ -241,7 +241,7 @@ class LBFGS(base.IterativeSolver):
       print("error:", state.error)
     # We continue the optimization loop while the error tolerance is not met and,
     # either failed linesearch is disallowed or linesearch hasn't failed.
-    return (state.error > self.tol) & (~self.stop_if_linesearch_fails | ~state.failed_linesearch)
+    return (state.error > self.tol) & jnp.logical_or(not self.stop_if_linesearch_fails, ~state.failed_linesearch)
 
   def init_state(self,
                  init_params: Any,
