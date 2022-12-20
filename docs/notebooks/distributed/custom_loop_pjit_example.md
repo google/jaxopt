@@ -16,7 +16,7 @@ kernelspec:
 executionInfo:
   elapsed: 2
   status: ok
-  timestamp: 1671545299393
+  timestamp: 1671547917546
   user:
     displayName: Felipe Llinares
     userId: 01655756739108476525
@@ -53,9 +53,9 @@ on synthetic data.
 ---
 cellView: form
 executionInfo:
-  elapsed: 76
+  elapsed: 54
   status: ok
-  timestamp: 1671545299595
+  timestamp: 1671547917733
   user:
     displayName: Felipe Llinares
     userId: 01655756739108476525
@@ -83,24 +83,33 @@ LINESEARCH = 'zoom'  #@param{type:"string"}
 ```{code-cell}
 ---
 executionInfo:
-  elapsed: 41809
+  elapsed: 1
   status: ok
-  timestamp: 1671545341521
+  timestamp: 1671547917854
+  user:
+    displayName: Felipe Llinares
+    userId: 01655756739108476525
+  user_tz: -60
+id: J9uYAd6TBEEG
+---
+%%capture
+%pip install jaxopt
+```
+
+```{code-cell}
+---
+executionInfo:
+  elapsed: 40809
+  status: ok
+  timestamp: 1671547958814
   user:
     displayName: Felipe Llinares
     userId: 01655756739108476525
   user_tz: -60
 id: JJuP-Wz_MBeJ
 ---
-import functools
 import time
 from typing import Any, Callable, Tuple, Union
-
-from absl import app
-from absl import flags
-
-from flax import jax_utils
-from flax.training import common_utils
 
 import jax
 import jax.numpy as jnp
@@ -117,15 +126,15 @@ from sklearn import datasets
 ```{code-cell}
 ---
 executionInfo:
-  elapsed: 2430
+  elapsed: 2591
   status: ok
-  timestamp: 1671545344088
+  timestamp: 1671547961531
   user:
     displayName: Felipe Llinares
     userId: 01655756739108476525
   user_tz: -60
 id: Wi9vI0SAMEMX
-outputId: 0e8d4574-3895-4842-cdd9-1d688e317ae4
+outputId: 197ca951-400d-48c7-bf75-24ea7bc3a0c1
 ---
 jax.local_devices()
 ```
@@ -137,9 +146,9 @@ jax.local_devices()
 ```{code-cell}
 ---
 executionInfo:
-  elapsed: 3
+  elapsed: 4
   status: ok
-  timestamp: 1671545344233
+  timestamp: 1671547961666
   user:
     displayName: Felipe Llinares
     userId: 01655756739108476525
@@ -157,9 +166,9 @@ A minimal working example of how to create a `Mesh` for data parallel execution 
 ```{code-cell}
 ---
 executionInfo:
-  elapsed: 55
+  elapsed: 68
   status: ok
-  timestamp: 1671545344452
+  timestamp: 1671547961887
   user:
     displayName: Felipe Llinares
     userId: 01655756739108476525
@@ -187,9 +196,9 @@ The following code uses data-parallelism in the train loop. Through the `use_pji
 ```{code-cell}
 ---
 executionInfo:
-  elapsed: 58
+  elapsed: 74
   status: ok
-  timestamp: 1671545344641
+  timestamp: 1671547962097
   user:
     displayName: Felipe Llinares
     userId: 01655756739108476525
@@ -287,9 +296,9 @@ Creates dataset, calls `fit` with and without `jax.pjit`, makes figures.
 ```{code-cell}
 ---
 executionInfo:
-  elapsed: 60
+  elapsed: 74
   status: ok
-  timestamp: 1671545344829
+  timestamp: 1671547962305
   user:
     displayName: Felipe Llinares
     userId: 01655756739108476525
@@ -351,15 +360,15 @@ def run():
 colab:
   height: 1000
 executionInfo:
-  elapsed: 29654
+  elapsed: 30301
   status: ok
-  timestamp: 1671545374642
+  timestamp: 1671547992729
   user:
     displayName: Felipe Llinares
     userId: 01655756739108476525
   user_tz: -60
 id: haEIB6LV0ZA5
-outputId: 9b2616d8-1c27-4816-d03c-0e842f71cee3
+outputId: 8eb9bc9f-c08f-48f0-dcf2-76eb1995654f
 ---
 print("num_samples:", NUM_SAMPLES)
 print("num_features:", NUM_FEATURES)
