@@ -35,8 +35,11 @@ class BacktrackingLineSearchState(NamedTuple):
   iter_num: int
   value: float
   error: float
+  done: bool
   params: Any
   grad: Any
+  num_fun_eval: int
+  num_grad_eval: int
 
 
 @dataclass(eq=False)
@@ -51,7 +54,7 @@ class BacktrackingLineSearch(base.IterativeLineSearch):
       If ``True``, ``fun`` should return both the function value and the
       gradient.
 
-    condition: either "strong-wolfe" or "wolfe".
+    condition: either "armijo", "goldstein", "strong-wolfe" or "wolfe".
     c1: constant used by the (strong) Wolfe condition.
     c2: constant strictly less than 1 used by the (strong) Wolfe condition.
     decrease_factor: factor by which to decrease the stepsize during line search
@@ -106,13 +109,20 @@ class BacktrackingLineSearch(base.IterativeLineSearch):
     """
     del descent_direction  # Not used.
 
+    num_fun_eval = 0
+    num_grad_eval = 0
     if value is None or grad is None:
       value, grad = self._value_and_grad_fun(params, *args, **kwargs)
+      num_fun_eval += 1
+      num_grad_eval += 1
 
     return BacktrackingLineSearchState(iter_num=jnp.asarray(0),
                                        value=value,
                                        error=jnp.asarray(jnp.inf),
                                        params=params,
+                                       num_fun_eval=num_fun_eval,
+                                       num_grad_eval=num_grad_eval,
+                                       done=jnp.asarray(False),
                                        grad=grad)
 
   def update(self,
@@ -140,49 +150,80 @@ class BacktrackingLineSearch(base.IterativeLineSearch):
     """
     # Ensure that stepsize does not exceed upper bound.
     stepsize = jax.lax.min(self.max_stepsize, stepsize)
+    num_fun_eval = state.num_fun_eval
+    num_grad_eval = state.num_grad_eval
 
     if value is None or grad is None:
       value, grad = self._value_and_grad_fun(params, *args, **kwargs)
+      num_fun_eval += 1
+      num_grad_eval += 1
 
     if descent_direction is None:
       descent_direction = tree_scalar_mul(-1, grad)
 
     gd_vdot = tree_vdot(grad, descent_direction)
+    # For backtracking linesearches, we want to compute the next point
+    # from the basepoint. i.e. x_i  = x_0 + s_i * p
     new_params = tree_add_scalar_mul(params, stepsize, descent_direction)
     new_value, new_grad = self._value_and_grad_fun(new_params, *args, **kwargs)
     new_gd_vdot = tree_vdot(new_grad, descent_direction)
 
+    # Every condition requires the new function value, but not every one
+    # requires the new gradient value (we'll assume that this code is called
+    # under `jit`).
+    num_fun_eval += 1
+
     # Armijo condition (upper bound on admissible step size).
     # cond1 = new_value <= value + self.c1 * stepsize * gd_vdot
     # See equation (3.6a), Numerical Optimization, Second edition.
-    diff_cond1 = new_value - value + self.c1 * stepsize * gd_vdot
+    diff_cond1 = new_value - (value + self.c1 * stepsize * gd_vdot)
     error_cond1 = jax.lax.max(diff_cond1, 0.0)
 
-    if self.condition == "strong-wolfe":
+    error = error_cond1
+
+    if self.condition == "armijo":
+      # We don't need to do any extra work, since this is covered by the
+      # sufficient decrease condition above.
+      pass
+
+    elif self.condition == "strong-wolfe":
       # cond2 = abs(new_gd_vdot) <= c2 * abs(gd_vdot)
       # See equation (3.7b), Numerical Optimization, Second edition.
       diff_cond2 = jnp.abs(new_gd_vdot) - self.c2 * jnp.abs(gd_vdot)
       error_cond2 = jax.lax.max(diff_cond2, 0.0)
+      error = jax.lax.max(error_cond1, error_cond2)
+      num_grad_eval += 1
 
     elif self.condition == "wolfe":
       # cond2 = new_gd_vdot >= c2 * gd_vdot
       # See equation (3.6b), Numerical Optimization, Second edition.
       diff_cond2 = self.c2 * gd_vdot - new_gd_vdot
       error_cond2 = jax.lax.max(diff_cond2, 0.0)
+      error = jax.lax.max(error_cond1, error_cond2)
+      num_grad_eval += 1
+
+    elif self.condition == "goldstein":
+      # cond2 = new_value >= value + (1 - self.c1) * stepsize * gd_vdot
+      diff_cond2 = value + (1 - self.c1) * stepsize * gd_vdot - new_value
+      error_cond2 = jax.lax.max(diff_cond2, 0.0)
+      error = jax.lax.max(error_cond1, error_cond2)
 
     else:
-      raise ValueError("condition should be 'strong-wolfe' or 'wolfe'.")
-
-    error = jax.lax.max(error_cond1, error_cond2)
+      raise ValueError("condition should be one of "
+                       "'armijo', 'goldstein', 'strong-wolfe' or 'wolfe'.")
 
     new_stepsize = jnp.where(error <= self.tol,
                              stepsize,
                              stepsize * self.decrease_factor)
+    done = state.done | (error <= self.tol)
 
     new_state = BacktrackingLineSearchState(iter_num=state.iter_num + 1,
                                             value=new_value,
                                             grad=new_grad,
                                             params=new_params,
+                                            num_fun_eval=num_fun_eval,
+                                            num_grad_eval=num_grad_eval,
+                                            done=done,
                                             error=error)
 
     return base.LineSearchStep(stepsize=new_stepsize, state=new_state)

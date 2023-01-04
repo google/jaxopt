@@ -21,6 +21,8 @@ import jax.numpy as jnp
 from jaxopt import objective
 from jaxopt._src import test_util
 from jaxopt import BacktrackingLineSearch
+from jaxopt.tree_util import tree_scalar_mul
+from jaxopt.tree_util import tree_vdot
 
 import numpy as onp
 
@@ -29,7 +31,45 @@ from sklearn import datasets
 
 class BacktrackingLinesearchTest(test_util.JaxoptTestCase):
 
-  @parameterized.product(cond=["strong-wolfe", "wolfe"])
+  def _check_conditions_satisfied(
+      self,
+      condition_name,
+      c1,
+      c2,
+      stepsize,
+      initial_value,
+      initial_grad,
+      final_state):
+    self.assertTrue(jnp.all(final_state.done))
+
+    descent_direction = tree_scalar_mul(-1, initial_grad)
+    # Check sufficient decrease for all line search methods.
+    sufficient_decrease = jnp.all(
+        final_state.value <= initial_value +
+        c1 * stepsize * tree_vdot(final_state.grad, descent_direction))
+    self.assertTrue(sufficient_decrease)
+
+    if condition_name == "goldstein":
+      goldstein = jnp.all(
+          final_state.value >= initial_value +
+          (1 - c1) * stepsize * tree_vdot(
+              initial_grad, descent_direction))
+      self.assertTrue(goldstein)
+    elif condition_name == "strong-wolfe":
+      new_gd_vdot = tree_vdot(final_state.grad, descent_direction)
+      gd_vdot = tree_vdot(initial_grad, descent_direction)
+      curvature = jnp.all(jnp.abs(new_gd_vdot) <= c2 * jnp.abs(gd_vdot))
+      self.assertTrue(curvature)
+
+    elif condition_name == "wolfe":
+      new_gd_vdot = tree_vdot(final_state.grad, descent_direction)
+      gd_vdot = tree_vdot(initial_grad, descent_direction)
+      curvature = jnp.all(new_gd_vdot >= c2 * gd_vdot)
+      self.assertTrue(curvature)
+
+
+  @parameterized.product(cond=[
+      "armijo", "goldstein", "strong-wolfe", "wolfe"])
   def test_backtracking_linesearch(self, cond):
     X, y = datasets.make_classification(n_samples=10, n_features=5, n_classes=2,
                                         n_informative=3, random_state=0)
@@ -38,8 +78,8 @@ class BacktrackingLinesearchTest(test_util.JaxoptTestCase):
 
     rng = onp.random.RandomState(0)
     w_init = rng.randn(X.shape[1])
-    grad = jax.grad(fun)(w_init, data=data)
-
+    initial_grad = jax.grad(fun)(w_init, data=data)
+    initial_value = fun(w_init, data=data)
 
     # Manual loop.
     ls = BacktrackingLineSearch(fun=fun, condition=cond)
@@ -57,14 +97,18 @@ class BacktrackingLinesearchTest(test_util.JaxoptTestCase):
     ls = BacktrackingLineSearch(fun=fun, maxiter=20, condition=cond)
     stepsize, state = ls.run(init_stepsize=1.0, params=w_init, data=data)
     self.assertLessEqual(state.error, 1e-5)
+    self._check_conditions_satisfied(
+        cond, ls.c1, ls.c2, stepsize, initial_value, initial_grad, state)
 
     # Call to run with value_and_grad=True.
     ls = BacktrackingLineSearch(fun=jax.value_and_grad(fun),
-                                            condition=cond,
-                                            maxiter=20,
-                                            value_and_grad=True)
+                                condition=cond,
+                                maxiter=20,
+                                value_and_grad=True)
     stepsize, state = ls.run(init_stepsize=1.0, params=w_init, data=data)
     self.assertLessEqual(state.error, 1e-5)
+    self._check_conditions_satisfied(
+        cond, ls.c1, ls.c2, stepsize, initial_value, initial_grad, state)
 
 
 if __name__ == '__main__':
