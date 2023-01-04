@@ -5,9 +5,9 @@ jupytext:
     extension: .md
     format_name: myst
     format_version: 0.13
-    jupytext_version: 1.14.1
+    jupytext_version: 1.14.4
 kernelspec:
-  display_name: Python 3 (ipykernel)
+  display_name: Python 3
   language: python
   name: python3
 ---
@@ -45,6 +45,13 @@ import collections
 
 from functools import partial
 from typing import Any, Callable, Sequence, Tuple
+
+# activate TPUs if available
+try:
+    import jax.tools.colab_tpu
+    jax.tools.colab_tpu.setup_tpu()
+except KeyError:
+    print("TPU not found, continuing without it.")
 
 from flax import linen as nn
 

@@ -5,9 +5,9 @@ jupytext:
     extension: .md
     format_name: myst
     format_version: 0.13
-    jupytext_version: 1.14.1
+    jupytext_version: 1.14.4
 kernelspec:
-  display_name: Python 3 (ipykernel)
+  display_name: Python 3
   language: python
   name: python3
 ---
@@ -42,6 +42,13 @@ This notebook shows how to use Model Agnostic Meta-Learning (MAML) for few-shot 
 
 ```{code-cell} ipython3
 from typing import Any, Sequence
+
+# activate TPUs if available
+try:
+    import jax.tools.colab_tpu
+    jax.tools.colab_tpu.setup_tpu()
+except KeyError:
+    print("TPU not found, continuing without it.")
 
 from jax.config import config
 config.update("jax_enable_x64", True)

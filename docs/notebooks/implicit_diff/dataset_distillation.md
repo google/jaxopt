@@ -5,9 +5,9 @@ jupytext:
     extension: .md
     format_name: myst
     format_version: 0.13
-    jupytext_version: 1.14.1
+    jupytext_version: 1.14.4
 kernelspec:
-  display_name: Python 3.10.4 ('jax')
+  display_name: Python 3
   language: python
   name: python3
 ---
@@ -70,6 +70,13 @@ parameter that we found improved convergence.
 import itertools
 import tensorflow_datasets as tfds
 from matplotlib import pyplot as plt
+
+# activate TPUs if available
+try:
+    import jax.tools.colab_tpu
+    jax.tools.colab_tpu.setup_tpu()
+except KeyError:
+    print("TPU not found, continuing without it.")
 
 import jax
 from jax import numpy as jnp
