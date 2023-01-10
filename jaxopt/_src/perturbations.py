@@ -23,10 +23,10 @@ class Normal:
 
   def sample(self,
              seed: jax.random.PRNGKey,
-             sample_shape: Tuple[int]) -> jnp.array:
+             sample_shape: Tuple[int]) -> jax.Array:
     return jax.random.normal(seed, sample_shape)
 
-  def log_prob(self, inputs: jnp.array) -> jnp.array:
+  def log_prob(self, inputs: jax.Array) -> jax.Array:
     return -0.5 * inputs ** 2
 
 
@@ -35,14 +35,14 @@ class Gumbel:
 
   def sample(self,
              seed: jax.random.PRNGKey,
-             sample_shape: Tuple[int]) -> jnp.array:
+             sample_shape: Tuple[int]) -> jax.Array:
     return jax.random.gumbel(seed, sample_shape)
 
-  def log_prob(self, inputs: jnp.array) -> jnp.array:
+  def log_prob(self, inputs: jax.Array) -> jax.Array:
     return -inputs - jnp.exp(-inputs)
 
 
-def make_perturbed_argmax(argmax_fun: Callable[[jnp.array], jnp.array],
+def make_perturbed_argmax(argmax_fun: Callable[[jax.Array], jax.Array],
                           num_samples: int = 1000,
                           sigma: float = 0.1,
                           noise=Gumbel()):
@@ -62,7 +62,7 @@ def make_perturbed_argmax(argmax_fun: Callable[[jnp.array], jnp.array],
     A function with the same signature (and an rng) that can be differentiated.
 
   Example:
-    Given an argmax function, e.g.
+    Given an argmax function such as::
 
       def argmax_fun(x):
         return jax.nn.one_hot(jnp.argmax(x), x.shape[0])
@@ -72,12 +72,12 @@ def make_perturbed_argmax(argmax_fun: Callable[[jnp.array], jnp.array],
                                               sigma=0.01)
 
     Then pert_argmax_fun is differentiable, a perturbed version of argmax_fun.
-    Since it relies on randomness, it requires an rng key
+    Since it relies on randomness, it requires an rng key::
 
       pert_argmax = pert_argmax_fun(x, rng)
 
     When handling a batched input, vmap can be applied to this function, with
-    some care in splitting the rng key.
+    some care in splitting the rng key::
 
       batch_size = x_batch.shape[0]
       rngs_batch = jax.random.split(rng, batch_size)
@@ -111,7 +111,7 @@ def make_perturbed_argmax(argmax_fun: Callable[[jnp.array], jnp.array],
   return forward_pert
 
 
-def make_perturbed_max(argmax_fun: Callable[[jnp.array], jnp.array],
+def make_perturbed_max(argmax_fun: Callable[[jax.Array], jax.Array],
                        num_samples: int = 1000,
                        sigma: float = 0.1,
                        noise=Gumbel()):
@@ -131,7 +131,7 @@ def make_perturbed_max(argmax_fun: Callable[[jnp.array], jnp.array],
     A function with the same inputs (and an rng) that can be differentiated.
 
   Example:
-    Given an argmax function, e.g.
+    Given an argmax function, such as::
 
       def argmax_fun(x):
         return jax.nn.one_hot(jnp.argmax(x), x.shape[0])
@@ -141,18 +141,18 @@ def make_perturbed_max(argmax_fun: Callable[[jnp.array], jnp.array],
                                         sigma=0.01)
 
     Then pert_max_fun is differentiable, a perturbed version of the associated
-    max to argmax_fun. Since it relies on randomness, it requires an rng key
+    max to argmax_fun. Since it relies on randomness, it requires an rng key::
 
       pert_max = pert_max_fun(x, rng)
 
     When handling a batched input, vmap can be applied to this function, with
-    some care in splitting the rng key.
+    some care in splitting the rng key::
 
       batch_size = x_batch.shape[0]
       rngs_batch = jax.random.split(rng, batch_size)
       pert_max = jax.vmap(pert_max_fun)(x_batch, rngs_batch)
 
-    Further, if the argmax_fun is jittable, then so is pert_max_fun.
+    Furthermore, if the argmax_fun is jittable, then so is pert_max_fun.
   """
 
   @jax.custom_jvp

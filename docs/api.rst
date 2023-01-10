@@ -129,6 +129,20 @@ Line search
 
     jaxopt.BacktrackingLineSearch
 
+
+
+Perturbed optimizers
+--------------------
+
+.. autosummary::
+  :toctree: _autosummary
+
+    jaxopt.perturbations.make_perturbed_argmax
+    jaxopt.perturbations.make_perturbed_max
+    jaxopt.perturbations.Gumbel
+    jaxopt.perturbations.Normal
+
+
 Tree utilities
 --------------
 
