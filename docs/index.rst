@@ -46,6 +46,7 @@ Alternatively, it can be be installed from sources with the following command::
    implicit_diff
    objective_and_loss
    line_search
+   perturbations
 
 .. toctree::
    :maxdepth: 1

@@ -116,6 +116,27 @@ Distributed Optimization
 
      :doc:`/notebooks/distributed/custom_loop_pmap_example`
 
+
+.. raw:: html
+
+    </div>
+
+
+Perturbed optimizers
+--------------------
+
+
+.. raw:: html
+
+    <div class="sphx-glr-thumbcontainer" tooltip="Perturbed optimizers with JAXopt.">
+
+.. only:: html
+
+ .. figure:: /notebooks/perturbed_optimizers/thumbnails/perturbations.png
+     :alt: Perturbed optimizers with JAXopt.
+
+     :doc:`/notebooks/perturbed_optimizers/perturbed_optimizers`
+
 .. raw:: html
 
     </div>
