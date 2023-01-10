@@ -163,7 +163,7 @@ Let $\mathcal{L_i}$ (resp. $\hat{\mathcal{L_i}}$) denote the the train set (resp
 
 
 $$
-\text{argmin}_{\theta} \sum_{i=1}^K \hat{\mathcal{L_i}}(x_i(\theta)) \text{ subject to } x_i(\theta) \in \text{argmin}_{x} {\mathcal{L}}_i(x) + \frac{\lambda}{2}\|x - \theta\|^2\,,
+\text{argmin}_{\theta} \sum_{i=1}^K \hat{\mathcal{L}_i}(x_i(\theta)) \text{ subject to } x_i(\theta) \in \text{argmin}_{x} {\mathcal{L}}_i(x) + \frac{\lambda}{2}\|x - \theta\|^2\,,
 $$
 
 
