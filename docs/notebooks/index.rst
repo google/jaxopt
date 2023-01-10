@@ -45,6 +45,7 @@ Deep learning
 .. raw:: html
 
     <div class="sphx-glr-clear"></div>
+
 Implicit Differentiation
 ------------------------
 
@@ -76,6 +77,44 @@ Implicit Differentiation
      :alt: Few-shot Adaptation with Model Agnostic Meta-Learning (MAML)
 
      :doc:`/notebooks/implicit_diff/maml`
+
+.. raw:: html
+
+    </div>
+
+
+
+Distributed Optimization
+------------------------
+
+
+.. raw:: html
+
+    <div class="sphx-glr-thumbcontainer" tooltip="Distributed Optimization with JAXopt.">
+
+.. only:: html
+
+ .. figure:: /notebooks/distributed/thumbnails/plot_custom_loop_pjit_example.png
+     :alt: `jax.experimental.pjit` example using JAXopt.
+
+     :doc:`/notebooks/distributed/custom_loop_pjit_example`
+
+.. raw:: html
+
+    </div>
+
+
+
+.. raw:: html
+
+    <div class="sphx-glr-thumbcontainer" tooltip="pmap example using jaxopt">
+
+.. only:: html
+
+ .. figure:: /notebooks/distributed/thumbnails/plot_custom_loop_pmap_example.png
+     :alt: `jax.pmap` example using JAXopt.
+
+     :doc:`/notebooks/distributed/custom_loop_pmap_example`
 
 .. raw:: html
 
