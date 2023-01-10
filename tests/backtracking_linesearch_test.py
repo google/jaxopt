@@ -67,6 +67,23 @@ class BacktrackingLinesearchTest(test_util.JaxoptTestCase):
       curvature = jnp.all(new_gd_vdot >= c2 * gd_vdot)
       self.assertTrue(curvature)
 
+  def test_aux_value(self):
+    X, y = datasets.make_classification(n_samples=10, n_features=5, n_classes=2,
+                                        n_informative=3, random_state=0)
+    data = (X, y)
+    true_fun = objective.binary_logreg
+
+    def augmented_fun(w, data):
+      value = true_fun(w, data)
+      aux = w[0:1]
+      return value, aux
+
+    rng = onp.random.RandomState(0)
+    w_init = rng.randn(X.shape[1])
+    ls = BacktrackingLineSearch(fun=augmented_fun, maxiter=20, condition='armijo', has_aux=True)
+    stepsize, state = ls.run(init_stepsize=1.0, params=w_init, data=data)
+    _, aux_at_params = augmented_fun(state.params, data)
+    self.assertArraysEqual(aux_at_params, state.aux)
 
   @parameterized.product(cond=[
       "armijo", "goldstein", "strong-wolfe", "wolfe"])

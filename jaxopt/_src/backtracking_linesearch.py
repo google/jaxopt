@@ -40,6 +40,7 @@ class BacktrackingLineSearchState(NamedTuple):
   grad: Any
   num_fun_eval: int
   num_grad_eval: int
+  aux: Optional[Any] = None
 
 
 @dataclass(eq=False)
@@ -53,6 +54,9 @@ class BacktrackingLineSearch(base.IterativeLineSearch):
     value_and_grad: if ``False``, ``fun`` should return the function value only.
       If ``True``, ``fun`` should return both the function value and the
       gradient.
+    has_aux: if ``False``, ``fun`` should return the function value only.
+      If ``True``, ``fun`` should return a pair ``(value, aux)`` where ``aux``
+      is a pytree of auxiliary values.
 
     condition: either "armijo", "goldstein", "strong-wolfe" or "wolfe".
     c1: constant used by the (strong) Wolfe condition.
@@ -72,6 +76,7 @@ class BacktrackingLineSearch(base.IterativeLineSearch):
   """
   fun: Callable
   value_and_grad: bool = False
+  has_aux: bool = False
 
   maxiter: int = 30
   tol: float = 0.0
@@ -112,12 +117,17 @@ class BacktrackingLineSearch(base.IterativeLineSearch):
     num_fun_eval = 0
     num_grad_eval = 0
     if value is None or grad is None:
-      value, grad = self._value_and_grad_fun(params, *args, **kwargs)
+      if self.has_aux:
+        (value, _), grad = self._value_and_grad_fun(params, *args, **kwargs)
+      else:
+        value, grad = self._value_and_grad_fun(params, *args, **kwargs)
       num_fun_eval += 1
       num_grad_eval += 1
 
     return BacktrackingLineSearchState(iter_num=jnp.asarray(0),
                                        value=value,
+                                       aux=None,  # we do not need to have aux in the
+                                       # initial state
                                        error=jnp.asarray(jnp.inf),
                                        params=params,
                                        num_fun_eval=num_fun_eval,
@@ -154,7 +164,10 @@ class BacktrackingLineSearch(base.IterativeLineSearch):
     num_grad_eval = state.num_grad_eval
 
     if value is None or grad is None:
-      value, grad = self._value_and_grad_fun(params, *args, **kwargs)
+      if self.has_aux:
+        (value, _), grad = self._value_and_grad_fun(params, *args, **kwargs)
+      else:
+        value, grad = self._value_and_grad_fun(params, *args, **kwargs)
       num_fun_eval += 1
       num_grad_eval += 1
 
@@ -165,7 +178,11 @@ class BacktrackingLineSearch(base.IterativeLineSearch):
     # For backtracking linesearches, we want to compute the next point
     # from the basepoint. i.e. x_i  = x_0 + s_i * p
     new_params = tree_add_scalar_mul(params, stepsize, descent_direction)
-    new_value, new_grad = self._value_and_grad_fun(new_params, *args, **kwargs)
+    if self.has_aux:
+      (new_value, new_aux), new_grad = self._value_and_grad_fun(new_params, *args, **kwargs)
+    else:
+      new_value, new_grad = self._value_and_grad_fun(new_params, *args, **kwargs)
+      new_aux = None
     new_gd_vdot = tree_vdot(new_grad, descent_direction)
 
     # Every condition requires the new function value, but not every one
@@ -219,6 +236,7 @@ class BacktrackingLineSearch(base.IterativeLineSearch):
 
     new_state = BacktrackingLineSearchState(iter_num=state.iter_num + 1,
                                             value=new_value,
+                                            aux=new_aux,
                                             grad=new_grad,
                                             params=new_params,
                                             num_fun_eval=num_fun_eval,
@@ -232,4 +250,4 @@ class BacktrackingLineSearch(base.IterativeLineSearch):
     if self.value_and_grad:
       self._value_and_grad_fun = self.fun
     else:
-      self._value_and_grad_fun = jax.value_and_grad(self.fun)
+      self._value_and_grad_fun = jax.value_and_grad(self.fun, has_aux=self.has_aux)

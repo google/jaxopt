@@ -17,7 +17,7 @@
 # Original code by Joshua George Albert:
 # https://github.com/google/jax/pull/3101
 
-from typing import NamedTuple, Union
+from typing import Any, NamedTuple, Optional, Union
 from functools import partial
 
 #from jax._src.numpy.util import _promote_dtypes_inexact
@@ -84,10 +84,13 @@ class _ZoomState(NamedTuple):
   g_star: Union[float, jnp.ndarray]
   nfev: Union[int, jnp.ndarray]
   ngev: Union[int, jnp.ndarray]
+  aux_lo: Union[float, jnp.ndarray]
+  aux_hi: Union[float, jnp.ndarray]
+  aux_star: Union[float, jnp.ndarray]
 
 
 def _zoom(restricted_func_and_grad, wolfe_one, wolfe_two, a_lo, phi_lo,
-          dphi_lo, a_hi, phi_hi, dphi_hi, g_0, pass_through):
+          dphi_lo, a_hi, phi_hi, dphi_hi, g_0, pass_through, has_aux=False, aux=jnp.nan):
   """
   Implementation of zoom. Algorithm 3.6 from Wright and Nocedal, 'Numerical
   Optimization', 1999, pg. 59-61. Tries cubic, quadratic, and bisection methods
@@ -111,6 +114,12 @@ def _zoom(restricted_func_and_grad, wolfe_one, wolfe_two, a_lo, phi_lo,
       g_star=g_0,
       nfev=0,
       ngev=0,
+      # the auxiliary values are not used in the body of the loop
+      # but are just set at the end, so we need them to have matching shapes
+      # and dtypes
+      aux_lo=aux,
+      aux_hi=aux,
+      aux_star=aux,
   )
   delta1 = 0.2
   delta2 = 0.1
@@ -143,7 +152,11 @@ def _zoom(restricted_func_and_grad, wolfe_one, wolfe_two, a_lo, phi_lo,
     a_j = jnp.where(use_bisection, a_j_bisection, a_j)
 
     # TODO(jakevdp): should we use some sort of fixed-point approach here instead?
-    phi_j, dphi_j, g_j = restricted_func_and_grad(a_j)
+    if has_aux:
+      (phi_j, dphi_j, g_j), aux_j = restricted_func_and_grad(a_j)
+    else:
+      phi_j, dphi_j, g_j = restricted_func_and_grad(a_j)
+      aux_j = jnp.nan
     phi_j = phi_j.astype(state.phi_lo.dtype)
     dphi_j = dphi_j.astype(state.dphi_lo.dtype)
     #g_j = g_j.astype(state.g_star.dtype)
@@ -163,6 +176,7 @@ def _zoom(restricted_func_and_grad, wolfe_one, wolfe_two, a_lo, phi_lo,
                 a_hi=a_j,
                 phi_hi=phi_j,
                 dphi_hi=dphi_j,
+                aux_hi=aux_j,
                 a_rec=state.a_hi,
                 phi_rec=state.phi_hi,
             ),
@@ -180,6 +194,7 @@ def _zoom(restricted_func_and_grad, wolfe_one, wolfe_two, a_lo, phi_lo,
                 phi_star=phi_j,
                 dphi_star=dphi_j,
                 g_star=g_j,
+                aux_star=aux_j,
             )
         ),
     )
@@ -191,6 +206,7 @@ def _zoom(restricted_func_and_grad, wolfe_one, wolfe_two, a_lo, phi_lo,
                 a_hi=state.a_lo,
                 phi_hi=state.phi_lo,
                 dphi_hi=state.dphi_lo,
+                aux_hi=state.aux_lo,
                 a_rec=state.a_hi,
                 phi_rec=state.phi_hi,
             ),
@@ -204,6 +220,7 @@ def _zoom(restricted_func_and_grad, wolfe_one, wolfe_two, a_lo, phi_lo,
                 a_lo=a_j,
                 phi_lo=phi_j,
                 dphi_lo=dphi_j,
+                aux_lo=aux_j,
                 a_rec=state.a_lo,
                 phi_rec=state.phi_lo,
             ),
@@ -235,6 +252,7 @@ class _LineSearchState(NamedTuple):
   phi_star: Union[float, jnp.ndarray]
   dphi_star: Union[float, jnp.ndarray]
   g_star: jnp.ndarray
+  aux_star: Union[float, jnp.ndarray]
 
 
 class _LineSearchResults(NamedTuple):
@@ -259,11 +277,12 @@ class _LineSearchResults(NamedTuple):
   f_k: jnp.ndarray
   g_k: jnp.ndarray
   status: Union[bool, jnp.ndarray]
+  aux: Union[float, jnp.ndarray]
 
 
 def zoom_linesearch(f, xk, pk, old_fval=None, old_old_fval=None, gfk=None,
                     c1=1e-4, c2=0.9, maxiter=20, value_and_grad=False,
-                    has_aux=False, args=[], kwargs={}):
+                    has_aux=False, aux=None, args=[], kwargs={}):
   """Inexact line search that satisfies strong Wolfe conditions.
   Algorithm 3.5 from Wright and Nocedal, 'Numerical Optimization', 1999,
   pages 59-61.
@@ -279,6 +298,10 @@ def zoom_linesearch(f, xk, pk, old_fval=None, old_old_fval=None, gfk=None,
     c1, c2: Wolfe criteria constant, see ref.
     value_and_grad: whether f returns just the value (False) or the value and
       grad (True).
+    has_aux: if ``False``, ``f`` should return the function value only.
+      If ``True``, ``f`` should return a pair ``(value, aux)`` where ``aux``
+      is a pytree of auxiliary values.
+    aux: auxiliary pytree data example for ``f``.
     args, kwargs: optional positional and keywords arguments to be passed to f.
   Returns: LineSearchResults
   """
@@ -301,13 +324,21 @@ def zoom_linesearch(f, xk, pk, old_fval=None, old_old_fval=None, gfk=None,
     else:
       phi, g = f_value_and_grad(xkp1, *args, **kwargs)
     dphi = jnp.real(tree_vdot(g, pk))
-    return phi, dphi, g
+    if has_aux:
+      return (phi, dphi, g), aux
+    else:
+      return phi, dphi, g
 
-  if old_fval is None or gfk is None:
-    phi_0, dphi_0, gfk = restricted_func_and_grad(0)
+  if old_fval is None or gfk is None or (aux is None and has_aux):
+    if has_aux:
+      (phi_0, dphi_0, gfk), aux = restricted_func_and_grad(0)
+    else:
+      phi_0, dphi_0, gfk = restricted_func_and_grad(0)
   else:
     phi_0 = old_fval
     dphi_0 = jnp.real(tree_vdot(gfk, pk))
+  if not has_aux:
+    aux = jnp.nan
   if old_old_fval is not None:
     candidate_start_value = 1.01 * 2 * (phi_0 - old_old_fval) / dphi_0
     start_value = jnp.where(candidate_start_value > 1, 1.0, candidate_start_value)
@@ -336,6 +367,7 @@ def zoom_linesearch(f, xk, pk, old_fval=None, old_old_fval=None, gfk=None,
       phi_star=phi_0,
       dphi_star=dphi_0,
       g_star=gfk,
+      aux_star=aux,
   )
 
   def body(state):
@@ -343,7 +375,11 @@ def zoom_linesearch(f, xk, pk, old_fval=None, old_old_fval=None, gfk=None,
     # unlike original algorithm we do our next choice at the start of this loop
     a_i = jnp.where(state.i == 1, start_value, state.a_i1 * 2.)
 
-    phi_i, dphi_i, g_i = restricted_func_and_grad(a_i)
+    if has_aux:
+      (phi_i, dphi_i, g_i), aux_i = restricted_func_and_grad(a_i)
+    else:
+      phi_i, dphi_i, g_i = restricted_func_and_grad(a_i)
+      aux_i = jnp.nan
     state = state._replace(nfev=state.nfev + 1,
                            ngev=state.ngev + 1)
 
@@ -361,7 +397,9 @@ def zoom_linesearch(f, xk, pk, old_fval=None, old_old_fval=None, gfk=None,
                   phi_i,
                   dphi_i,
                   gfk,
-                  ~star_to_zoom1)
+                  ~star_to_zoom1,
+                  has_aux,
+                  aux_i)
 
     state = state._replace(nfev=state.nfev + zoom1.nfev,
                            ngev=state.ngev + zoom1.ngev)
@@ -376,7 +414,9 @@ def zoom_linesearch(f, xk, pk, old_fval=None, old_old_fval=None, gfk=None,
                   state.phi_i1,
                   state.dphi_i1,
                   gfk,
-                  ~star_to_zoom2)
+                  ~star_to_zoom2,
+                  has_aux,
+                  aux_i)
 
     state = state._replace(nfev=state.nfev + zoom2.nfev,
                            ngev=state.ngev + zoom2.ngev)
@@ -388,7 +428,7 @@ def zoom_linesearch(f, xk, pk, old_fval=None, old_old_fval=None, gfk=None,
             star_to_zoom1,
             state._asdict(),
             zoom1._asdict(),
-            keys=['a_star', 'phi_star', 'dphi_star', 'g_star'],
+            keys=['a_star', 'phi_star', 'dphi_star', 'g_star', 'aux_star'],
         ),
     )
     state = state._replace(
@@ -401,6 +441,7 @@ def zoom_linesearch(f, xk, pk, old_fval=None, old_old_fval=None, gfk=None,
                 phi_star=phi_i,
                 dphi_star=dphi_i,
                 g_star=g_i,
+                aux_star=aux_i,
             ),
         ),
     )
@@ -411,7 +452,7 @@ def zoom_linesearch(f, xk, pk, old_fval=None, old_old_fval=None, gfk=None,
             star_to_zoom2,
             state._asdict(),
             zoom2._asdict(),
-            keys=['a_star', 'phi_star', 'dphi_star', 'g_star'],
+            keys=['a_star', 'phi_star', 'dphi_star', 'g_star', 'aux_star'],
         ),
     )
     state = state._replace(i=state.i + 1, a_i1=a_i, phi_i1=phi_i, dphi_i1=dphi_i)
@@ -445,6 +486,7 @@ def zoom_linesearch(f, xk, pk, old_fval=None, old_old_fval=None, gfk=None,
       k=state.i,
       a_k=alpha_k,
       f_k=state.phi_star,
+      aux=state.aux_star,
       g_k=state.g_star,
       status=status,
   )
