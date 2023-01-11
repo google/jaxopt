@@ -15,6 +15,7 @@
 """Tests for Isotonic Regression."""
 
 from absl.testing import absltest
+from absl.testing import parameterized
 
 import jax
 import jax.numpy as jnp
@@ -36,19 +37,41 @@ class IsotonicPavTest(test_util.JaxoptTestCase):
     self.assertEqual(output.shape, y.shape)
     self.assertEqual(output.dtype, y.dtype)
 
-  def test_compare_with_sklearn(self, n=10):
+  @parameterized.product(increasing=[True, False])
+  def test_compare_with_sklearn(self, increasing,  n=10):
     """Compares the output with the one of sklearn."""
     y = jax.random.normal(jax.random.PRNGKey(0), (n,))
-    output = isotonic_l2_pav(y)
-    output_sklearn = jnp.array(isotonic.isotonic_regression(y, increasing=False))
+    output = isotonic_l2_pav(y, increasing=increasing)
+    output_sklearn = jnp.array(isotonic.isotonic_regression(y, increasing=increasing))
+    self.assertArraysAllClose(output, output_sklearn)
+    y_sort = y.sort()
+    y_min = y_sort[2]
+    y_max = y_sort[n-5]
+    output = isotonic_l2_pav(y, y_min=y_min, y_max=y_max, increasing=increasing)
+    output_sklearn = jnp.array(isotonic.isotonic_regression(y, y_min=y_min,
+     y_max=y_max, increasing=increasing))
     self.assertArraysAllClose(output, output_sklearn)
 
-  def test_gradient(self, n=10):
+  @parameterized.product(increasing=[True, False])
+  def test_gradient(self, increasing, n=10):
     """Checks the gradient with finite differences."""
     y = jax.random.normal(jax.random.PRNGKey(0), (n,))
 
     def loss(y):
-      return (isotonic_l2_pav(y**3) + isotonic_l2_pav(y) ** 2).mean()
+      return (isotonic_l2_pav(y**3, increasing=increasing)
+       + isotonic_l2_pav(y, increasing=increasing) ** 2).mean()
+
+    check_grads(loss, (y,), order=2)
+
+  def test_gradient_min_max(self, n=10):
+    """Checks the gradient with finite differences."""
+    y = jax.random.normal(jax.random.PRNGKey(0), (n,))
+    y_sort = y.sort()
+    y_min = y_sort[2]
+    y_max = y_sort[n-5]
+    def loss(y):
+      return (isotonic_l2_pav(y**3, y_min=y_min, y_max=y_max)
+       + isotonic_l2_pav(y, y_min=y_min, y_max=y_max) ** 2).mean()
 
     check_grads(loss, (y,), order=2)
 
