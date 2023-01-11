@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from jaxopt._src.loss import binary_logistic_loss
+from jaxopt._src.loss import binary_sparsemax_loss, sparse_plus, sparse_sigmoid
 from jaxopt._src.loss import huber_loss
 from jaxopt._src.loss import make_fenchel_young_loss
 from jaxopt._src.loss import multiclass_logistic_loss

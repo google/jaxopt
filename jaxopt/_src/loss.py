@@ -20,7 +20,7 @@ import jax
 from jax.nn import softplus
 import jax.numpy as jnp
 from jax.scipy.special import logsumexp
-from jaxopt._src.projection import projection_simplex
+from jaxopt._src.projection import projection_simplex, projection_hypercube
 
 
 # Regression
@@ -62,6 +62,72 @@ def binary_logistic_loss(label: int, logit: float) -> float:
   # Use -log sigmoid(logit) = softplus(-logit)
   # and 1 - sigmoid(logit) = sigmoid(-logit).
   return softplus(jnp.where(label, -logit, logit))
+
+
+def binary_sparsemax_loss(label: int, logit: float) -> float:
+  """Binary sparsemax loss.
+
+  Args:
+    label: ground-truth integer label (0 or 1).
+    logit: score produced by the model (float).
+  Returns:
+    loss value
+
+  References:
+    Learning with Fenchel-Young Losses. Mathieu Blondel, André F. T. Martins, 
+    Vlad Niculae. JMLR 2020. (Sec. 4.4)
+  """
+  return sparse_plus(jnp.where(label, -logit, logit))
+  
+
+def sparse_plus(x: float) -> float:
+  """Sparse plus function.
+  
+  Computes the function:
+
+  .. math:
+    \mathrm{sparseplus}(x) = \begin{cases}
+      0, & x \leq -1\\
+      \frac{1}{4}(x+1)^2, & -1 < x < 1 \\  
+      x, & 1 \leq x
+    \end{cases}
+
+  This is the twin function of the softplus activation ensuring a zero output 
+  for inputs less than -1 and a linear output for inputs greater than 1, 
+  while remaining smooth, convex, monotonic by an adequate definition between 
+  -1 and 1.
+
+  Args:
+    x: input (float)
+  Returns:
+    sparseplus(x) as defined above
+  """
+  return jnp.where(x <= -1.0, 0.0, jnp.where(x >= 1.0, x, (x + 1.0)**2/4))
+
+
+def sparse_sigmoid(x: float) -> float:
+  """Sparse sigmoid function.
+  
+    Computes the function:
+
+  .. math:
+    \mathrm{sparsesigmoid}(x) = \begin{cases}
+      0, & x \leq -1\\
+      \frac{1}{2}(x+1), & -1 < x < 1 \\  
+      1, & 1 \leq x
+    \end{cases}
+
+  This is the twin function of the sigmoid activation ensuring a zero output
+  for inputs less than -1, a 1 ouput for inputs greater than 1, and a linear
+  output for inputs between -1 and 1. This is the derivative of the sparse 
+  plus function.
+
+  Args:
+    x: input (float)
+  Returns:
+    sparsesigmoid(x) as defined above
+  """
+  return 0.5 * projection_hypercube(x + 1.0, 2.0)
 
 
 # Multiclass classification.
