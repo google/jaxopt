@@ -302,14 +302,15 @@ class LBFGS(base.IterativeSolver):
       # with line search
 
       if self.linesearch == "backtracking":
-        ls = BacktrackingLineSearch(fun=self._value_and_grad_fun,
+        ls = BacktrackingLineSearch(fun=self._value_and_grad_with_aux,
                                     value_and_grad=True,
                                     maxiter=self.maxls,
                                     decrease_factor=self.decrease_factor,
                                     max_stepsize=self.max_stepsize,
                                     condition=self.condition,
                                     jit=self.jit,
-                                    unroll=self.unroll)
+                                    unroll=self.unroll,
+                                    has_aux=True)
         init_stepsize = jnp.where(state.stepsize <= self.min_stepsize,
                                   # If stepsize became too small, we restart it.
                                   self.max_stepsize,
@@ -320,6 +321,7 @@ class LBFGS(base.IterativeSolver):
                                         descent_direction,
                                         *args, **kwargs)
         new_value = ls_state.value
+        new_aux = ls_state.aux
         new_params = ls_state.params
         new_grad = ls_state.grad
 
@@ -327,9 +329,10 @@ class LBFGS(base.IterativeSolver):
         ls_state = zoom_linesearch(f=self._value_and_grad_with_aux,
                                    xk=params, pk=descent_direction,
                                    old_fval=value, gfk=grad, maxiter=self.maxls,
-                                   value_and_grad=True, has_aux=True,
+                                   value_and_grad=True, has_aux=True, aux=aux,
                                    args=args, kwargs=kwargs)
         new_value = ls_state.f_k
+        new_aux = ls_state.aux
         new_stepsize = ls_state.a_k
         new_grad = ls_state.g_k
         # FIXME: zoom_linesearch currently doesn't return new_params
@@ -349,8 +352,7 @@ class LBFGS(base.IterativeSolver):
 
       new_params = tree_add_scalar_mul(params, new_stepsize, descent_direction)
       # FIXME: this requires a second function call per iteration.
-      new_value, new_grad = self._value_and_grad_fun(new_params, *args,
-                                                     **kwargs)
+      (new_value, new_aux), new_grad = self._value_and_grad_with_aux(new_params, *args, **kwargs)
     s = tree_sub(new_params, params)
     y = tree_sub(new_grad, grad)
     vdot_sy = tree_vdot(s, y)
@@ -379,10 +381,7 @@ class LBFGS(base.IterativeSolver):
                            y_history=y_history,
                            rho_history=rho_history,
                            gamma=gamma,
-                           # FIXME: we should return new_aux here but
-                           # BacktrackingLineSearch currently doesn't support
-                           # an aux.
-                           aux=aux,
+                           aux=new_aux,
                            failed_linesearch=failed_linesearch)
 
     return base.OptStep(params=new_params, state=new_state)

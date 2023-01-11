@@ -33,6 +33,7 @@ from jaxopt.tree_util import tree_add_scalar_mul
 from jaxopt.tree_util import tree_sub
 from jaxopt.tree_util import tree_div
 from jaxopt.tree_util import tree_l2_norm
+from jaxopt._src.tree_util import tree_single_dtype
 
 
 class NonlinearCGState(NamedTuple):
@@ -161,12 +162,13 @@ class NonlinearCG(base.IterativeSolver):
     descent_direction = state.descent_direction
 
     if self.linesearch == "backtracking":
-      ls = BacktrackingLineSearch(fun=self._value_and_grad_fun,
+      ls = BacktrackingLineSearch(fun=self._value_and_grad_with_aux,
                                   value_and_grad=True,
                                   maxiter=self.maxls,
                                   decrease_factor=self.decrease_factor,
                                   condition=self.condition,
-                                  max_stepsize=self.max_stepsize)
+                                  max_stepsize=self.max_stepsize,
+                                  has_aux=True)
 
       init_stepsize = jnp.where(state.stepsize <= self.min_stepsize,
                                 # If stepsize became too small, we restart it.
@@ -180,22 +182,28 @@ class NonlinearCG(base.IterativeSolver):
                                       grad,
                                       None, # descent_direction
                                       *args, **kwargs)
+      new_value = ls_state.value
+      new_aux = ls_state.aux
+      new_params = ls_state.params
+      new_grad = ls_state.grad
 
     elif self.linesearch == "zoom":
       ls_state = zoom_linesearch(f=self._value_and_grad_with_aux,
                                  xk=params, pk=descent_direction,
                                  old_fval=value, gfk=grad, maxiter=self.maxls,
-                                 value_and_grad=True, has_aux=True,
+                                 value_and_grad=True, has_aux=True, aux=state.aux,
                                  args=args, kwargs=kwargs)
+      new_value = ls_state.f_k
+      new_aux = ls_state.aux
       new_stepsize = ls_state.a_k
+      new_grad = ls_state.g_k
+      # FIXME: zoom_linesearch currently doesn't return new_params
+      # so we have to recompute it.
+      t = new_stepsize.astype(tree_single_dtype(params))
+      new_params = tree_add_scalar_mul(params, t, descent_direction)
 
     else:
       raise ValueError("Invalid name in 'linesearch' option.")
-
-    new_params = tree_add_scalar_mul(params, new_stepsize, descent_direction)
-    (new_value, new_aux), new_grad = self._value_and_grad_with_aux(new_params,
-                                                                   *args,
-                                                                   **kwargs)
 
     if self.method == "polak-ribiere":
       # See Numerical Optimization, second edition, equation (5.44).

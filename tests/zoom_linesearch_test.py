@@ -140,6 +140,17 @@ class ZoomLinesearchTest(test_util.JaxoptTestCase):
     self.assertTrue(res.failed)
     # s=30 will only be tried on the 6th iteration, so this won't converge
 
+  def test_aux_value(self):
+    def f(x):
+      return jnp.cos(jnp.sum(jnp.exp(-x)) ** 2), x
+
+    xk = jnp.ones(2)
+    pk = jnp.array([-0.5, -0.25])
+    res = zoom_linesearch(f, xk, pk, maxiter=100, has_aux=True)
+    new_stepsize = res.a_k
+    new_xk = xk + new_stepsize * pk
+    self.assertArraysEqual(res.aux, new_xk)
+
   def test_line_search(self):
 
     def f(x):
