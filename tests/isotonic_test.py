@@ -22,7 +22,7 @@ import jax.numpy as jnp
 import numpy as onp
 
 from jax.test_util import check_grads
-from jaxopt._src.isotonic import isotonic_l2_pav
+from jaxopt.isotonic import isotonic_l2_pav
 from jaxopt._src import test_util
 from sklearn import isotonic
 

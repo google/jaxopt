@@ -101,7 +101,7 @@ def _isotonic_l2_pav(y):
   return sol
 
 def isotonic_l2_pav(y, y_min=-jnp.inf, y_max=jnp.inf, increasing=True):
-  """Solves an isotonic regression problem using PAV.
+  r"""Solves an isotonic regression problem using PAV.
 
   Args:
     y: input to isotonic regression, a 1d-array.
@@ -110,8 +110,8 @@ def isotonic_l2_pav(y, y_min=-jnp.inf, y_max=jnp.inf, increasing=True):
     y_max : Upper bound on the highest predicted value 
 
     increasing : Order of the constraints:
-        If True, it solves argmin_{v_1 <= ... <= v_n} 0.5 ||v - y||^2.
-        If False, it solves argmin_{v_1 >= ... >= v_n} 0.5 ||v - y||^2.
+        If True, it solves :math:`\mathop{\mathrm{arg\,min}}_{v_1 \leq ... \leq v_n} \|v - y\|^2`.
+        If False, it solves :math:`\mathop{\mathrm{arg\,min}}_{v_1 \geq ... \geq v_n} \|v - y\|^2`.
 
   Returns:
     The solution, an array of the same size as y.
