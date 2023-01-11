@@ -143,6 +143,17 @@ Perturbed optimizers
     jaxopt.perturbations.Normal
 
 
+
+Isotonic regression
+-------------------
+
+.. autosummary::
+  :toctree: _autosummary
+
+
+    jaxopt.isotonic.isotonic_l2_pav
+
+
 Tree utilities
 --------------
 
@@ -159,3 +170,4 @@ Tree utilities
     jaxopt.tree_util.tree_sum
     jaxopt.tree_util.tree_l2_norm
     jaxopt.tree_util.tree_zeros_like
+
