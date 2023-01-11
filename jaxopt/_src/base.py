@@ -185,7 +185,10 @@ class IterativeSolver(Solver):
   # search as an iterative solver, but for this reason and others
   # (automatic implicit diff) we should consider having it not be one.
   def _make_zero_step(self, init_params, state) -> OptStep:
-     return OptStep(params=init_params, state=state)
+    if isinstance(init_params, OptStep):
+      return OptStep(params=init_params.params, state=state)
+    else:
+      return OptStep(params=init_params, state=state)
 
   def _run(self,
            init_params: Any,
@@ -378,3 +381,4 @@ class IterativeLineSearch(IterativeSolver):
 
     return super()._run(init_stepsize, params, value, grad, descent_direction,
                         *args, **kwargs)
+

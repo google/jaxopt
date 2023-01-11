@@ -21,6 +21,7 @@ from jaxopt import prox
 from jaxopt._src.anderson import AndersonAcceleration
 from jaxopt._src.anderson_wrapper import AndersonWrapper
 from jaxopt._src.armijo_sgd import ArmijoSGD
+from jaxopt._src.base import OptStep
 from jaxopt._src.backtracking_linesearch import BacktrackingLineSearch
 from jaxopt._src.bfgs import BFGS
 from jaxopt._src.bisection import Bisection

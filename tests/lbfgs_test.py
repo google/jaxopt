@@ -22,6 +22,7 @@ import numpy as onp
 
 from jaxopt._src.lbfgs import inv_hessian_product
 
+from jaxopt import OptStep
 from jaxopt import LBFGS
 from jaxopt import objective
 from jaxopt._src import test_util
@@ -261,6 +262,17 @@ class LbfgsTest(test_util.JaxoptTestCase):
 
     # the Rosenbrock function is zero at its minimum
     self.assertLessEqual(fun(x), 1e-2)
+
+  def test_warm_start_hessian_approx(self):
+    def fun(x, *args, **kwargs):
+      return sum(100.0*(x[1:] - x[:-1]**2.0)**2.0 + (1 - x[:-1])**2.0)
+
+    x0 = jnp.zeros(2)
+    lbfgs = LBFGS(fun=fun, tol=1e-3, maxiter=2, stepsize=1e-3)
+    x1, lbfgs_state = lbfgs.run(x0)
+
+    # warm start with the previous solution
+    x2, _ = lbfgs.run(OptStep(x1, lbfgs_state))
 
   @parameterized.product(out_dtype=[jnp.float32, jnp.float64])
   def test_correct_dtypes(self, out_dtype):
