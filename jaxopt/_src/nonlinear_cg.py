@@ -201,7 +201,19 @@ class NonlinearCG(base.IterativeSolver):
       # so we have to recompute it.
       t = new_stepsize.astype(tree_single_dtype(params))
       new_params = tree_add_scalar_mul(params, t, descent_direction)
-
+      # FIXME: (zaccharieramzi) sometimes the linesearch fails
+      # and therefore its value g_k does not correspond
+      # to the gradient at the new parameters.
+      # with the following conditional loop we have a hot fix that just
+      # recomputes the value, gradient and auxiliary value
+      # at the new parameters. It would be better to understand
+      # what the g_k passed by zoom_linesearch is in this case
+      # and why it is wrong.
+      (new_value, new_aux), new_grad = jax.lax.cond(
+        ls_state.failed,
+        lambda: self._value_and_grad_with_aux(new_params, *args, **kwargs),
+        lambda: ((new_value, new_aux), new_grad),
+      )
     else:
       raise ValueError("Invalid name in 'linesearch' option.")
 

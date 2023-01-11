@@ -30,6 +30,8 @@ from jaxopt._src import test_util
 from sklearn import datasets
 
 
+N_CALLS = 0
+
 def materialize_inv_hessian(s_history, y_history, rho_history, start):
   history_size, n_dim = s_history.shape
 
@@ -276,6 +278,26 @@ class LbfgsTest(test_util.JaxoptTestCase):
         self.assertEqual(getattr(state, name).dtype, jnp.float32, name)
       for name in ("value",):
         self.assertEqual(getattr(state, name).dtype, out_dtype, name)
+
+  @parameterized.product(n_iter=[10])
+  def test_n_calls(self, n_iter):
+    """Test whether the number of function calls
+    is equal to the number of iterations + 1 in the
+    no linesearch case, where the complexity is linear."""
+    global N_CALLS
+    N_CALLS = 0
+
+    def fun(x, *args, **kwargs):
+      global N_CALLS
+      N_CALLS += 1
+      return sum(100.0*(x[1:] - x[:-1]**2.0)**2.0 + (1 - x[:-1])**2.0)
+
+    x0 = jnp.zeros(2)
+    lbfgs = LBFGS(fun=fun, tol=1e-7, maxiter=n_iter, stepsize=1e-3, jit=False)
+    x, _ = lbfgs.run(x0)
+
+    self.assertEqual(N_CALLS, n_iter + 1)
+
 
 
 if __name__ == '__main__':

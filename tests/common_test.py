@@ -60,7 +60,7 @@ class CommonTest(test_util.JaxoptTestCase):
 
       hash(solver)  # Checks that hash works.
       update = jax.jit(solver.update)
-      state0 = solver.init_state(params0)
+      state0 = solver.init_state(params0, data=data)
       params, state = update(params0, state0, data=data)
       test_util.check_states_have_same_types(state0, state)
 
