@@ -96,7 +96,7 @@ def _zoom(restricted_func_and_grad, wolfe_one, wolfe_two, a_lo, phi_lo,
   Optimization', 1999, pg. 59-61. Tries cubic, quadratic, and bisection methods
   of zooming.
   """
-  state = _ZoomState(
+  init_state = _ZoomState(
       done=False,
       failed=False,
       j=0,
@@ -108,7 +108,7 @@ def _zoom(restricted_func_and_grad, wolfe_one, wolfe_two, a_lo, phi_lo,
       dphi_hi=dphi_hi,
       a_rec=(a_lo + a_hi) / 2.,
       phi_rec=(phi_lo + phi_hi) / 2.,
-      a_star=1.,
+      a_star=1.0,
       phi_star=phi_lo,
       dphi_star=dphi_lo,
       g_star=g_0,
@@ -230,11 +230,17 @@ def _zoom(restricted_func_and_grad, wolfe_one, wolfe_two, a_lo, phi_lo,
     # Choose higher cutoff for maxiter than Scipy as Jax takes longer to find
     # the same value - possibly floating point issues?
     state = state._replace(failed= state.failed | (state.j >= 30))
+
+    # For dtype consistency
+    state = state._replace(a_lo=state.a_lo.astype(init_state.a_lo.dtype),
+                           a_hi=state.a_hi.astype(init_state.a_hi.dtype),
+                           a_rec=state.a_rec.astype(init_state.a_rec.dtype))
+
     return state
 
   state = lax.while_loop(lambda state: (~state.done) & (~pass_through) & (~state.failed),
                          body,
-                         state)
+                         init_state)
 
   return state
 
@@ -363,7 +369,7 @@ def zoom_linesearch(f, xk, pk, old_fval=None, old_old_fval=None, gfk=None,
       dphi_i1=dphi_0,
       nfev=1 if (old_fval is None or gfk is None) else 0,
       ngev=1 if (old_fval is None or gfk is None) else 0,
-      a_star=jnp.zeros([], dtype=phi_0.dtype),
+      a_star=0.0,
       phi_star=phi_0,
       dphi_star=dphi_0,
       g_star=gfk,
@@ -478,13 +484,14 @@ def zoom_linesearch(f, xk, pk, old_fval=None, old_old_fval=None, gfk=None,
                     & (jnp.abs(alpha_k) < 1e-8),
                       jnp.sign(alpha_k) * 1e-8,
                       alpha_k)
+  param_dtype = tree_single_dtype(xk)
   results = _LineSearchResults(
       failed=state.failed | (~state.done),
       nit=state.i - 1,  # because iterations started at 1
       nfev=state.nfev,
       ngev=state.ngev,
       k=state.i,
-      a_k=alpha_k,
+      a_k=alpha_k.astype(param_dtype),
       f_k=state.phi_star,
       aux=state.aux_star,
       g_k=state.g_star,

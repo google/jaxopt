@@ -184,7 +184,7 @@ class ZoomLinesearchTest(test_util.JaxoptTestCase):
         self.assertEqual(getattr(res, name).dtype, jnp.int64)
       for name in ("g_k",):
         self.assertEqual(getattr(res, name).dtype, jnp.float32, name)
-      for name in ("a_k", "f_k"):
+      for name in ("f_k",):
         self.assertEqual(getattr(res, name).dtype, out_dtype)
 
 

@@ -159,7 +159,7 @@ class BacktrackingLineSearch(base.IterativeLineSearch):
       (params, state)
     """
     # Ensure that stepsize does not exceed upper bound.
-    stepsize = jax.lax.min(self.max_stepsize, stepsize)
+    stepsize = jnp.minimum(self.max_stepsize, stepsize)
     num_fun_eval = state.num_fun_eval
     num_grad_eval = state.num_grad_eval
 
@@ -194,7 +194,7 @@ class BacktrackingLineSearch(base.IterativeLineSearch):
     # cond1 = new_value <= value + self.c1 * stepsize * gd_vdot
     # See equation (3.6a), Numerical Optimization, Second edition.
     diff_cond1 = new_value - (value + self.c1 * stepsize * gd_vdot)
-    error_cond1 = jax.lax.max(diff_cond1, 0.0)
+    error_cond1 = jnp.maximum(diff_cond1, 0.0)
 
     error = error_cond1
 
@@ -207,23 +207,23 @@ class BacktrackingLineSearch(base.IterativeLineSearch):
       # cond2 = abs(new_gd_vdot) <= c2 * abs(gd_vdot)
       # See equation (3.7b), Numerical Optimization, Second edition.
       diff_cond2 = jnp.abs(new_gd_vdot) - self.c2 * jnp.abs(gd_vdot)
-      error_cond2 = jax.lax.max(diff_cond2, 0.0)
-      error = jax.lax.max(error_cond1, error_cond2)
+      error_cond2 = jnp.maximum(diff_cond2, 0.0)
+      error = jnp.maximum(error_cond1, error_cond2)
       num_grad_eval += 1
 
     elif self.condition == "wolfe":
       # cond2 = new_gd_vdot >= c2 * gd_vdot
       # See equation (3.6b), Numerical Optimization, Second edition.
       diff_cond2 = self.c2 * gd_vdot - new_gd_vdot
-      error_cond2 = jax.lax.max(diff_cond2, 0.0)
-      error = jax.lax.max(error_cond1, error_cond2)
+      error_cond2 = jnp.maximum(diff_cond2, 0.0)
+      error = jnp.maximum(error_cond1, error_cond2)
       num_grad_eval += 1
 
     elif self.condition == "goldstein":
       # cond2 = new_value >= value + (1 - self.c1) * stepsize * gd_vdot
       diff_cond2 = value + (1 - self.c1) * stepsize * gd_vdot - new_value
-      error_cond2 = jax.lax.max(diff_cond2, 0.0)
-      error = jax.lax.max(error_cond1, error_cond2)
+      error_cond2 = jnp.maximum(diff_cond2, 0.0)
+      error = jnp.maximum(error_cond1, error_cond2)
 
     else:
       raise ValueError("condition should be one of "

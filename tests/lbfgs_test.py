@@ -274,7 +274,7 @@ class LbfgsTest(test_util.JaxoptTestCase):
         self.assertEqual(getattr(state, name).dtype, jnp.int64)
       for name in ("error", "s_history", "y_history", "rho_history"):
         self.assertEqual(getattr(state, name).dtype, jnp.float32, name)
-      for name in ("value", "stepsize"):
+      for name in ("value",):
         self.assertEqual(getattr(state, name).dtype, out_dtype, name)
 
 
