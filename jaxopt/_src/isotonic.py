@@ -34,7 +34,7 @@ except ImportError:
 
 
 @njit
-def _isotonic_l2_pav(y):
+def _isotonic_l2_pav_numba(y):
   n = y.shape[0]
   target = onp.arange(n)
   c = onp.ones(n)
@@ -89,17 +89,7 @@ def _isotonic_l2_pav(y):
 
 
 @jax.custom_jvp
-def isotonic_l2_pav(y):
-  """Solves an isotonic regression problem using PAV.
-
-  Formally, it solves argmin_{v_1 >= ... >= v_n} 0.5 ||v - y||^2.
-
-  Args:
-    y: input to isotonic regression, a 1d-array.
-
-  Returns:
-    The solution, an array of the same size as y.
-  """
+def _isotonic_l2_pav(y):
   if not NUMBA_AVAILABLE:
     warnings.warn(
         "Numba could not be imported. Code will run much more slowly."
@@ -107,8 +97,29 @@ def isotonic_l2_pav(y):
     )
   # Define the expected shape & dtype of output.
   shape_dtype = jax.ShapeDtypeStruct(shape=y.shape, dtype=y.dtype)
-  return jax.pure_callback(_isotonic_l2_pav, shape_dtype, y)
+  sol = jax.pure_callback(_isotonic_l2_pav_numba, shape_dtype, y)
+  return sol
 
+def isotonic_l2_pav(y, y_min=-jnp.inf, y_max=jnp.inf, increasing=True):
+  """Solves an isotonic regression problem using PAV.
+
+  Args:
+    y: input to isotonic regression, a 1d-array.
+
+    y_min : Lower bound on the lowest predicted value. 
+    y_max : Upper bound on the highest predicted value 
+
+    increasing : Order of the constraints:
+        If True, it solves argmin_{v_1 <= ... <= v_n} 0.5 ||v - y||^2.
+        If False, it solves argmin_{v_1 >= ... >= v_n} 0.5 ||v - y||^2.
+
+  Returns:
+    The solution, an array of the same size as y.
+  """
+  sign = -1 if increasing else 1
+  sol = _isotonic_l2_pav(y * sign) * sign
+  sol = jnp.clip(sol, y_min, y_max)
+  return sol
 
 def _jvp_isotonic_l2_jax_pav(solution, vector, eps=1e-8):
   x = solution
@@ -122,8 +133,8 @@ def _jvp_isotonic_l2_jax_pav(solution, vector, eps=1e-8):
   return (((B.T * (B @ vector)).T) / (A.sum(1, keepdims=True) + 1e-8)).sum(0)
 
 
-@isotonic_l2_pav.defjvp
-def isotonic_l2_pav_jvp(primals, tangents):
+@_isotonic_l2_pav.defjvp
+def _isotonic_l2_pav_jvp(primals, tangents):
   """Jacobian-vector product of isotonic_l2_pav.
 
   See Section 5 of
@@ -131,8 +142,8 @@ def isotonic_l2_pav_jvp(primals, tangents):
   Mathieu Blondel, Olivier Teboul, Quentin Berthet, Josip Djolonga
   ICML 2020 arXiv:2002.08871
   """
-  (y,) = primals
-  (vector,) = tangents
-  primal_out = isotonic_l2_pav(y)
+  (y, ) = primals
+  (vector, ) = tangents
+  primal_out = _isotonic_l2_pav(y)
   tangent_out = _jvp_isotonic_l2_jax_pav(primal_out, vector)
   return primal_out, tangent_out
