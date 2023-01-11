@@ -25,6 +25,8 @@ from jaxopt._src import test_util
 from sklearn import datasets
 
 
+N_CALLS = 0
+
 class GradientDescentTest(test_util.JaxoptTestCase):
 
   def test_logreg_with_intercept(self):
@@ -121,6 +123,21 @@ class GradientDescentTest(test_util.JaxoptTestCase):
 
     error0 = jax.jit(solve)(hyperparams_list[0])
     self.assertAllClose(errors[0], error0)
+
+  @parameterized.product(n_iter=[10])
+  def test_n_calls(self, n_iter):
+    """Test whether the number of function calls
+    is equal to the number of iterations + 1 in the
+    no linesearch case, where the complexity is linear."""
+    def fun(x):
+      global N_CALLS
+      N_CALLS += 1
+      return sum(100.0*(x[1:] - x[:-1]**2.0)**2.0 + (1.0 - x[:-1])**2.0)
+
+    x0 = jnp.zeros(2, dtype=jnp.float32)
+    gd = GradientDescent(fun=fun, tol=1e-12, maxiter=n_iter, stepsize=1e-5, jit=False)
+    gd.run(x0)
+    self.assertEqual(N_CALLS, n_iter)
 
 if __name__ == '__main__':
   # Uncomment the line below in order to run in float64.

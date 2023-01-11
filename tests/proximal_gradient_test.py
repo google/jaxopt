@@ -42,6 +42,8 @@ def make_stepsize_schedule(max_stepsize, n_steps, power=1.0) -> Callable:
   return stepsize_schedule
 
 
+N_CALLS = 0
+
 class ProximalGradientTest(test_util.JaxoptTestCase):
 
   @parameterized.product(acceleration=[True, False])
@@ -131,6 +133,27 @@ class ProximalGradientTest(test_util.JaxoptTestCase):
     params = jnp.zeros(X.shape[1])
     _, state = pg.run(params, hyperparams_prox=None, data=data)
     self.assertLess(state.error, 1e-3)
+
+  @parameterized.product(n_iter=[10])
+  def test_n_calls(self, n_iter):
+    """Test whether the number of function calls
+    is equal to the number of iterations + 1 in the
+    no linesearch case, where the complexity is linear."""
+    X, y = datasets.make_regression(n_samples=10, n_features=3, random_state=0)
+    orig_fun = objective.least_squares
+    def fun(params, data):
+      global N_CALLS
+      N_CALLS += 1
+      return orig_fun(params, data)
+    lam = 10.0
+    data = (X, y)
+
+    w_init = jnp.zeros(X.shape[1])
+    pg = ProximalGradient(fun=fun, prox=prox.prox_lasso, maxiter=n_iter, tol=1e-10, stepsize=1e-5,
+                          acceleration=True, jit=False)
+    w_fit, info = pg.run(w_init, hyperparams_prox=lam, data=data)
+
+    self.assertEqual(N_CALLS, n_iter)
 
 
 if __name__ == '__main__':

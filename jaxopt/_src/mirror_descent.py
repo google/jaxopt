@@ -134,10 +134,10 @@ class MirrorDescent(base.IterativeSolver):
                               error=jnp.asarray(jnp.inf),
                               aux=aux)
 
-  def _error(self, x, x_fun_grad, hyperparams_proj):
-    next_x = self.projection_grad(x, x_fun_grad, 1.0, hyperparams_proj)
+  def _error(self, x, next_x, stepsize):
     diff_x = tree_sub(next_x, x)
-    return tree_l2_norm(diff_x)
+    diff_norm = tree_l2_norm(diff_x)
+    return diff_norm / stepsize
 
   def _stepsize(self, iter_num):
     if isinstance(self.stepsize, Callable):
@@ -149,7 +149,7 @@ class MirrorDescent(base.IterativeSolver):
     stepsize = self._stepsize(iter_num)
     x_fun_grad, aux = self._grad_with_aux(x, *args, **kwargs)
     next_x = self.projection_grad(x, x_fun_grad, stepsize, hyperparams_proj)
-    error = self._error(x, x_fun_grad, hyperparams_proj)
+    error = self._error(x, next_x, stepsize)
     next_state = MirrorDescentState(iter_num=iter_num + 1, error=error, aux=aux)
     return base.OptStep(params=next_x, state=next_state)
 
