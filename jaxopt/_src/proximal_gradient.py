@@ -198,10 +198,9 @@ class ProximalGradient(base.IterativeSolver):
 
     return state
 
-  def _error(self, x, x_fun_grad, hyperparams_prox):
-    next_x = self._prox_grad(x, x_fun_grad, 1.0, hyperparams_prox)
-    diff_x = tree_sub(next_x, x)
-    return tree_l2_norm(diff_x)
+  def _error(self, diff_x, stepsize):
+    diff_norm = tree_l2_norm(diff_x)
+    return diff_norm / stepsize
 
   def _prox_grad(self, x, x_fun_grad, stepsize, hyperparams_prox):
     update = tree_add_scalar_mul(x, -stepsize, x_fun_grad)
@@ -245,7 +244,7 @@ class ProximalGradient(base.IterativeSolver):
                                                                  **kwargs)
     next_x, next_stepsize = self._iter(iter_num, x, x_fun_val, x_fun_grad,
                                        stepsize, hyperparams_prox, args, kwargs)
-    error = self._error(x, x_fun_grad, hyperparams_prox)
+    error = self._error(tree_sub(next_x, x), next_stepsize)
     next_state = ProxGradState(iter_num=iter_num + 1,
                                stepsize=next_stepsize,
                                error=error, aux=aux)
@@ -256,14 +255,14 @@ class ProximalGradient(base.IterativeSolver):
     y = state.velocity
     t = state.t
     stepsize = state.stepsize
-    y_fun_val, y_fun_grad = self._value_and_grad_fun(y, *args, **kwargs)
+    (y_fun_val, aux), y_fun_grad = self._value_and_grad_with_aux(y, *args,
+                                                                 **kwargs)
     next_x, next_stepsize = self._iter(iter_num, y, y_fun_val, y_fun_grad,
                                        stepsize, hyperparams_prox, args, kwargs)
     next_t = 0.5 * (1 + jnp.sqrt(1 + 4 * t ** 2))
     diff_x = tree_sub(next_x, x)
     next_y = tree_add_scalar_mul(next_x, (t - 1) / next_t, diff_x)
-    next_x_fun_grad, aux = self._grad_with_aux(next_x, *args, **kwargs)
-    next_error = self._error(next_x, next_x_fun_grad, hyperparams_prox)
+    next_error = self._error(diff_x, next_stepsize)
     next_state = ProxGradState(iter_num=iter_num + 1, velocity=next_y, t=next_t,
                                stepsize=next_stepsize, error=next_error,
                                aux=aux)

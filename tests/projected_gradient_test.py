@@ -15,6 +15,7 @@
 import functools
 
 from absl.testing import absltest
+from absl.testing import parameterized
 
 import jax
 import jax.numpy as jnp
@@ -27,6 +28,8 @@ from jaxopt._src import test_util
 
 import numpy as onp
 
+
+N_CALLS = 0
 
 class ProjectedGradientTest(test_util.JaxoptTestCase):
 
@@ -113,6 +116,27 @@ class ProjectedGradientTest(test_util.JaxoptTestCase):
     pg = ProjectedGradient(fun=f, projection=proj, jit=False)
     sol, state = pg.run(init_params=jnp.array([0.,1.]), hyperparams_proj=hyperparams)
     self.assertLess(state.error, pg.tol)
+
+  @parameterized.product(n_iter=[10])
+  def test_n_calls(self, n_iter):
+    """Test whether the number of function calls
+    is equal to the number of iterations + 1 in the
+    no linesearch case, where the complexity is linear."""
+    def fun(x):
+      global N_CALLS
+      N_CALLS += 1
+      return x[0]**2-x[1]**2
+
+    A = jnp.array([[0, 0]])
+    b = jnp.array([0])
+    G = jnp.array([[-1, -1], [0, 1], [1, -1], [-1, 0], [0, -1]])
+    h = jnp.array([-1, 1, 1, 0, 0])
+    hyperparams = (A, b, G, h)
+
+    proj = projection.projection_polyhedron
+    pg = ProjectedGradient(fun=fun, projection=proj, jit=False, maxiter=n_iter, tol=1e-10, stepsize=1.0)
+    sol, state = pg.run(init_params=jnp.array([0.,1.]), hyperparams_proj=hyperparams)
+    self.assertEqual(N_CALLS, n_iter)
 
 
 if __name__ == '__main__':
