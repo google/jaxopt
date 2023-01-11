@@ -55,6 +55,7 @@ class BfgsState(NamedTuple):
   """Named tuple containing state information."""
   iter_num: int
   value: float
+  grad: Any
   stepsize: float
   error: float
   H: jnp.ndarray
@@ -153,16 +154,14 @@ class BFGS(base.IterativeSolver):
     Returns:
       state
     """
-    if self.has_aux:
-      _, aux = self.fun(init_params, *args, **kwargs)
-    else:
-      aux = None
+    (value, aux), grad = self._value_and_grad_with_aux(init_params, *args, **kwargs)
 
     dtype = tree_single_dtype(init_params)
     flat_init_params = pytree_to_flat_array(init_params, dtype)
 
     return BfgsState(iter_num=jnp.asarray(0),
-                     value=jnp.asarray(jnp.inf),
+                     value=value,
+                     grad=grad,
                      stepsize=jnp.asarray(self.max_stepsize, dtype=dtype),
                      error=jnp.asarray(jnp.inf),
                      H=jnp.eye(len(flat_init_params), dtype=dtype),
@@ -183,8 +182,7 @@ class BFGS(base.IterativeSolver):
     Returns:
       (params, state)
     """
-    (value, aux), grad = self._value_and_grad_with_aux(params, *args, **kwargs)
-
+    value, grad = state.value, state.grad
     pytree_topology = pytree_topology_from_example(params)
     flat_array_to_pytree = make_onp_to_jnp(pytree_topology)
     dtype = tree_single_dtype(params)
@@ -223,7 +221,7 @@ class BFGS(base.IterativeSolver):
         ls_state = zoom_linesearch(f=self._value_and_grad_with_aux,
                                    xk=params, pk=descent_direction,
                                    old_fval=value, gfk=grad, maxiter=self.maxls,
-                                   value_and_grad=True, has_aux=True, aux=aux,
+                                   value_and_grad=True, has_aux=True, aux=state.aux,
                                    args=args, kwargs=kwargs)
         new_value = ls_state.f_k
         new_aux = ls_state.aux
@@ -233,7 +231,19 @@ class BFGS(base.IterativeSolver):
         # so we have to recompute it.
         t = new_stepsize.astype(tree_single_dtype(params))
         new_params = tree_add_scalar_mul(params, t, descent_direction)
-
+        # FIXME: (zaccharieramzi) sometimes the linesearch fails
+        # and therefore its value g_k does not correspond
+        # to the gradient at the new parameters.
+        # with the following conditional loop we have a hot fix that just
+        # recomputes the value, gradient and auxiliary value
+        # at the new parameters. It would be better to understand
+        # what the g_k passed by zoom_linesearch is in this case
+        # and why it is wrong.
+        (new_value, new_aux), new_grad = jax.lax.cond(
+          ls_state.failed,
+          lambda: self._value_and_grad_with_aux(new_params, *args, **kwargs),
+          lambda: ((new_value, new_aux), new_grad),
+        )
       else:
         raise ValueError("Invalid name in 'linesearch' option.")
 
@@ -245,7 +255,6 @@ class BFGS(base.IterativeSolver):
         new_stepsize = self.stepsize
 
       new_params = tree_add_scalar_mul(params, new_stepsize, descent_direction)
-      # FIXME: this requires a second function call per iteration.
       (new_value, new_aux), new_grad = self._value_and_grad_with_aux(new_params, *args, **kwargs)
 
     s = tree_sub(new_params, params)
@@ -262,6 +271,7 @@ class BFGS(base.IterativeSolver):
 
     new_state = BfgsState(iter_num=state.iter_num + 1,
                           value=new_value,
+                          grad=new_grad,
                           stepsize=jnp.asarray(new_stepsize),
                           error=tree_l2_norm(new_grad),
                           H=new_H,

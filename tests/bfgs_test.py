@@ -28,6 +28,8 @@ from jaxopt._src import test_util
 from sklearn import datasets
 
 
+N_CALLS = 0
+
 def _bfgs(fun, init, stepsize=1e-3, maxiter=500, tol=1e-3):
   value_and_grad_fun = jax.value_and_grad(fun)
 
@@ -112,6 +114,26 @@ class BfgsTest(test_util.JaxoptTestCase):
 
     # Check optimality conditions.
     self.assertLessEqual(info.error, 1e-2)
+
+  @parameterized.product(n_iter=[10])
+  def test_n_calls(self, n_iter):
+    """Test whether the number of function calls
+    is equal to the number of iterations + 1 in the
+    no linesearch case, where the complexity is linear."""
+    global N_CALLS
+    N_CALLS = 0
+
+    def fun(x, *args, **kwargs):  # Rosenbrock function.
+      global N_CALLS
+      N_CALLS += 1
+      return sum(100.0*(x[1:] - x[:-1]**2.0)**2.0 + (1 - x[:-1])**2.0)
+
+    x0 = jnp.zeros(2)
+    bfgs = BFGS(fun=fun, tol=1e-7, maxiter=n_iter, jit=False, stepsize=1e-3)
+    x1, _ = bfgs.run(x0)
+
+    self.assertEqual(N_CALLS, n_iter + 1)
+
 
 if __name__ == '__main__':
   absltest.main()
