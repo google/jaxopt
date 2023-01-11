@@ -31,6 +31,7 @@ from jaxopt.tree_util import tree_l2_norm
 from jaxopt.tree_util import tree_scalar_mul
 from jaxopt.tree_util import tree_sub
 from jaxopt.tree_util import tree_zeros_like
+from jaxopt._src.tree_util import tree_single_dtype
 
 
 class PolyakSGDState(NamedTuple):
@@ -145,10 +146,12 @@ class PolyakSGD(base.StochasticSolver):
     else:
       velocity = tree_zeros_like(init_params)
 
+    param_dtype = tree_single_dtype(init_params)
+
     return PolyakSGDState(iter_num=jnp.asarray(0),
                           error=jnp.asarray(jnp.inf),
                           value=jnp.asarray(jnp.inf),
-                          stepsize=jnp.asarray(1.0),
+                          stepsize=jnp.asarray(1.0, dtype=param_dtype),
                           aux=aux,
                           velocity=velocity)
 
@@ -173,8 +176,9 @@ class PolyakSGD(base.StochasticSolver):
     (value, aux), grad = self._value_and_grad_fun(params, *args, **kwargs)
 
     grad_sqnorm = tree_l2_norm(grad, squared=True)
-    stepsize = jax.lax.min(value / (grad_sqnorm + self.delta),
+    stepsize = jnp.minimum(value / (grad_sqnorm + self.delta),
                            self.max_stepsize)
+    stepsize = stepsize.astype(state.stepsize.dtype)
 
     if self.momentum == 0:
       new_params = tree_add_scalar_mul(params, -stepsize, grad)

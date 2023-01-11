@@ -120,5 +120,55 @@ class CommonTest(test_util.JaxoptTestCase):
       params, state2 = solver.update(params, state1, X, y)
       self.assertEqual(type(state1.aux), type(state2.aux))
 
+  def test_dtype_consistency(self):
+    # We don't use float32 (default dtype in JAX)
+    # to detect when the dtype is incorrectly inherited.
+    # We use two different dtypes for function outputs and
+    # for parameters, as it's a common use case.
+    dtype_fun = jnp.bfloat16
+    dtype_params = jnp.float16
+
+    def fun(w, X, y):
+      w = w.astype(dtype_fun)
+      return jnp.sum((jnp.dot(X, w) - y) ** 2)
+
+    X, y = datasets.make_classification(n_samples=10, n_features=5, n_classes=3,
+                                        n_informative=3, random_state=0)
+    X = jnp.array(X, dtype=dtype_fun)
+    y = jnp.array(y, dtype=dtype_fun)
+    init = jnp.zeros(X.shape[1], dtype=dtype_params)
+
+    for solver in (
+                   jaxopt.ArmijoSGD(fun=fun),
+                   jaxopt.BFGS(fun, linesearch="zoom"),
+                   jaxopt.BFGS(fun, linesearch="backtracking"),
+                   jaxopt.GradientDescent(fun=fun, acceleration=True),
+                   jaxopt.GradientDescent(fun=fun, acceleration=False),
+                   jaxopt.GradientDescent(fun=fun, stepsize=1e-3),
+                   jaxopt.LBFGS(fun=fun, linesearch="zoom"),
+                   jaxopt.LBFGS(fun=fun, linesearch="backtracking"),
+                   jaxopt.NonlinearCG(fun, linesearch="zoom"),
+                   jaxopt.NonlinearCG(fun, linesearch="backtracking"),
+                   jaxopt.OptaxSolver(opt=optax.adam(1e-3), fun=fun),
+                   jaxopt.PolyakSGD(fun=fun, momentum=0.0),
+                   jaxopt.PolyakSGD(fun=fun, momentum=0.9),
+                   jaxopt.ProjectedGradient(fun=fun,
+                     projection=jaxopt.projection.projection_non_negative),
+    ):
+
+      state = solver.init_state(init, X=X, y=y)
+      params, state = solver.update(init, state, X=X, y=y)
+
+      self.assertEqual(params.dtype, dtype_params)
+
+      if hasattr(state, "value"):
+        # FIXME: ideally, solver states should always include a value attribute.
+        self.assertEqual(state.value.dtype, dtype_fun)
+
+      # Usually, the error is computed from the gradient,
+      # which has the same dtype as the parameters.
+      self.assertEqual(state.error.dtype, dtype_params)
+
+
 if __name__ == '__main__':
   absltest.main()
