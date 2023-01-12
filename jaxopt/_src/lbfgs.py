@@ -257,17 +257,33 @@ class LBFGS(base.IterativeSolver):
     Returns:
       state
     """
+    if isinstance(init_params, base.OptStep):
+      # `init_params` can either be a pytree or an OptStep object
+      state_kwargs = dict(
+        s_history=init_params.state.s_history,
+        y_history=init_params.state.y_history,
+        rho_history=init_params.state.rho_history,
+        gamma=init_params.state.gamma,
+        iter_num=init_params.state.iter_num,
+        stepsize=init_params.state.stepsize,
+      )
+      init_params = init_params.params
+      dtype = tree_single_dtype(init_params)
+    else:
+      dtype = tree_single_dtype(init_params)
+      state_kwargs = dict(
+        s_history=init_history(init_params, self.history_size),
+        y_history=init_history(init_params, self.history_size),
+        rho_history=jnp.zeros(self.history_size, dtype=dtype),
+        gamma=jnp.asarray(1.0, dtype=dtype),
+        iter_num=jnp.asarray(0),
+        stepsize=jnp.asarray(self.max_stepsize, dtype=dtype),
+      )
     (value, aux), grad = self._value_and_grad_with_aux(init_params, *args, **kwargs)
-    dtype = tree_single_dtype(init_params)
-    return LbfgsState(iter_num=jnp.asarray(0),
-                      value=value,
+    return LbfgsState(value=value,
                       grad=grad,
-                      stepsize=jnp.asarray(self.max_stepsize, dtype=dtype),
                       error=jnp.asarray(jnp.inf),
-                      s_history=init_history(init_params, self.history_size),
-                      y_history=init_history(init_params, self.history_size),
-                      rho_history=jnp.zeros(self.history_size, dtype=dtype),
-                      gamma=jnp.asarray(1.0, dtype=dtype),
+                      **state_kwargs,
                       aux=aux,
                       failed_linesearch=jnp.asarray(False))
 
@@ -286,6 +302,9 @@ class LBFGS(base.IterativeSolver):
     Returns:
       (params, state)
     """
+    if isinstance(params, base.OptStep):
+      params = params.params
+
     start = state.iter_num % self.history_size
     value, grad = (state.value, state.grad)
 
@@ -401,7 +420,12 @@ class LBFGS(base.IterativeSolver):
     """Optimality function mapping compatible with ``@custom_root``."""
     return self._value_and_grad_fun(params, *args, **kwargs)[1]
 
-  def _value_and_grad_fun(self, params, *args, **kwargs):
+  def _value_and_grad_fun(self,
+                          params,
+                          *args,
+                          **kwargs):
+    if isinstance(params, base.OptStep):
+      params = params.params
     (value, aux), grad = self._value_and_grad_with_aux(params, *args, **kwargs)
     return value, grad
 
