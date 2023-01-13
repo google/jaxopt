@@ -7,7 +7,7 @@ jupytext:
     format_version: 0.13
     jupytext_version: 1.14.4
 kernelspec:
-  display_name: base
+  display_name: Python 3
   language: python
   name: python3
 ---
@@ -45,6 +45,15 @@ $$y_\varepsilon^*(\theta) = \mathbf{E}[\mathop{\mathrm{arg\,max}}_{y\in \mathcal
 
 %%capture
 %pip install jaxopt
+```
+
+```{code-cell} ipython3
+# activate TPUs if available
+try:
+    import jax.tools.colab_tpu
+    jax.tools.colab_tpu.setup_tpu()
+except KeyError:
+    print("TPU not found, continuing without it.")
 ```
 
 ```{code-cell} ipython3

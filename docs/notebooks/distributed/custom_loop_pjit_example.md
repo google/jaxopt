@@ -5,9 +5,10 @@ jupytext:
     extension: .md
     format_name: myst
     format_version: 0.13
-    jupytext_version: 1.14.1
+    jupytext_version: 1.14.4
 kernelspec:
   display_name: Python 3
+  language: python
   name: python3
 ---
 
@@ -110,6 +111,13 @@ id: JJuP-Wz_MBeJ
 ---
 import time
 from typing import Any, Callable, Tuple, Union
+
+# activate TPUs if available
+try:
+    import jax.tools.colab_tpu
+    jax.tools.colab_tpu.setup_tpu()
+except KeyError:
+    print("TPU not found, continuing without it.")
 
 import jax
 import jax.numpy as jnp

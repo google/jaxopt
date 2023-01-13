@@ -5,9 +5,10 @@ jupytext:
     extension: .md
     format_name: myst
     format_version: 0.13
-    jupytext_version: 1.14.1
+    jupytext_version: 1.14.4
 kernelspec:
   display_name: Python 3
+  language: python
   name: python3
 ---
 
@@ -90,6 +91,13 @@ from typing import Any, Callable, Tuple, Union
 
 from absl import app
 from absl import flags
+
+# activate TPUs if available
+try:
+    import jax.tools.colab_tpu
+    jax.tools.colab_tpu.setup_tpu()
+except KeyError:
+    print("TPU not found, continuing without it.")
 
 from flax import jax_utils
 from flax.training import common_utils
