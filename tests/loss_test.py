@@ -92,6 +92,19 @@ class LossTest(test_util.JaxoptTestCase):
     self._test_binary_loss_function(loss.binary_logistic_loss, sigmoid,
                                     reference_impl)
 
+  def test_binary_sparsemax_loss(self):
+    def reference_impl(label: int, logit: float) -> float:
+      scores = -(2*label-1)*logit
+      if scores <= -1.0:
+        return 0.0
+      elif scores >= 1.0:
+        return scores
+      else:
+        return (scores + 1.0)**2/4
+
+    self._test_binary_loss_function(loss.binary_sparsemax_loss, loss.sparse_sigmoid,
+                                    reference_impl)
+
   def _test_multiclass_loss_function(self, loss_fun, inv_link_fun,
                                      reference_impl):
     # Check that loss is zero when all weights goes to the correct label.
