@@ -78,11 +78,11 @@ def binary_sparsemax_loss(label: int, logit: float) -> float:
     Vlad Niculae. JMLR 2020. (Sec. 4.4)
   """
   return sparse_plus(jnp.where(label, -logit, logit))
-  
+
 
 def sparse_plus(x: float) -> float:
   """Sparse plus function.
-  
+
   Computes the function:
 
   .. math:
@@ -107,7 +107,7 @@ def sparse_plus(x: float) -> float:
 
 def sparse_sigmoid(x: float) -> float:
   """Sparse sigmoid function.
-  
+
     Computes the function:
 
   .. math:
@@ -129,6 +129,37 @@ def sparse_sigmoid(x: float) -> float:
   """
   return 0.5 * projection_hypercube(x + 1.0, 2.0)
 
+
+def binary_hinge_loss(label: int, score: float) -> float:
+  """Binary hinge loss.
+
+  Args:
+    label: ground-truth integer label (0 or 1).
+    score: score produced by the model (float).
+  Returns:
+    loss value.
+
+  References:
+    https://en.wikipedia.org/wiki/Hinge_loss
+  """
+  signed_label = 2.0 * label - 1.0
+  return jnp.maximum(0, 1 - score * signed_label)
+
+
+def binary_perceptron_loss(label: int, score: float) -> float:
+  """Binary perceptron loss.
+
+  Args:
+    label: ground-truth integer label (0 or 1).
+    score: score produced by the model (float).
+  Returns:
+    loss value.
+
+  References:
+    https://en.wikipedia.org/wiki/Perceptron
+  """
+  signed_label = 2.0 * label - 1.0
+  return jnp.maximum(0, - score * signed_label)
 
 # Multiclass classification.
 
@@ -172,6 +203,43 @@ def multiclass_sparsemax_loss(label: int, scores: jnp.ndarray) -> float:
   scores = (scores - scores[label]).at[label].set(0.0)
   return (jnp.dot(proba, jnp.where(proba, scores, 0.0))
           + 0.5 * (1.0 - jnp.dot(proba, proba)))
+
+
+def multiclass_hinge_loss(label: int,
+                          scores: jnp.ndarray) -> float:
+  """Multiclass hinge loss.
+
+  Args:
+    label: ground-truth integer label.
+    scores: scores produced by the model (floats).
+  Returns:
+    loss value
+
+  References:
+    https://en.wikipedia.org/wiki/Hinge_loss
+  """
+  one_hot_label = jax.nn.one_hot(label, scores.shape[0])
+  return jnp.max(scores + 1.0 - one_hot_label) - jnp.dot(scores, one_hot_label)
+
+
+def multiclass_perceptron_loss(label: int,
+                               scores: jnp.ndarray) -> float:
+  """Binary perceptron loss.
+
+  Args:
+    label: ground-truth integer label.
+    scores: score produced by the model (float).
+  Returns:
+    loss value.
+
+  References:
+    Michael Collins. Discriminative training methods for Hidden Markov Models:
+    Theory and experiments with perceptron algorithms. EMNLP 2002
+  """
+  one_hot_label = jax.nn.one_hot(label, scores.shape[0])
+  return jnp.max(scores) - jnp.dot(scores, one_hot_label)
+
+ # Fenchel-Young losses
 
 
 def make_fenchel_young_loss(max_fun: Callable[[jnp.array], float]):
