@@ -92,8 +92,36 @@ class LossTest(test_util.JaxoptTestCase):
     self._test_binary_loss_function(loss.binary_logistic_loss, sigmoid,
                                     reference_impl)
 
-  def _test_multiclass_loss_function(self, loss_fun, inv_link_fun,
-                                     reference_impl):
+  def test_binary_sparsemax_loss(self):
+    def reference_impl(label: int, logit: float) -> float:
+      scores = -(2*label-1)*logit
+      if scores <= -1.0:
+        return 0.0
+      elif scores >= 1.0:
+        return scores
+      else:
+        return (scores + 1.0) ** 2 / 4
+
+    self._test_binary_loss_function(
+        loss.binary_sparsemax_loss, loss.sparse_sigmoid, reference_impl
+    )
+
+  def test_binary_hinge_loss(self):
+    def reference_impl(label: int, logit: float) -> float:
+      return jax.nn.relu(1 - logit * (2.0 * label - 1.0))
+    self._test_binary_loss_function(loss.binary_hinge_loss, jnp.sign,
+                                    reference_impl)
+
+  def test_perceptron_loss(self):
+    def reference_impl(label: int, logit: float) -> float:
+      return jax.nn.relu(- logit * (2.0 * label - 1.0))
+    self._test_binary_loss_function(loss.binary_perceptron_loss, jnp.sign,
+                                    reference_impl) 
+
+  def _test_multiclass_loss_function(
+      self, loss_fun, inv_link_fun, reference_impl, large_inputs_behavior=True,
+      incorrect_label_infty=True
+  ):
     # Check that loss is zero when all weights goes to the correct label.
     loss_val = loss_fun(0, jnp.array([1e5, 0, 0]))
     self.assertEqual(loss_val, 0)
@@ -125,14 +153,16 @@ class LossTest(test_util.JaxoptTestCase):
       self.assertAllClose(loss_val, expected)
 
     # Check that correct value is obtained for large inputs.
-    loss_val = loss_fun(0, jnp.array([1e9, 1e9]))
-    expected = loss_fun(0, jnp.array([1, 1]))
-    self.assertAllClose(loss_val, expected)
+    if large_inputs_behavior:
+      loss_val = loss_fun(0, jnp.array([1e9, 1e9]))
+      expected = loss_fun(0, jnp.array([1, 1]))
+      self.assertAllClose(loss_val, expected)
 
     # Check that -inf for incorrect label has no impact.
-    loss_val = loss_fun(0, jnp.array([0.0, 0.0, -jnp.inf]))
-    expected = loss_fun(0, jnp.array([0.0, 0.0]))
-    self.assertAllClose(loss_val, expected)
+    if incorrect_label_infty:
+      loss_val = loss_fun(0, jnp.array([0.0, 0.0, -jnp.inf]))
+      expected = loss_fun(0, jnp.array([0.0, 0.0]))
+      self.assertAllClose(loss_val, expected)
     # Check that -inf for correct label results in infinite loss.
     loss_val = loss_fun(0, jnp.array([-jnp.inf, 0.0, 0.0]))
     self.assertEqual(loss_val, jnp.inf)
@@ -173,6 +203,30 @@ class LossTest(test_util.JaxoptTestCase):
                                         projection.projection_simplex,
                                         reference_impl)
 
+  def test_multiclass_hinge_loss(self):
+    def reference_impl(label, scores):
+      one_hot_label = jax.nn.one_hot(label, scores.shape[-1])
+      return jnp.max(scores + 1.0 - one_hot_label) - scores[label]
+    def inv_link_fun(scores):
+      return jax.nn.one_hot(jnp.argmax(scores), scores.shape[-1])
+
+    self._test_multiclass_loss_function(loss.multiclass_hinge_loss,
+                                        inv_link_fun,
+                                        reference_impl,
+                                        large_inputs_behavior=False,
+                                        incorrect_label_infty=False)
+
+  def test_multiclass_perceptron_loss(self):
+    def reference_impl(label, scores):
+      return jnp.max(scores) - scores[label]
+    def inv_link_fun(scores):
+      return jax.nn.one_hot(jnp.argmax(scores), scores.shape[-1])
+
+    self._test_multiclass_loss_function(loss.multiclass_perceptron_loss,
+                                        inv_link_fun,
+                                        reference_impl,
+                                        incorrect_label_infty=False)
+
   def test_huber(self):
     self.assertAllClose(0.0, loss.huber_loss(0, 0, .1))
     self.assertAllClose(0.0, loss.huber_loss(1, 1, .1))
@@ -199,7 +253,7 @@ class LossTest(test_util.JaxoptTestCase):
     y_one_hot = jax.vmap(one_hot_argmax)(theta_true)
     int_one_hot = jnp.where(y_one_hot == 1.)[1]
     loss_one_hot = jax.vmap(fy_loss)(y_one_hot, theta_random)
-    log_loss = jax.vmap(loss.multiclass_logistic_loss)(int_one_hot, 
+    log_loss = jax.vmap(loss.multiclass_logistic_loss)(int_one_hot,
                                                        theta_random)
     # Checks that the FY loss associated to logsumexp is correct.
     self.assertArraysAllClose(loss_one_hot, log_loss)

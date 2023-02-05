@@ -64,9 +64,16 @@ Loss functions
   :toctree: _autosummary
 
     jaxopt.loss.binary_logistic_loss
+    jaxopt.loss.binary_sparsemax_loss
+    jaxopt.loss.binary_hinge_loss
+    jaxopt.loss.binary_perceptron_loss
+    jaxopt.loss.sparse_plus
+    jaxopt.loss.sparse_sigmoid
     jaxopt.loss.huber_loss
     jaxopt.loss.multiclass_logistic_loss
     jaxopt.loss.multiclass_sparsemax_loss
+    jaxopt.loss.multiclass_hinge_loss
+    jaxopt.loss.multiclass_perceptron_loss
 
 Linear system solving
 ---------------------
