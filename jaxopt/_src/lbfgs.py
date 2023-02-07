@@ -385,11 +385,10 @@ class LBFGS(base.IterativeSolver):
                                         params, value, grad,
                                         descent_direction,
                                         *args, **kwargs)
-
         new_params = ls_state.params
-        (new_value, new_aux), new_grad = self._value_and_grad_with_aux(
-            new_params, *args, **kwargs)
-
+        new_value = ls_state.value
+        new_grad = ls_state.grad
+        new_aux = ls_state.aux
       else:
         raise ValueError("Invalid name in 'linesearch' option.")
 
