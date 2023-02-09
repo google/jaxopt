@@ -29,6 +29,14 @@ Binary classification
 Binary classification losses are of the form ``loss(int: label, float: score) -> float``,
 where ``label`` is the ground-truth (``0`` or ``1``) and ``score`` is the model's output.
 
+The following utility functions are useful for the binary sparsemax loss.
+
+.. autosummary::
+  :toctree: _autosummary
+
+    jaxopt.loss.sparse_plus
+    jaxopt.loss.sparse_sigmoid
+
 Multiclass classification
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -79,5 +87,3 @@ Other functions
     jaxopt.objective.multiclass_logreg_with_intercept
     jaxopt.objective.l2_multiclass_logreg
     jaxopt.objective.l2_multiclass_logreg_with_intercept
-    jaxopt.loss.sparse_plus
-    jaxopt.loss.sparse_sigmoid

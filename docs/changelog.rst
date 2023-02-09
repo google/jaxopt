@@ -1,6 +1,44 @@
 Changelog
 =========
 
+Version 0.6
+-----------
+
+New features
+~~~~~~~~~~~~
+
+- Added new Hager-Zhang linesearch in LBFGS, by Srinivas Vasudevan (code review by Emily Fertig).
+- Added perceptron and hinge losses, by Quentin Berthet.
+- Added binary sparsemax loss, sparse_plus and sparse_sigmoid, by Vincent Roulet.
+- Added isotonic regression, by Michael Sander.
+
+Bug fixes and enhancements
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- Added TPU support to notebooks, by Ayush Shridhar.
+- Allowed users to restart from a previous optimizer state in LBFGS, by Zaccharie Ramzi.
+- Added faster error computation in gradient descent algorithm, by Zaccharie Ramzi.
+- Got rid of extra function call in BFGS and LBFGS, by Zaccharie Ramzi.
+- Improved dtype consistency between input and output of update method, by Mathieu Blondel.
+- Added perturbed optimizers notebook and narrative documentation, by Quentin Berthet and Fabian Pedregosa.
+- Enabled auxiliary value returned by linesearch methods, by Zaccharie Ramzi.
+- Added distributed examples to the website, by Fabian Pedregosa.
+- Added Custom loop pjit example, by Felipe Llinares.
+- Fixed wrong latex in maml.ipynb, by Fabian Pedregosa.
+- Fixed bug in backtracking line search, by Srinivas Vasudevan (code review by Emily Fertig).
+- Added pylintrc to top level directory, by Fabian Pedregosa.
+- Corrected the condition function in LBFGS, by Zaccharie Ramzi.
+- Added custom loop pmap example, by Felipe Llinares.
+- Fixed pytree support in IterativeRefinement, by Louis Béthune.
+- Fixed has_aux support in ArmijoSGD, by Louis Béthune.
+- Documentation improvements, by Fabian Pedregosa and Mathieu Blondel.
+
+Contributors
+~~~~~~~~~~~~
+
+Ayush Shridhar, Fabian Pedregosa, Felipe Llinares, Louis Bethune,
+Mathieu Blondel, Michael Sander, Quentin Berthet, Srinivas Vasudevan, Vincent Roulet, Zaccharie Ramzi.
+
 Version 0.5.5
 -------------
 
