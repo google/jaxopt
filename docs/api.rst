@@ -135,7 +135,7 @@ Line search
   :toctree: _autosummary
 
     jaxopt.BacktrackingLineSearch
-
+    jaxopt.HagerZhangLineSearch
 
 
 Perturbed optimizers

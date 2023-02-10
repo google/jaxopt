@@ -71,8 +71,8 @@ from flax import struct
 import jax
 from jax import numpy as jnp
 from jax import random
-from jax.experimental.maps import Mesh
-from jax.experimental.pjit import PartitionSpec
+from jax.sharding import Mesh
+from jax.sharding import PartitionSpec
 from jax.experimental.pjit import pjit
 
 import jaxopt

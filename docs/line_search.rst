@@ -51,6 +51,7 @@ Algorithms
   :toctree: _autosummary
 
     jaxopt.BacktrackingLineSearch
+    jaxopt.HagerZhangLineSearch
 
 The :class:`BacktrackingLineSearch <jaxopt.BacktrackingLineSearch>` algorithm
 iteratively reduces the step size by some decrease factor until the conditions

@@ -183,8 +183,8 @@ executionInfo:
   user_tz: -60
 id: wd_3OqM0NoXW
 ---
-from jax.experimental.maps import Mesh
-from jax.experimental.pjit import PartitionSpec
+from jax.sharding import Mesh
+from jax.sharding import PartitionSpec
 from jax.experimental.pjit import pjit
 
 
