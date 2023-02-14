@@ -778,18 +778,22 @@ def train_and_evaluate(workdir: str, seed: int = 0):
   train_metrics_init, eval_metrics_init = initialize_metrics(
       params, state, first_batch, learning_rate_fn, solver, model)
   replicate_metrics_init = pjit(
-      lambda t: t, in_axis_resources=None, out_axis_resources=None)
+      lambda t: t, in_shardings=None, out_shardings=None
+  )
 
   # Compiles data parallel train and eval steps using `jax.pjit`.
   p_train_step = pjit(
       functools.partial(
-          train_step, learning_rate_fn=learning_rate_fn, solver=solver),
-      in_axis_resources=(None, None, PartitionSpec('data'), None),
-      out_axis_resources=None)
+          train_step, learning_rate_fn=learning_rate_fn, solver=solver
+      ),
+      in_shardings=(None, None, PartitionSpec('data'), None),
+      out_shardings=None,
+  )
   p_eval_step = pjit(
       functools.partial(eval_step, model=model),
-      in_axis_resources=(None, None, PartitionSpec('data'), None),
-      out_axis_resources=None)
+      in_shardings=(None, None, PartitionSpec('data'), None),
+      out_shardings=None,
+  )
 
   # Instantiates metrics writer for logging.
   writer = metric_writers.create_default_writer(
