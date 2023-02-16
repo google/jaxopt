@@ -1,0 +1,83 @@
+[build-system]
+requires = ["flit_core >=3.2,<4"]
+build-backend = "flit_core.buildapi"
+
+[project]
+name = "jaxopt"
+dynamic = ["version", "description", "readme"]
+keywords = ["optimization", "root finding", "implicit differentiation", "jax"]
+description = "Hardware accelerated, batchable and differentiable optimizers in JAX."
+readme = "README.md"
+authors = [
+    {name = "Google LLC", email = "no-reply@google.com"}
+]
+requires-python = ">=3.7"
+classifiers = [
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+]
+license = {file = "LICENSE"}
+dependencies = [
+    "absl-py>=0.7.0",
+    "jax>=0.2.18",
+    "jaxlib>=0.1.69",
+    "numpy>=1.18.4",
+    "matplotlib>=2.0.1",
+    "scipy>=1.0.0",
+]
+
+[project.urls]
+homepage = "https://github.com/google/jaxopt"
+repository = "https://github.com/google/jaxopt"
+documentation = "https://jaxopt.github.io/stable/"
+
+[tool.pylint.main]
+# A comma-separated list of package or module names from where C extensions may
+# be loaded. Extensions are loading into the active Python interpreter and may
+# run arbitrary code. (This is an alternative name to extension-pkg-allow-list
+# for backward compatibility.)
+extension-pkg-whitelist = ["numpy"]
+
+[tool.pylint."messages control"]
+# Disable the message, report, category or checker with the given id(s). You can
+# either give multiple identifiers separated by comma (,) or put this option
+# multiple times (only on the command line, not in the configuration file where
+# it should appear only once). You can also use "--disable=all" to disable
+# everything first and then re-enable specific checks. For example, if you want
+# to run only the similarities checker, you can use "--disable=all
+# --enable=similarities". If you want to run only the classes checker, but have
+# no Warning level messages displayed, use "--disable=all --enable=classes
+# --disable=W".
+disable = [
+    "missing-docstring",
+    "too-many-locals",
+    "invalid-name",
+    "redefined-outer-name",
+    "redefined-builtin",
+    "protected-name",
+    "no-else-return",
+    "fixme",
+    "protected-access",
+    "too-many-arguments",
+    "blacklisted-name",
+    "too-few-public-methods",
+    "unnecessary-lambda",
+]
+
+# Enable the message, report, category or checker with the given id(s). You can
+# either give multiple identifier separated by comma (,) or put this option
+# multiple time (only on the command line, not in the configuration file where it
+# should appear only once). See also the "--disable" option for examples.
+enable = ["c-extension-no-member"]
+
+
+[tool.pylint.format]
+# String used as indentation unit. This is usually "    " (4 spaces) or "\t" (1
+# tab).
+indent-string = "  "
