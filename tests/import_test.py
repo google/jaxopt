@@ -24,6 +24,10 @@ class ImportTest(test_util.JaxoptTestCase):
     jaxopt.implicit_diff.root_vjp
     from jaxopt.implicit_diff import root_vjp
 
+  def test_isotonic(self):
+    jaxopt.isotonic.isotonic_l2_pav
+    from jaxopt.isotonic import isotonic_l2_pav
+
   def test_prox(self):
     jaxopt.prox.prox_none
     from jaxopt.prox import prox_none

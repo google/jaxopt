@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from jaxopt import implicit_diff
+from jaxopt import isotonic
 from jaxopt import loss
 from jaxopt import objective
 from jaxopt import projection
