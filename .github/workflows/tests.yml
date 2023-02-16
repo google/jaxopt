@@ -28,7 +28,6 @@ jobs:
         run: |
           set -xe
           pip install --upgrade pip setuptools wheel
-          pip install -r requirements.txt
           pip install -r requirements_test.txt
         shell: bash
       - name: Build
