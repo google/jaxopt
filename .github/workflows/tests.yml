@@ -28,13 +28,12 @@ jobs:
         run: |
           set -xe
           pip install --upgrade pip setuptools wheel
-          pip install -r requirements_test.txt
         shell: bash
       - name: Build
         run: |
           set -xe
           python -VV
-          python setup.py install
+          pip install -e ."[test]"
         shell: bash
       - name: Run tests
         run: |
