@@ -36,6 +36,7 @@ from typing import Union
 import jax
 import jax.numpy as jnp
 import jax.tree_util as tree_util
+from jax.config import config
 
 from jaxopt._src import base
 from jaxopt._src import implicit_diff as idf
@@ -66,7 +67,7 @@ class LbfgsInvHessProductPyTree(LbfgsInvHessProduct):
     if sk.shape != yk.shape or sk.ndim != 2:
       raise ValueError('sk and yk must have matching shape, (n_corrs, n)')
     n_corrs, n = sk.shape
-    self.dtype = jnp.float64
+    self.dtype = jnp.float64 if config.jax_enable_x64 is True else jnp.float32
     self.shape = (n, n)
     self.sk = sk
     self.yk = yk
