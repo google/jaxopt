@@ -21,6 +21,9 @@ import jax.numpy as jnp
 class Normal:
   """Normal distribution."""
 
+  def __init__(self):
+      self.has_zero_mean = True
+
   def sample(self,
              seed: jax.random.PRNGKey,
              sample_shape: Tuple[int]) -> jax.Array:
@@ -32,6 +35,9 @@ class Normal:
 
 class Gumbel:
   """Gumbel distribution."""
+
+  def __init__(self):
+      self.has_zero_mean = False
 
   def sample(self,
              seed: jax.random.PRNGKey,
@@ -45,7 +51,8 @@ class Gumbel:
 def make_perturbed_argmax(argmax_fun: Callable[[jax.Array], jax.Array],
                           num_samples: int = 1000,
                           sigma: float = 0.1,
-                          noise=Gumbel()):
+                          noise=Gumbel(),
+                          reduce_variance: bool = False):
   """Transforms a function into a differentiable version with perturbations.
 
   Args:
@@ -57,6 +64,9 @@ def make_perturbed_argmax(argmax_fun: Callable[[jax.Array], jax.Array],
     noise: a distribution object that must implement a sample function and a
       log-pdf of the desired distribution, similar to the examples above.
       Default is Gumbel distribution.
+    reduce_variance : If noise distribution has zero mean use an alternative
+      estimator for the Jacobian which is more stable for small values of sigma.
+      Default is False.
 
   Returns:
     A function with the same signature (and an rng) that can be differentiated.
@@ -106,8 +116,25 @@ def make_perturbed_argmax(argmax_fun: Callable[[jax.Array], jax.Array],
         jnp.reshape(tangent, (-1,)))
     return jnp.reshape(tangent_flat, inputs.shape)
 
-  forward_pert.defjvps(pert_jvp, None)
+  def pert_jvp_reduce_variance(tangent, _, inputs, rng):
+    samples = noise.sample(seed=rng,
+                           sample_shape=(num_samples,) + inputs.shape)
+    output_pert = jax.vmap(argmax_fun)(inputs + sigma * samples)
+    output = argmax_fun(inputs)
+    # noise.log_prob corresponds to -nu in the paper.
+    nabla_z_flat = -jax.vmap(jax.grad(noise.log_prob))(samples.reshape([-1]))
+    tangent_flat = 1.0 / (num_samples * sigma) * jnp.einsum(
+        'nd,ne,e->d',
+        jnp.reshape(output_pert - output, (num_samples, -1)),
+        jnp.reshape(nabla_z_flat, (num_samples, -1)),
+        jnp.reshape(tangent, (-1,)))
+    return jnp.reshape(tangent_flat, inputs.shape)
 
+  # If noise has zero mean then give option for variance reduction. 
+  if reduce_variance and noise.has_zero_mean:
+      forward_pert.defjvps(pert_jvp_reduce_variance, None)
+  else:
+      forward_pert.defjvps(pert_jvp, None)
   return forward_pert
 
 
