@@ -29,6 +29,7 @@ import jax.numpy as jnp
 
 from jaxopt._src import base
 from jaxopt._src.backtracking_linesearch import BacktrackingLineSearch
+from jaxopt._src.hager_zhang_linesearch import HagerZhangLineSearch
 from jaxopt._src.zoom_linesearch import zoom_linesearch
 from jaxopt.tree_util import tree_map
 from jaxopt.tree_util import tree_vdot
@@ -174,7 +175,8 @@ class LBFGS(base.IterativeSolver):
     stepsize: a stepsize to use (if <= 0, use backtracking line search),
       or a callable specifying the **positive** stepsize to use at each iteration.
     linesearch: the type of line search to use: "backtracking" for backtracking
-      line search or "zoom" for zoom line search.
+      line search, "zoom" for zoom line search or "hager-zhang" for Hager-Zhang
+      line search.
     stop_if_linesearch_fails: whether to stop iterations if the line search fails.
       When True, this matches the behavior of core JAX.
     maxls: maximum number of iterations to use in the line search.
@@ -369,7 +371,24 @@ class LBFGS(base.IterativeSolver):
           lambda: self._value_and_grad_with_aux(new_params, *args, **kwargs),
           lambda: ((new_value, new_aux), new_grad),
         )
-
+      elif self.linesearch == "hager-zhang":
+        # By default Hager-Zhang uses the Wolfe Conditions & Approximate Wolfe
+        # Conditions.
+        ls = HagerZhangLineSearch(fun=self._value_and_grad_fun,
+                                  value_and_grad=True,
+                                  maxiter=self.maxls,
+                                  max_stepsize=self.max_stepsize,
+                                  jit=self.jit,
+                                  unroll=self.unroll)
+        # Note that HZL doesn't use the previous step size.
+        new_stepsize, ls_state = ls.run(self.max_stepsize,
+                                        params, value, grad,
+                                        descent_direction,
+                                        *args, **kwargs)
+        new_params = ls_state.params
+        new_value = ls_state.value
+        new_grad = ls_state.grad
+        new_aux = ls_state.aux
       else:
         raise ValueError("Invalid name in 'linesearch' option.")
 

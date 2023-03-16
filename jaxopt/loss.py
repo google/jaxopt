@@ -18,3 +18,7 @@ from jaxopt._src.loss import huber_loss
 from jaxopt._src.loss import make_fenchel_young_loss
 from jaxopt._src.loss import multiclass_logistic_loss
 from jaxopt._src.loss import multiclass_sparsemax_loss
+from jaxopt._src.loss import binary_hinge_loss
+from jaxopt._src.loss import binary_perceptron_loss
+from jaxopt._src.loss import multiclass_hinge_loss
+from jaxopt._src.loss import multiclass_perceptron_loss
