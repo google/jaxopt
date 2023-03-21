@@ -50,7 +50,7 @@ def make_perturbed_argmax(argmax_fun: Callable[[jax.Array], jax.Array],
 
   Args:
     argmax_fun: the argmax function to transform into a differentiable version.
-      The signature for argmax_fn currently supported for custom jvp and jit is:
+      Signature for argmax_fun currently supported for custom jvp and jit is:
       + input [D1, ..., Dk], output [D1, ..., Dk], k >= 1
     num_samples: an int, the number of perturbed outputs to average over.
     sigma: a float, the scale of the random perturbation.
@@ -81,7 +81,7 @@ def make_perturbed_argmax(argmax_fun: Callable[[jax.Array], jax.Array],
 
       batch_size = x_batch.shape[0]
       rngs_batch = jax.random.split(rng, batch_size)
-      pert_argmax = jax.vmap(pert_argmax_fun)(x_batch, rngs_batch)
+      pert_argmax_batch = jax.vmap(pert_argmax_fun)(x_batch, rngs_batch)
 
     Further, if the argmax_fun is jittable, then so is pert_argmax_fun.
   """
@@ -119,7 +119,7 @@ def make_perturbed_max(argmax_fun: Callable[[jax.Array], jax.Array],
 
   Args:
     argmax_fun: the argmax function to transform into a differentiable version.
-      The signature for argmax_fn currently supported for custom jvp and jit is:
+      Signature for argmax_fun currently supported for custom jvp and jit is:
       + input [D1, ..., Dk], output [D1, ..., Dk], k >= 1
     num_samples: an int, the number of perturbed outputs to average over.
     sigma: a float, the scale of the random perturbation.
@@ -150,7 +150,7 @@ def make_perturbed_max(argmax_fun: Callable[[jax.Array], jax.Array],
 
       batch_size = x_batch.shape[0]
       rngs_batch = jax.random.split(rng, batch_size)
-      pert_max = jax.vmap(pert_max_fun)(x_batch, rngs_batch)
+      pert_max_batch = jax.vmap(pert_max_fun)(x_batch, rngs_batch)
 
     Furthermore, if the argmax_fun is jittable, then so is pert_max_fun.
   """
@@ -173,6 +173,76 @@ def make_perturbed_max(argmax_fun: Callable[[jax.Array], jax.Array],
                                             noise)
     pert_argmax = pert_argmax_fun(inputs, rng)
     return jnp.sum(pert_argmax * tangent)
+
+  forward_pert.defjvps(pert_jvp, None)
+
+  return forward_pert
+
+
+def make_perturbed_fun(fun: Callable[[jax.Array], float],
+                       num_samples: int = 1000,
+                       sigma: float = 0.1,
+                       noise=Gumbel()):
+  """Transforms a function into a differentiable version with perturbations.
+
+  Args:
+    fun: the function to transform into a differentiable version.
+      Signature for fun currently supported for custom jvp and jit is:
+      + input [D1, ..., Dk], output [R_1, ..., R_r]
+    num_samples: an int, the number of perturbed outputs to average over.
+    sigma: a float, the scale of the random perturbation.
+    noise: a distribution object that must implement a sample function and a
+      log-pdf of the desired distribution, similar to the examples above.
+      Default is Gumbel distribution.
+
+  Returns:
+    A function with the same signature (and an rng) that can be differentiated.
+
+  Example:
+    Given an argmax function such as::
+
+      def fun(x):
+        return jax.nn.relu(x)
+
+      pert_fun = make_perturbed_fun(fun,
+                                    num_samples=200,
+                                    sigma=0.01)
+
+    Then pert_fun is differentiable, a perturbed version of fun.
+    Since it relies on randomness, it requires an rng key::
+
+      pert_output = pert_fun(x, rng)
+
+    When handling a batched input, vmap can be applied to this function, with
+    some care in splitting the rng key::
+
+      batch_size = x_batch.shape[0]
+      rngs_batch = jax.random.split(rng, batch_size)
+      pert_batch = jax.vmap(pert_fun)(x_batch, rngs_batch)
+
+    Further, if fun is jittable, then so is pert_fun.
+  """
+
+  @jax.custom_jvp
+  def forward_pert(inputs, rng):
+    samples = noise.sample(seed=rng,
+                           sample_shape=(num_samples,) + inputs.shape)
+    output_pert = jax.vmap(fun)(inputs + sigma * samples)
+    return jnp.mean(output_pert, axis=0)
+
+  def pert_jvp(tangent, _, inputs, rng):
+    samples = noise.sample(seed=rng,
+                           sample_shape=(num_samples,) + inputs.shape)
+    output_pert = jax.vmap(fun)(inputs + sigma * samples)[..., jnp.newaxis]
+    # noise.log_prob corresponds to -nu in the paper.
+    nabla_z_flat = -jax.vmap(jax.grad(noise.log_prob))(samples.reshape([-1]))
+    tangent_flat = 1.0 / (num_samples * sigma) * jnp.einsum(
+        'nd,ne,e->d',
+        jnp.reshape(output_pert, (num_samples, -1)),
+        jnp.reshape(nabla_z_flat, (num_samples, -1)),
+        jnp.reshape(tangent, (-1,)))
+    tangent_out = jnp.squeeze(jnp.reshape(tangent_flat, output_pert.shape[1:]))
+    return tangent_out
 
   forward_pert.defjvps(pert_jvp, None)
 
