@@ -21,9 +21,6 @@ import jax.numpy as jnp
 class Normal:
   """Normal distribution."""
 
-  def __init__(self):
-      self.has_zero_mean = True
-
   def sample(self,
              seed: jax.random.PRNGKey,
              sample_shape: Tuple[int]) -> jax.Array:
@@ -35,9 +32,6 @@ class Normal:
 
 class Gumbel:
   """Gumbel distribution."""
-
-  def __init__(self):
-      self.has_zero_mean = False
 
   def sample(self,
              seed: jax.random.PRNGKey,
@@ -64,8 +58,7 @@ def make_perturbed_argmax(argmax_fun: Callable[[jax.Array], jax.Array],
     noise: a distribution object that must implement a sample function and a
       log-pdf of the desired distribution, similar to the examples above.
       Default is Gumbel distribution.
-    reduce_variance : If noise distribution has zero mean use an alternative
-      estimator for the Jacobian which is more stable for small values of sigma.
+    reduce_variance : Option to reduce variance of gradients.
       Default is False.
 
   Returns:
@@ -130,11 +123,11 @@ def make_perturbed_argmax(argmax_fun: Callable[[jax.Array], jax.Array],
         jnp.reshape(tangent, (-1,)))
     return jnp.reshape(tangent_flat, inputs.shape)
 
-  # If noise has zero mean then give option for variance reduction. 
-  if reduce_variance and noise.has_zero_mean:
+  if reduce_variance:
       forward_pert.defjvps(pert_jvp_reduce_variance, None)
   else:
       forward_pert.defjvps(pert_jvp, None)
+
   return forward_pert
 
 
