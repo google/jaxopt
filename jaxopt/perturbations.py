@@ -16,3 +16,4 @@ from jaxopt._src.perturbations import Gumbel
 from jaxopt._src.perturbations import Normal
 from jaxopt._src.perturbations import make_perturbed_argmax
 from jaxopt._src.perturbations import make_perturbed_max
+from jaxopt._src.perturbations import make_perturbed_fun

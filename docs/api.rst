@@ -146,6 +146,7 @@ Perturbed optimizers
 
     jaxopt.perturbations.make_perturbed_argmax
     jaxopt.perturbations.make_perturbed_max
+    jaxopt.perturbations.make_perturbed_fun
     jaxopt.perturbations.Gumbel
     jaxopt.perturbations.Normal
 
