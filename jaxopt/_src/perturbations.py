@@ -46,7 +46,7 @@ def make_perturbed_argmax(argmax_fun: Callable[[jax.Array], jax.Array],
                           num_samples: int = 1000,
                           sigma: float = 0.1,
                           noise=Gumbel(),
-                          reduce_variance: bool = False):
+                          control_variate: bool = False):
   """Transforms a function into a differentiable version with perturbations.
 
   Args:
@@ -58,7 +58,10 @@ def make_perturbed_argmax(argmax_fun: Callable[[jax.Array], jax.Array],
     noise: a distribution object that must implement a sample function and a
       log-pdf of the desired distribution, similar to the examples above.
       Default is Gumbel distribution.
-    reduce_variance : Option to reduce variance of gradients.
+    control_variate : Subtract a control variate (the unperturbed argmax) from
+      the perturbed argmax in the monte-carlo estimate of the jacobian. For
+      low values of sigma, this prevents the jacobian for exploding and can
+      reduce variance.
       Default is False.
 
   Returns:
@@ -109,7 +112,7 @@ def make_perturbed_argmax(argmax_fun: Callable[[jax.Array], jax.Array],
         jnp.reshape(tangent, (-1,)))
     return jnp.reshape(tangent_flat, inputs.shape)
 
-  def pert_jvp_reduce_variance(tangent, _, inputs, rng):
+  def pert_jvp_control_variate(tangent, _, inputs, rng):
     samples = noise.sample(seed=rng,
                            sample_shape=(num_samples,) + inputs.shape)
     output_pert = jax.vmap(argmax_fun)(inputs + sigma * samples)
@@ -123,8 +126,8 @@ def make_perturbed_argmax(argmax_fun: Callable[[jax.Array], jax.Array],
         jnp.reshape(tangent, (-1,)))
     return jnp.reshape(tangent_flat, inputs.shape)
 
-  if reduce_variance:
-      forward_pert.defjvps(pert_jvp_reduce_variance, None)
+  if control_variate:
+      forward_pert.defjvps(pert_jvp_control_variate, None)
   else:
       forward_pert.defjvps(pert_jvp, None)
 

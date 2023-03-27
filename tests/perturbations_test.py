@@ -100,7 +100,8 @@ class PerturbationsArgmaxTest(test_util.JaxoptTestCase):
         argmax_fun=one_hot_argmax,
         num_samples=self.num_samples,
         sigma=self.sigma,
-        noise=perturbations.Gumbel()))
+        noise=perturbations.Gumbel(),
+        control_variate=True))
 
 
     rngs_batch = jax.random.split(self.rng, 2)
@@ -124,7 +125,8 @@ class PerturbationsArgmaxTest(test_util.JaxoptTestCase):
         argmax_fun=one_hot_argmax,
         num_samples=self.num_samples,
         sigma=self.sigma,
-        noise=perturbations.Gumbel()))
+        noise=perturbations.Gumbel(),
+        control_variate=True))
 
     rngs_batch = jax.random.split(self.rng, 2)
     pert_argmax_repeat = jax.vmap(pert_argmax_fun)(theta_batch_repeat,
@@ -185,7 +187,7 @@ class PerturbationsArgmaxTest(test_util.JaxoptTestCase):
         num_samples=self.num_samples,
         sigma=0.01,
         noise=perturbations.Gumbel(),
-        reduce_variance=True))
+        control_variate=True))
 
     rng, _  = jax.random.split(self.rng, 2)
     jac_softmax = jax.jacfwd(jax.nn.softmax)
@@ -244,7 +246,7 @@ class PerturbationsArgmaxTest(test_util.JaxoptTestCase):
         num_samples=10000,
         sigma=self.sigma,
         noise=perturbations.Normal(),
-        reduce_variance=True)))
+        control_variate=True)))
 
 
 
@@ -297,7 +299,8 @@ class PerturbationsArgmaxTest(test_util.JaxoptTestCase):
         argmax_fun=ranks,
         num_samples=self.num_samples,
         sigma=1e-9,
-        noise=perturbations.Normal()))
+        noise=perturbations.Normal(),
+        control_variate=True))
 
     pert_ranks_small_sigma = pert_ranks_fn_small_sigma(theta, self.rng)
     pert_ranks_small_sigma_rv = pert_ranks_fn_small_sigma_rv(theta, self.rng)
