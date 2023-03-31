@@ -94,10 +94,22 @@ class PerturbationsArgmaxTest(test_util.JaxoptTestCase):
         num_samples=self.num_samples,
         sigma=self.sigma,
         noise=perturbations.Gumbel()))
+
+    # same as pert_argmax_fun with control variate 
+    pert_argmax_fun_rv = jax.jit(perturbations.make_perturbed_argmax(
+        argmax_fun=one_hot_argmax,
+        num_samples=self.num_samples,
+        sigma=self.sigma,
+        noise=perturbations.Gumbel(),
+        control_variate=True))
+
+
     rngs_batch = jax.random.split(self.rng, 2)
     pert_argmax = jax.vmap(pert_argmax_fun)(theta_batch, rngs_batch)
+    pert_argmax_rv = jax.vmap(pert_argmax_fun_rv)(theta_batch, rngs_batch)
     soft_argmax = jax.nn.softmax(theta_batch/self.sigma)
     self.assertArraysAllClose(pert_argmax, soft_argmax, atol=3e-2)
+    self.assertArraysAllClose(pert_argmax_rv, soft_argmax, atol=3e-2)
 
     theta_batch_repeat = jnp.array([[-0.6, 1.9, -0.2, 1.1, -1.0],
                                     [-0.6, 1.9, -0.2, 1.1, -1.0]],
@@ -107,13 +119,30 @@ class PerturbationsArgmaxTest(test_util.JaxoptTestCase):
         num_samples=self.num_samples,
         sigma=self.sigma,
         noise=perturbations.Gumbel()))
+
+    # same as pert_argmax_fun but with control variate 
+    pert_argmax_fun_rv = jax.jit(perturbations.make_perturbed_argmax(
+        argmax_fun=one_hot_argmax,
+        num_samples=self.num_samples,
+        sigma=self.sigma,
+        noise=perturbations.Gumbel(),
+        control_variate=True))
+
     rngs_batch = jax.random.split(self.rng, 2)
     pert_argmax_repeat = jax.vmap(pert_argmax_fun)(theta_batch_repeat,
                                                    rngs_batch)
+    pert_argmax_repeat_rv = jax.vmap(pert_argmax_fun_rv)(theta_batch_repeat,
+                                                         rngs_batch)
+
     self.assertArraysAllClose(pert_argmax_repeat[0], pert_argmax_repeat[1],
                               atol=2e-2)
+    self.assertArraysAllClose(pert_argmax_repeat_rv[0], pert_argmax_repeat_rv[1],
+                              atol=2e-2)
+
     delta_noise = pert_argmax_repeat[0] - pert_argmax_repeat[1]
+    delta_noise_rv = pert_argmax_repeat_rv[0] - pert_argmax_repeat_rv[1]
     self.assertNotAlmostEqual(jnp.linalg.norm(delta_noise), 0)
+    self.assertNotAlmostEqual(jnp.linalg.norm(delta_noise_rv), 0)
 
     def square_loss(theta_batch, rng):
       batch_size = theta_batch.shape[0]
@@ -121,7 +150,16 @@ class PerturbationsArgmaxTest(test_util.JaxoptTestCase):
       pert_argmax_batch = jax.vmap(pert_argmax_fun)(theta_batch, rngs_batch)
       return jnp.mean(square_norm_fun(pert_argmax_batch))
 
+    # with control variate 
+    def square_loss_rv(theta_batch, rng):
+      batch_size = theta_batch.shape[0]
+      rngs_batch = jax.random.split(rng, batch_size)
+      pert_argmax_batch_rv = jax.vmap(pert_argmax_fun_rv)(theta_batch, rngs_batch)
+      return jnp.mean(square_norm_fun(pert_argmax_batch_rv))
+
+
     grad_pert = jax.grad(square_loss)(theta_batch, self.rng)
+    grad_pert_rv = jax.grad(square_loss_rv)(theta_batch, self.rng)
 
     def square_loss_soft(theta):
       soft_max = jax.nn.softmax(theta/self.sigma)
@@ -129,6 +167,43 @@ class PerturbationsArgmaxTest(test_util.JaxoptTestCase):
 
     grad_soft = jax.grad(square_loss_soft)(theta_batch)
     self.assertArraysAllClose(grad_pert, grad_soft, atol=1e-1)
+    self.assertArraysAllClose(grad_pert_rv, grad_soft, atol=1e-1)
+
+    """
+    Test ensuring that for small sigma, control variate indeed leads
+    to a Jacobian that is closter to that of the softmax.
+    """
+    sigma = 0.01
+
+    pert_argmax_fun = jax.jit(perturbations.make_perturbed_argmax(
+        argmax_fun=one_hot_argmax,
+        num_samples=self.num_samples,
+        sigma=0.01,
+        noise=perturbations.Gumbel()))
+
+    # same as pert_argmax_fun but with control variate 
+    pert_argmax_fun_rv = jax.jit(perturbations.make_perturbed_argmax(
+        argmax_fun=one_hot_argmax,
+        num_samples=self.num_samples,
+        sigma=0.01,
+        noise=perturbations.Gumbel(),
+        control_variate=True))
+
+    rng, _  = jax.random.split(self.rng, 2)
+    jac_softmax = jax.jacfwd(jax.nn.softmax)
+    jac_pert_argmax_fun = jax.jacfwd(pert_argmax_fun)
+    jac_pert_argmax_fun_rv = jax.jacfwd(pert_argmax_fun_rv)
+
+    # calculate the jacobians
+    js = jac_softmax(theta_matrix[0])
+    jp = jac_pert_argmax_fun(theta_matrix[0], rng)
+    jp_rv = jac_pert_argmax_fun_rv(theta_matrix[0], rng)
+
+    # distance of pert argmax jacobians from softmax jacobian
+    jac_dist= jnp.linalg.norm((js - jp) ** 2)
+    jac_dist_rv = jnp.linalg.norm((js - jp_rv) ** 2)
+    self.assertLessEqual(jac_dist_rv, jac_dist)
+
 
   def test_distrax(self):
     """Checks that the function is compatible with distrax distributions."""
@@ -166,14 +241,25 @@ class PerturbationsArgmaxTest(test_util.JaxoptTestCase):
         sigma=self.sigma,
         noise=perturbations.Normal())))
 
+    pert_sign_rv = jax.jit(jax.vmap(perturbations.make_perturbed_argmax(
+        argmax_fun=jnp.sign,
+        num_samples=10000,
+        sigma=self.sigma,
+        noise=perturbations.Normal(),
+        control_variate=True)))
+
+
+
     theta_batch = jnp.array([[-0.5, 1.2],
                              [-0.4, -1.2],
                              [-0.2, 0.2],
                              [0.1, 0.05]])
     rngs_batch = jax.random.split(self.rng, 4)
     soft_sign = pert_sign(theta_batch, rngs_batch)
+    soft_sign_rv = pert_sign_rv(theta_batch, rngs_batch)
     test_sign = 2 * jax.scipy.stats.norm.cdf(theta_batch/self.sigma) - 1
     self.assertArraysAllClose(soft_sign, test_sign, atol=1e-1)
+    self.assertArraysAllClose(soft_sign_rv, test_sign, atol=1e-1)
 
     def pert_sum_or(x_batch, rng):
       batch_size = x_batch.shape[0]
@@ -181,15 +267,24 @@ class PerturbationsArgmaxTest(test_util.JaxoptTestCase):
       pert_sign_batch = pert_sign(x_batch, rngs_batch)
       return jnp.sum(jnp.max(pert_sign_batch, axis=-1))
 
+    def pert_sum_or_rv(x_batch, rng):
+      batch_size = x_batch.shape[0]
+      rngs_batch = jax.random.split(rng, batch_size)
+      pert_sign_batch_rv = pert_sign_rv(x_batch, rngs_batch)
+      return jnp.sum(jnp.max(pert_sign_batch_rv, axis=-1))
+
+
     def explicit_sum_or(x):
       cdf_value = jax.scipy.stats.norm.cdf(x / self.sigma)
       return jnp.sum(jnp.max(2 * cdf_value - 1, axis=-1))
 
     grad_pert_sum = jax.grad(pert_sum_or)(theta_batch, self.rng)
+    grad_pert_sum_rv = jax.grad(pert_sum_or_rv)(theta_batch, self.rng)
 
     grad_test = jax.grad(explicit_sum_or)(theta_batch)
 
     self.assertArraysAllClose(1 + grad_pert_sum, 1 + grad_test, atol=1e-1)
+    self.assertArraysAllClose(1 + grad_pert_sum_rv, 1 + grad_test, atol=1e-1)
 
   def test_rank_small_sigma(self):
 
@@ -199,10 +294,22 @@ class PerturbationsArgmaxTest(test_util.JaxoptTestCase):
         num_samples=self.num_samples,
         sigma=1e-9,
         noise=perturbations.Normal()))
+
+    pert_ranks_fn_small_sigma_rv = jax.jit(perturbations.make_perturbed_argmax(
+        argmax_fun=ranks,
+        num_samples=self.num_samples,
+        sigma=1e-9,
+        noise=perturbations.Normal(),
+        control_variate=True))
+
     pert_ranks_small_sigma = pert_ranks_fn_small_sigma(theta, self.rng)
+    pert_ranks_small_sigma_rv = pert_ranks_fn_small_sigma_rv(theta, self.rng)
     test_ranks_no_sigma = jnp.array(ranks(theta), dtype='float32')
     self.assertArraysAllClose(pert_ranks_small_sigma,
                               test_ranks_no_sigma, atol=1e-3)
+    self.assertArraysAllClose(pert_ranks_small_sigma_rv,
+                              test_ranks_no_sigma, atol=1e-3)
+
 
   def test_rank_finite_diff(self):
     theta = jnp.array([-0.8, 0.6, 1.2, -1.0, -0.7, 0.6, 1.1, -1.0, 0.4])

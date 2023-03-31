@@ -45,7 +45,8 @@ class Gumbel:
 def make_perturbed_argmax(argmax_fun: Callable[[jax.Array], jax.Array],
                           num_samples: int = 1000,
                           sigma: float = 0.1,
-                          noise=Gumbel()):
+                          noise=Gumbel(),
+                          control_variate: bool = False):
   """Transforms a function into a differentiable version with perturbations.
 
   Args:
@@ -57,6 +58,8 @@ def make_perturbed_argmax(argmax_fun: Callable[[jax.Array], jax.Array],
     noise: a distribution object that must implement a sample function and a
       log-pdf of the desired distribution, similar to the examples above.
       Default is Gumbel distribution.
+    control_variate : Boolean indicating whether a control variate is used in
+      the Monte-Carlo estimate of the Jacobian.
 
   Returns:
     A function with the same signature (and an rng) that can be differentiated.
@@ -106,7 +109,24 @@ def make_perturbed_argmax(argmax_fun: Callable[[jax.Array], jax.Array],
         jnp.reshape(tangent, (-1,)))
     return jnp.reshape(tangent_flat, inputs.shape)
 
-  forward_pert.defjvps(pert_jvp, None)
+  def pert_jvp_control_variate(tangent, _, inputs, rng):
+    samples = noise.sample(seed=rng,
+                           sample_shape=(num_samples,) + inputs.shape)
+    output_pert = jax.vmap(argmax_fun)(inputs + sigma * samples)
+    output = argmax_fun(inputs)
+    # noise.log_prob corresponds to -nu in the paper.
+    nabla_z_flat = -jax.vmap(jax.grad(noise.log_prob))(samples.reshape([-1]))
+    tangent_flat = 1.0 / (num_samples * sigma) * jnp.einsum(
+        'nd,ne,e->d',
+        jnp.reshape(output_pert - output, (num_samples, -1)),
+        jnp.reshape(nabla_z_flat, (num_samples, -1)),
+        jnp.reshape(tangent, (-1,)))
+    return jnp.reshape(tangent_flat, inputs.shape)
+
+  if control_variate:
+      forward_pert.defjvps(pert_jvp_control_variate, None)
+  else:
+      forward_pert.defjvps(pert_jvp, None)
 
   return forward_pert
 
