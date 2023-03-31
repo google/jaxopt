@@ -59,7 +59,7 @@ def make_perturbed_argmax(argmax_fun: Callable[[jax.Array], jax.Array],
       log-pdf of the desired distribution, similar to the examples above.
       Default is Gumbel distribution.
     control_variate : Boolean indicating whether a control variate is used in
-      the Monte-carlo estimate of the Jacobian.
+      the Monte-Carlo estimate of the Jacobian.
 
   Returns:
     A function with the same signature (and an rng) that can be differentiated.
