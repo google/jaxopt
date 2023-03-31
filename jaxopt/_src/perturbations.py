@@ -58,11 +58,8 @@ def make_perturbed_argmax(argmax_fun: Callable[[jax.Array], jax.Array],
     noise: a distribution object that must implement a sample function and a
       log-pdf of the desired distribution, similar to the examples above.
       Default is Gumbel distribution.
-    control_variate : Subtract a control variate (the unperturbed argmax) from
-      the perturbed argmax in the monte-carlo estimate of the jacobian. For
-      low values of sigma, this prevents the jacobian for exploding and can
-      reduce variance.
-      Default is False.
+    control_variate : Boolean indicating whether a control variate is used in
+      the Monte-carlo estimate of the Jacobian.
 
   Returns:
     A function with the same signature (and an rng) that can be differentiated.

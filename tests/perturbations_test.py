@@ -95,7 +95,7 @@ class PerturbationsArgmaxTest(test_util.JaxoptTestCase):
         sigma=self.sigma,
         noise=perturbations.Gumbel()))
 
-    # same as pert_argmax_fun but with reduced variance
+    # same as pert_argmax_fun with control variate 
     pert_argmax_fun_rv = jax.jit(perturbations.make_perturbed_argmax(
         argmax_fun=one_hot_argmax,
         num_samples=self.num_samples,
@@ -120,7 +120,7 @@ class PerturbationsArgmaxTest(test_util.JaxoptTestCase):
         sigma=self.sigma,
         noise=perturbations.Gumbel()))
 
-    # same as pert_argmax_fun but with reduced variance
+    # same as pert_argmax_fun but with control variate 
     pert_argmax_fun_rv = jax.jit(perturbations.make_perturbed_argmax(
         argmax_fun=one_hot_argmax,
         num_samples=self.num_samples,
@@ -150,7 +150,7 @@ class PerturbationsArgmaxTest(test_util.JaxoptTestCase):
       pert_argmax_batch = jax.vmap(pert_argmax_fun)(theta_batch, rngs_batch)
       return jnp.mean(square_norm_fun(pert_argmax_batch))
 
-    # with reduced variance
+    # with control variate 
     def square_loss_rv(theta_batch, rng):
       batch_size = theta_batch.shape[0]
       rngs_batch = jax.random.split(rng, batch_size)
@@ -170,7 +170,7 @@ class PerturbationsArgmaxTest(test_util.JaxoptTestCase):
     self.assertArraysAllClose(grad_pert_rv, grad_soft, atol=1e-1)
 
     """
-    Test ensuring that for small sigma, variance reduction indeed leads
+    Test ensuring that for small sigma, control variate indeed leads
     to a Jacobian that is closter to that of the softmax.
     """
     sigma = 0.01
@@ -181,7 +181,7 @@ class PerturbationsArgmaxTest(test_util.JaxoptTestCase):
         sigma=0.01,
         noise=perturbations.Gumbel()))
 
-    # same as pert_argmax_fun but with reduced variance
+    # same as pert_argmax_fun but with control variate 
     pert_argmax_fun_rv = jax.jit(perturbations.make_perturbed_argmax(
         argmax_fun=one_hot_argmax,
         num_samples=self.num_samples,
