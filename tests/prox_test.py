@@ -13,12 +13,14 @@
 # limitations under the License.
 
 from absl.testing import absltest
+from absl.testing import parameterized
 
 import jax
 import jax.numpy as jnp
 
 from jaxopt import projection
 from jaxopt import prox
+from jaxopt import tree_util
 from jaxopt._src import test_util
 
 import numpy as onp
@@ -189,6 +191,35 @@ class ProxTest(test_util.JaxoptTestCase):
     x = rng.rand(10)
     proxop = prox.make_prox_from_projection(projection.projection_simplex)
     self.assertArraysAllClose(proxop(x), projection.projection_simplex(x))
+
+  @parameterized.product(
+      prox_op=[
+          prox.prox_none,
+          prox.prox_lasso,
+          prox.prox_non_negative_lasso,
+          prox.prox_ridge,
+          prox.prox_non_negative_ridge,
+          prox.prox_elastic_net,
+      ]
+  )
+  def test_pytree_comptability(self, prox_op):
+    rng = onp.random.RandomState(0)
+    x = dict(a=rng.rand(16, 16), b=rng.rand(16))
+    got = prox_op(x)
+    expected = tree_util.tree_map(prox_op, x)
+    self.assertAllClose(got, expected)
+    if prox_op is prox.prox_lasso:
+      l1_reg = tree_util.tree_ones_like(x)
+      got = prox_op(x, l1_reg)
+      expected = tree_util.tree_map(prox_op, x, l1_reg)
+      self.assertAllClose(got, expected)
+    if prox_op is prox.prox_elastic_net:
+      hyperparams = [tree_util.tree_ones_like(x), tree_util.tree_ones_like(x)]
+      got = prox_op(x, hyperparams)
+      hyperparams_tree = tree_util.tree_map(
+          lambda y: [jnp.ones_like(y), jnp.ones_like(y)], x)
+      expected = tree_util.tree_map(prox_op, x, hyperparams_tree)
+      self.assertAllClose(got, expected)
 
 if __name__ == '__main__':
   absltest.main()

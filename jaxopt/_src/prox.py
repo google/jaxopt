@@ -70,9 +70,11 @@ def prox_lasso(x: Any,
   if l1reg is None:
     l1reg = 1.0
 
-  fun = lambda u, v: jnp.sign(u) * jax.nn.relu(jnp.abs(u) - v * scaling)
-  return tree_util.tree_map(fun, x, l1reg)
+  if type(l1reg) == float:
+    l1reg = tree_util.tree_map(lambda y: l1reg*jnp.ones_like(y), x)
 
+  def fun(u, v): return jnp.sign(u) * jax.nn.relu(jnp.abs(u) - v * scaling)
+  return tree_util.tree_map(fun, x, l1reg)
 
 def prox_non_negative_lasso(x: Any,
                             l1reg: Optional[float] = None,
@@ -95,7 +97,7 @@ def prox_non_negative_lasso(x: Any,
   if l1reg is None:
     l1reg = 1.0
 
-  pytree = tree_util.tree_add(x, -l1reg * scaling)
+  pytree = tree_util.tree_map(lambda y: y - l1reg*scaling, x)
   return tree_util.tree_map(jax.nn.relu, pytree)
 
 
@@ -123,10 +125,16 @@ def prox_elastic_net(x: Any,
   if hyperparams is None:
     hyperparams = (1.0, 1.0)
 
-  prox_l1 = lambda u, lam: jnp.sign(u) * jax.nn.relu(jnp.abs(u) - lam)
-  fun = lambda u, lam, gamma: (prox_l1(u, scaling * lam) /
-                               (1.0 + scaling * lam * gamma))
-  return tree_util.tree_map(fun, x, hyperparams[0], hyperparams[1])
+  lam = tree_util.tree_map(lambda y: hyperparams[0]*jnp.ones_like(
+      y), x) if type(hyperparams[0]) == float else hyperparams[0]
+  gam = tree_util.tree_map(lambda y: hyperparams[1]*jnp.ones_like(
+      y), x) if type(hyperparams[1]) == float else hyperparams[1]
+
+  def prox_l1(u, lambd): return jnp.sign(u) * jax.nn.relu(jnp.abs(u) - lambd)
+
+  def fun(u, lambd, gamma): return (prox_l1(u, scaling * lambd) /
+                                    (1.0 + scaling * lambd * gamma))
+  return tree_util.tree_map(fun, x, lam, gam)
 
 
 def prox_group_lasso(x: Any,
