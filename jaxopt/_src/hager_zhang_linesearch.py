@@ -49,6 +49,7 @@ class HagerZhangLineSearchState(NamedTuple):
   error: float
   params: Any
   grad: Any
+  failed: bool
   aux: Optional[Any] = None
 
 
@@ -239,7 +240,7 @@ class HagerZhangLineSearch(base.IterativeLineSearch):
     # Initial interval that satisfies the opposite slope condition.
 
     def cond_fn(state):
-      return jnp.any(~state[0])
+      return jnp.any(~state[0]) | jnp.any(state[-1])
 
     def body_fn(state):
       (done,
@@ -248,7 +249,8 @@ class HagerZhangLineSearch(base.IterativeLineSearch):
        high,
        value_middle,
        grad_middle,
-       best_middle) = state
+       best_middle,
+       failed) = state
       # Correspond to B1 in the paper.
       update_right_endpoint = grad_middle >= 0.
       new_high = jnp.where(~done & update_right_endpoint, middle, high)
@@ -285,18 +287,23 @@ class HagerZhangLineSearch(base.IterativeLineSearch):
       new_value_middle, new_grad_middle = self._value_and_grad_on_line(
           x, new_middle, descent_direction, *args, **kwargs)
 
+      # Terminate on encountering NaNs to avoid an infinite loop.
+      failed = (failed |
+                jnp.any(jnp.isnan(new_value_middle)) |
+                jnp.any(jnp.isnan(new_grad_middle)))
       return (done,
               new_low,
               new_middle,
               new_high,
               new_value_middle,
               new_grad_middle,
-              best_middle)
+              best_middle,
+              failed)
 
     value_c, grad_c = self._value_and_grad_on_line(
         x, c, descent_direction, *args, **kwargs)
 
-    _, final_low, _, final_high, _, _, _ = jax.lax.while_loop(
+    _, final_low, _, final_high, _, _, _, failed = jax.lax.while_loop(
         cond_fn,
         body_fn,
         (jnp.array(False),
@@ -305,8 +312,9 @@ class HagerZhangLineSearch(base.IterativeLineSearch):
          c,
          value_c,
          grad_c,
-         jnp.array(0.)))
-    return final_low, final_high
+         jnp.array(0.),
+         jnp.array(False)))
+    return final_low, final_high, failed
 
   def init_state(self,  # pylint:disable=keyword-arg-before-vararg
                  init_stepsize: float,
@@ -345,7 +353,7 @@ class HagerZhangLineSearch(base.IterativeLineSearch):
         value + self.approximate_wolfe_threshold * jnp.abs(value))
 
     # Create initial interval.
-    low, high = self._bracket(
+    low, high, failed = self._bracket(
         params, jnp.ones_like(value),
         approx_wolfe_threshold_value, descent_direction, *args, **kwargs)
 
@@ -378,7 +386,8 @@ class HagerZhangLineSearch(base.IterativeLineSearch):
         value=value,
         aux=None,  # we do not need to have aux in the initial state
         params=params,
-        grad=grad)
+        grad=grad,
+        failed=failed)
 
   def update(self,  # pylint:disable=keyword-arg-before-vararg
              stepsize: float,
@@ -409,7 +418,6 @@ class HagerZhangLineSearch(base.IterativeLineSearch):
         (value, _), grad = self._value_and_grad_fun(params, *args, **kwargs)
       else:
         value, grad = self._value_and_grad_fun(params, *args, **kwargs)
-
 
     if descent_direction is None:
       descent_direction = tree_scalar_mul(-1, grad)
@@ -471,6 +479,7 @@ class HagerZhangLineSearch(base.IterativeLineSearch):
                           approx_wolfe_threshold_value,
                           descent_direction))
     done = state.done | (error <= self.tol)
+    failed = state.failed | ((state.iter_num + 1 == self.maxiter) & ~done)
 
     new_state = HagerZhangLineSearchState(
         iter_num=state.iter_num + 1,
@@ -481,7 +490,8 @@ class HagerZhangLineSearch(base.IterativeLineSearch):
         low=new_low,
         high=new_high,
         error=error,
-        done=done)
+        done=done,
+        failed=failed)
 
     return base.LineSearchStep(stepsize=new_stepsize, state=new_state)
 

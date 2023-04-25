@@ -545,6 +545,7 @@ class LBFGSB(base.IterativeSolver):
         new_aux = ls_state.aux
       else:
         raise ValueError("Invalid name in 'linesearch' option.")
+      failed_linesearch = ls_state.failed
     else:
       # without line search
       if isinstance(self.stepsize, Callable):
@@ -558,6 +559,7 @@ class LBFGSB(base.IterativeSolver):
       (new_value, new_aux), new_grad = self._value_and_grad_with_aux(
           new_params, *args, **kwargs
       )
+      failed_linesearch = jnp.asarray(False)
 
     s = tree_sub(new_params, params)
     y = tree_sub(new_grad, state.grad)
@@ -567,11 +569,6 @@ class LBFGSB(base.IterativeSolver):
       gamma_inv = tree_vdot(y, y) / curvature
     else:
       gamma_inv = jnp.ones([], dtype=curvature.dtype)
-
-    if use_linesearch and self.linesearch == "zoom":
-      failed_linesearch = ls_state.failed
-    else:  # backtracking linesearch doesn't support failed state yet
-      failed_linesearch = jnp.asarray(False)
 
     history_ind = state.num_updates % self.history_size
     (new_s_history, new_y_history, new_theta, new_num_updates) = (

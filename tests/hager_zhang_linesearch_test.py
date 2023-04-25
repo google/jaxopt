@@ -39,6 +39,7 @@ class HagerZhangLinesearchTest(test_util.JaxoptTestCase):
       initial_grad,
       final_state):
     self.assertTrue(jnp.all(final_state.done))
+    self.assertFalse(jnp.any(final_state.failed))
 
     descent_direction = tree_scalar_mul(-1, initial_grad)
     sufficient_decrease = jnp.all(
@@ -83,6 +84,12 @@ class HagerZhangLinesearchTest(test_util.JaxoptTestCase):
     stepsize, state = ls.run(init_stepsize=1., params=w_init, data=data)
     self._check_conditions_satisfied(
         ls.c1, ls.c2, stepsize, initial_value, initial_grad, state)
+
+    # Failed linesearch (high c1 ensures convergence condition is not met).
+    ls = HagerZhangLineSearch(fun=fun, maxiter=20, c1=2.)
+    _, state = ls.run(init_stepsize=1., params=w_init, data=data)
+    self.assertTrue(jnp.all(state.failed))
+    self.assertFalse(jnp.any(state.done))
 
 
 if __name__ == '__main__':
