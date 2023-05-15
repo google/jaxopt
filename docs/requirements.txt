@@ -13,3 +13,4 @@ myst-nb
 tensorflow-datasets
 dm-haiku
 flax
+jupytext
