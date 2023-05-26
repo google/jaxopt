@@ -10,7 +10,7 @@ The solver specificities are summarized in the table below.
 The best choice will depend on the usage.
 
 .. list-table:: Quadratic programming solvers
-   :widths: 45, 15, 20, 15, 15, 15, 22
+   :widths: 45, 15, 20, 15, 15, 15, 22, 15
    :header-rows: 1
 
    * - Name

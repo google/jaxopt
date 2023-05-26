@@ -22,8 +22,9 @@ Constrained
 .. autosummary::
   :toctree: _autosummary
 
-    jaxopt.ProjectedGradient
+    jaxopt.LBFGSB
     jaxopt.MirrorDescent
+    jaxopt.ProjectedGradient
     jaxopt.ScipyBoundedMinimize
 
 Quadratic programming
