@@ -1,6 +1,35 @@
 Changelog
 =========
 
+Version 0.7
+-----------
+
+New features
+~~~~~~~~~~~~
+
+- Added :class:`jaxopt.LBFGSB`, by Emily Fertig.
+- Added :func:`jaxopt.perturbations.make_perturbed_fun`, by Quentin Berthet.
+
+Bug fixes and enhancements
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- Allow to pass a function as value_and_grad option, by Chansoo Lee.
+- Fixed imaml tutorial (speed and correctness), by Zaccharie Ramzi.
+- Misc improvements in resnet_flax example, by Fabian Pedregosa.
+- Fixed prox to handle pytrees, by Vincent Roulet.
+- Added control variate to make_perturbed_argmax, by Lawrence Stewart.
+- Added inverse hessian approximation to the returned state, Aymeric Galan.
+- Avoid closing over dynamic jax tracers in the bisection solver, by Roy Frostig.
+- Follow pjit API changes, by Yash Katariya and Peter Hawkins.
+- Added isotonic module to documentation, by Mathieu Blondel.
+
+Contributors
+~~~~~~~~~~~~
+
+Aymeric Galan, Chansoo Lee, Emily Fertig, Fabian Pedregosa,
+Lawrence Stewart, Mathieu Blondel, Peter Hawkins, Quentin Berthet,
+Roy Frostig, Vincent Roulet, Yash Katariya, Zaccharie Ramzi.
+
 Version 0.6
 -----------
 
