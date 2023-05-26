@@ -56,41 +56,140 @@ class KKTSolution(NamedTuple):
   dual_ineq: Optional[Any] = None
 
 
-def _make_funs_with_aux(fun: Callable,
-                        value_and_grad: bool,
-                        has_aux: bool):
-  """
-  This utility creates fun, grad_fun and value_and_grad_fun functions
-  with aux output. If `has_aux` is False, then a None aux is returned.
-  If `value_and_grad` is True, `fun` is assumed to return both a value and a
-  gradient.
-  """
-  if value_and_grad:
+# pylint: disable=g-bare-generic
+def _add_aux_to_value_and_grad(value_and_grad: Callable) -> Callable:
+  def value_and_grad_with_aux(*a, **kw):
+    v, g = value_and_grad(*a, **kw)
+    return (v, None), g
+
+  return value_and_grad_with_aux
+
+
+def _add_aux_to_fun(fun: Callable) -> Callable:
+  def fun_with_aux(*a, **kw):
+    return fun(*a, **kw), None
+
+  return fun_with_aux
+
+
+def _split_value_and_grad_with_aux(
+    value_and_grad_with_aux: Callable,
+) -> Callable:
+  def fun_with_aux(*a, **kw):
+    (v, aux), _ = value_and_grad_with_aux(*a, **kw)
+    return (v, aux)
+
+  def grad_with_aux(*a, **kw):
+    (_, aux), g = value_and_grad_with_aux(*a, **kw)
+    return (g, aux)
+
+  return fun_with_aux, grad_with_aux
+
+
+def _remove_aux_from_value_and_grad(
+    value_and_grad_with_aux: Callable,
+) -> Tuple[Callable, Callable, Callable]:
+  def grad_without_aux(*a, **kw):
+    (_, aux), g = value_and_grad_with_aux(*a, **kw)
+    return g
+
+  def fun_without_aux(*a, **kw):
+    (v, aux), g = value_and_grad_with_aux(*a, **kw)
+    return v
+
+  def value_and_grad_without_aux(*a, **kw):
+    (v, aux), g = value_and_grad_with_aux(*a, **kw)
+    return (v, g)
+
+  return fun_without_aux, grad_without_aux, value_and_grad_without_aux
+
+
+def _make_funs_without_aux(
+    fun: Callable,
+    value_and_grad: Union[bool, Callable],
+    has_aux: bool,
+) -> Tuple[Callable, Callable, Callable]:
+  """Creates fun, grad_fun and value_and_grad_fun functions without aux."""
+  if isinstance(value_and_grad, bool) and value_and_grad:
     # Case when `fun` is a user-provided `value_and_grad`.
-
     if has_aux:
-      fun_ = lambda *a, **kw: fun(*a, **kw)[0]
-      value_and_grad_fun = fun
+      return _remove_aux_from_value_and_grad(fun)
     else:
-      fun_ = lambda *a, **kw: (fun(*a, **kw)[0], None)
-      def value_and_grad_fun(*a, **kw):
-        v, g = fun(*a, **kw)
-        return (v, None), g
-
+      return _remove_aux_from_value_and_grad(_add_aux_to_value_and_grad(fun))
+  if isinstance(value_and_grad, bool) and not value_and_grad:
+    # Case when `fun` is just a scalar-valued function.
+    if has_aux:
+      return _remove_aux_from_value_and_grad(
+          jax.value_and_grad(fun, has_aux=True)
+      )
+    else:
+      value_and_grad_ = jax.value_and_grad(fun)
+      grad = lambda *a, **ka: value_and_grad_(*a, **ka)[1]
+      return fun, grad, value_and_grad_
   else:
+    # Case when `fun` is the value function, and `value_and_grad` returns
+    # both value and grad.
+    if has_aux:
+      fun_ = lambda *a, **ka: fun(*a, **ka)[0]
+      _, grad_, value_and_grad_ = _remove_aux_from_value_and_grad(
+          value_and_grad
+      )
+      return fun_, grad_, value_and_grad_
+    else:
+      grad_ = lambda *a, **ka: value_and_grad(*a, **ka)[1]
+      return fun, grad_, value_and_grad
+
+
+def _make_funs_with_aux(
+    fun: Callable,
+    value_and_grad: Union[bool, Callable],
+    has_aux: bool,
+):
+  """Creates fun, grad_fun and value_and_grad_fun functions with aux output.
+
+  Args:
+    fun:
+    value_and_grad: If `value_and_grad` is True, `fun` should return both value
+      and gradient. If `value_and_grad` is a Callable, `fun` should return value
+      only, and `value_and_grad` returns value and gradient.
+    has_aux: If `has_aux` is True, then any Callable arguments should return
+      `(value, aux)` tuple in place of just `value`.
+
+  Returns:
+    Three callables, fun, grad, and value_and_grad.
+    `fun` returns (value, aux) tuple.
+    `grad` returns (grad, aux) tuple.
+    `value_and_grad` returns ((value, aux), grad) nested tuple.
+    If has_aux is False, then all three returned functions return aux=None.
+  """
+  if isinstance(value_and_grad, bool) and value_and_grad:
+    # Case when `fun` is a user-provided `value_and_grad`.
+    if has_aux:
+      value_and_grad_ = fun
+    else:
+      value_and_grad_ = _add_aux_to_value_and_grad(fun)
+    fun_, grad_ = _split_value_and_grad_with_aux(value_and_grad_)
+    return fun_, grad_, value_and_grad_
+
+  if isinstance(value_and_grad, bool) and not value_and_grad:
     # Case when `fun` is just a scalar-valued function.
     if has_aux:
       fun_ = fun
     else:
-      fun_ = lambda p, *a, **kw: (fun(p, *a, **kw), None)
+      fun_ = _add_aux_to_fun(fun)
+    value_and_grad_ = jax.value_and_grad(fun_, has_aux=True)
+  else:
+    # Case when `fun` is the value function, and `value_and_grad` returns
+    # both value and grad.
+    if has_aux:
+      fun_ = fun
+      value_and_grad_ = value_and_grad
+    else:
+      fun_ = _add_aux_to_fun(fun)
+      value_and_grad_ = _add_aux_to_value_and_grad(value_and_grad)
 
-    value_and_grad_fun = jax.value_and_grad(fun_, has_aux=True)
-
-  def grad_fun(*a, **kw):
-    (v, a), g = value_and_grad_fun(*a, **kw)
-    return g, a
-
-  return fun_, grad_fun, value_and_grad_fun
+  _, grad_ = _split_value_and_grad_with_aux(value_and_grad_)
+  return fun_, grad_, value_and_grad_
 
 
 class Solver(abc.ABC):
@@ -381,4 +480,3 @@ class IterativeLineSearch(IterativeSolver):
 
     return super()._run(init_stepsize, params, value, grad, descent_direction,
                         *args, **kwargs)
-

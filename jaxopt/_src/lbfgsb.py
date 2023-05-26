@@ -225,12 +225,13 @@ class LBFGSB(base.IterativeSolver):
   Attributes:
     fun: a smooth function of the form ``fun(x, *args, **kwargs)``.
     value_and_grad: whether ``fun`` just returns the value (False) or both the
-      value and gradient (True).
+      value and gradient (True). See base.make_funs_with_aux for details.
     has_aux: whether ``fun`` outputs auxiliary data or not. If ``has_aux`` is
       False, ``fun`` is expected to be scalar-valued. If ``has_aux`` is True,
       then we have one of the following two cases. If ``value_and_grad`` is
       False, the output should be ``value, aux = fun(...)``. If ``value_and_grad
-      == True``, the output should be ``(value, aux), grad = fun(...)``.
+      == True``, the output should be ``(value, aux), grad = fun(...)``. See
+      base.make_funs_with_aux for details.
     maxiter: maximum number of proximal gradient descent iterations.
     tol: tolerance of the stopping criterion.
     stepsize: a stepsize to use (if <= 0, use backtracking line search), or a
@@ -262,7 +263,7 @@ class LBFGSB(base.IterativeSolver):
   """
 
   fun: Callable  # pylint: disable=g-bare-generic
-  value_and_grad: bool = False
+  value_and_grad: Union[bool, Callable] = False
   has_aux: bool = False
 
   maxiter: int = 50
@@ -626,7 +627,10 @@ class LBFGSB(base.IterativeSolver):
     return value, grad
 
   def __post_init__(self):
-    _, _, self._value_and_grad_with_aux = base._make_funs_with_aux(  # pylint: disable=protected-access
-        fun=self.fun, value_and_grad=self.value_and_grad, has_aux=self.has_aux)
+    _, _, self._value_and_grad_with_aux = base._make_funs_with_aux(
+        fun=self.fun,
+        value_and_grad=self.value_and_grad,
+        has_aux=self.has_aux,
+    )
 
     self.reference_signature = self.fun

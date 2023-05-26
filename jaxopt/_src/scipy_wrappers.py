@@ -22,8 +22,8 @@
 """
 
 import abc
+import dataclasses
 from dataclasses import dataclass
-
 from typing import Any
 from typing import Callable
 from typing import Dict
@@ -34,16 +34,14 @@ from typing import Tuple
 from typing import Union
 
 import jax
+from jax.config import config
 import jax.numpy as jnp
 import jax.tree_util as tree_util
-from jax.config import config
-
+from jax.tree_util import register_pytree_node_class
 from jaxopt._src import base
 from jaxopt._src import implicit_diff as idf
 from jaxopt._src import projection
 from jaxopt._src.tree_util import tree_sub
-from jax.tree_util import register_pytree_node_class
-
 import numpy as onp
 import scipy as osp
 from scipy.optimize import LbfgsInvHessProduct
@@ -284,22 +282,10 @@ class ScipyMinimize(ScipyWrapper):
 
   Attributes:
     fun: a smooth function of the form `fun(x, *args, **kwargs)`.
-    method: the `method` argument for `scipy.optimize.minimize`.
-      Should be one of
-        * 'Nelder-Mead'
-        * 'Powell'
-        * 'CG'
-        * 'BFGS'
-        * 'Newton-CG'
-        * 'L-BFGS-B'
-        * 'TNC'
-        * 'COBYLA'
-        * 'SLSQP'
-        * 'trust-constr'
-        * 'dogleg'
-        * 'trust-ncg'
-        * 'trust-exact'
-        * 'trust-krylov'
+    method: the `method` argument for `scipy.optimize.minimize`. Should be one
+      of * 'Nelder-Mead' * 'Powell' * 'CG' * 'BFGS' * 'Newton-CG' * 'L-BFGS-B' *
+      'TNC' * 'COBYLA' * 'SLSQP' * 'trust-constr' * 'dogleg' * 'trust-ncg' *
+      'trust-exact' * 'trust-krylov'
     tol: the `tol` argument for `scipy.optimize.minimize`.
     options: the `options` argument for `scipy.optimize.minimize`.
     callback: called after each iteration, as callback(xk), where xk is the
@@ -312,12 +298,14 @@ class ScipyMinimize(ScipyWrapper):
     has_aux: whether function `fun` outputs one (False) or more values (True).
       When True it will be assumed by default that `fun(...)[0]` is the
       objective.
+    value_and_grad: See base.make_funs_with_aux for more detail.
   """
   fun: Callable = None
   callback: Callable = None
   tol: Optional[float] = None
   options: Optional[Dict[str, Any]] = None
   maxiter: int = 500
+  value_and_grad: Union[bool, Callable] = False
 
   def optimality_fun(self, sol, *args, **kwargs):
     """Optimality function mapping compatible with `@custom_root`."""
@@ -364,7 +352,7 @@ class ScipyMinimize(ScipyWrapper):
         hess_inv = jnp.asarray(res.hess_inv)
     else:
       hess_inv = None
-        
+
     info = ScipyMinimizeInfo(fun_val=jnp.asarray(res.fun),
                              success=res.success,
                              status=res.status,
@@ -389,14 +377,13 @@ class ScipyMinimize(ScipyWrapper):
 
   def __post_init__(self):
     super().__post_init__()
-
-    if self.has_aux:
-      self.fun = lambda x, *args, **kwargs: self.fun(x, *args, **kwargs)[0]
+    self.fun, self._grad_fun, self._value_and_grad_fun = (
+        base._make_funs_without_aux(self.fun, self.value_and_grad, self.has_aux)
+    )
 
     # Pre-compile useful functions.
-    self._grad_fun = jax.grad(self.fun)
-    self._value_and_grad_fun = jax.value_and_grad(self.fun)
     if self.jit:
+      self.fun = jax.jit(self.fun)
       self._grad_fun = jax.jit(self._grad_fun)
       self._value_and_grad_fun = jax.jit(self._value_and_grad_fun)
 

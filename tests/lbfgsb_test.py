@@ -32,13 +32,17 @@ from sklearn import datasets
 class LbfgsbTest(test_util.JaxoptTestCase):
 
   @parameterized.parameters(
-      ((0.8, 1.2), (-1.0, -2.0), (2.0, 2.0)),
-      ((2.0, 0.0), (1.5, -2.0), (3.0, 0.5)),
-      ((2.0, 0.5), (0.0, -1.0), (3.0, 1.0)),
+      ((0.8, 1.2), (-1.0, -2.0), (2.0, 2.0), True),
+      ((2.0, 0.0), (1.5, -2.0), (3.0, 0.5), False),
+      ((2.0, 0.5), (0.0, -1.0), (3.0, 1.0), "function"),
   )
-  def test_correctness(self, init_params, lower, upper):
+  def test_correctness(self, init_params, lower, upper, value_and_grad):
     def fun(x):  # Rosenbrock function.
       return sum(100.0 * (x[1:] - x[:-1] ** 2.0) ** 2.0 + (1 - x[:-1]) ** 2.0)
+    if value_and_grad is True:
+      fun = jax.value_and_grad(fun)
+    elif value_and_grad == "function":
+      value_and_grad = jax.value_and_grad(fun)
 
     x0 = jnp.array(init_params)
     bounds = (jnp.array(lower), jnp.array(upper))
@@ -49,11 +53,17 @@ class LbfgsbTest(test_util.JaxoptTestCase):
         maxiter=50,
         history_size=5,
         use_gamma=True,
+        value_and_grad=value_and_grad,
     )
     x1, _ = lbfgsb.run(x0, bounds=bounds)
 
     scipy_lbfgsb = ScipyBoundedMinimize(
-        fun=fun, tol=1e-5, maxiter=50, method="L-BFGS-B", options={"maxcor": 5}
+        fun=fun,
+        tol=1e-5,
+        maxiter=50,
+        method="L-BFGS-B",
+        options={"maxcor": 5},
+        value_and_grad=value_and_grad,
     )
     x2, _ = scipy_lbfgsb.run(init_params=x0, bounds=bounds)
 
