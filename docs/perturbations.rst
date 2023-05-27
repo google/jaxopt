@@ -79,13 +79,13 @@ The function :meth:`jaxopt.perturbations.make_perturbed_fun` transforms the func
 
 .. math::
 
-    f_{\varepsilon}(\theta) = \mathbb{E}\left[ f(\theta + \varepsilon Z)]\,,
+    f_{\varepsilon}(\theta) = \mathbb{E}\left[ f(\theta + \varepsilon Z) \right]\,,
 
 where :math:`Z` is a random variable. The distribution of this random variable can be specified through the keyword argument ``noise``. The default is a Gumbel distribution, which is a good choice for discrete variables. For continuous variables, a normal distribution is more appropriate. This can be particulary useful in the example given above, when :math:`f` is only defined on the discrete set, not its convex hull, i.e.
 
 .. math::
 
-    f_{\varepsilon}(\theta) = \mathbb{E}\left[ g(\mathop{\mathrm{arg\,max}}_{y \in \mathcal{C}} \langle y, \theta + \varepsilon Z \rangle \right)]\,,
+    f_{\varepsilon}(\theta) = \mathbb{E}\left[ g(\mathop{\mathrm{arg\,max}}_{y \in \mathcal{C}} \langle y, \theta + \varepsilon Z \rangle) \right]\,,
 
 
 .. autosummary::
