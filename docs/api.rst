@@ -106,6 +106,7 @@ Root finding
   :toctree: _autosummary
 
     jaxopt.Bisection
+    jaxopt.Broyden
     jaxopt.ScipyRootFinding
 
 Fixed point resolution
