@@ -68,3 +68,49 @@ Scipy wrapper
   :toctree: _autosummary
 
     jaxopt.ScipyRootFinding
+
+
+Broyden's method
+--------------
+
+.. autosummary::
+  :toctree: _autosummary
+
+    jaxopt.Broyden
+
+Broyden's method is an iterative algorithm suitable for nonlinear root equations in any dimension.
+It is a quasi-Newton method (like L-BFGS), meaning that it uses an approximation of the Jacobian matrix
+at each iteration.
+The approximation is updated at each iteration with a rank-one update.
+This makes the approximation easy to invert using the Sherman-Morrison formula, given it does not use too many
+updates.
+One can control the number of updates with the ``history_size`` argument.
+Furthermore, Broyden's method uses a line search to ensure the rank-one updates are stable.
+
+Example::
+
+    import jax.numpy as jnp
+    from jaxopt import Broyden
+
+    def F(x):
+      return x ** 3 - x - 2
+
+    broyden = Broyden(fun=F)
+    print(broyden.run(jnp.array(1.0)).params)
+
+
+For implicit differentiation::
+
+    import jax
+    import jax.numpy as jnp
+    from jaxopt import Broyden
+
+    def F(x, factor):
+      return factor * x ** 3 - x - 2
+
+    def root(factor):
+      broyden = Broyden(fun=F)
+      return broyden.run(jnp.array(1.0), factor=factor).params
+
+    # Derivative of root with respect to factor at 2.0.
+    print(jax.grad(root)(2.0))

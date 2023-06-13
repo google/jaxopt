@@ -338,6 +338,7 @@ class LBFGS(base.IterativeSolver):
       new_grad = ls_state.grad
       new_aux = ls_state.aux
       failed_linesearch = ls_state.failed
+
     else:
       if isinstance(self.stepsize, Callable):
         new_stepsize = self.stepsize(state.iter_num)

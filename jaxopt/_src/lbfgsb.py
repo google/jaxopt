@@ -34,11 +34,13 @@ from jaxopt._src.lbfgs import update_history
 from jaxopt._src.linesearch_util import _reset_stepsize
 from jaxopt._src.linesearch_util import _setup_linesearch
 from jaxopt._src.tree_util import tree_single_dtype
+
 from jaxopt.tree_util import tree_add_scalar_mul
 from jaxopt.tree_util import tree_inf_norm
 from jaxopt.tree_util import tree_map
 from jaxopt.tree_util import tree_sub
 from jaxopt.tree_util import tree_vdot
+
 import numpy as np
 
 
@@ -65,6 +67,7 @@ def _split_and_pack_like(x: jnp.ndarray, tree: Any):
       jax.tree_util.tree_unflatten(treedef, splits),
       tree,
   )
+
 
 
 def _get_error(x: Any, grad: Any, lower: Any, upper: Any):
@@ -119,6 +122,7 @@ def _find_cauchy_point(
   d = jnp.where(t < eps, 0.0, -grad)
   x_bound = jnp.where(d > 0.0, upper, jnp.where(d < 0.0, lower, x))
 
+
   # Sort coordinates by the distance from the bounds, divided by the gradient.
   t_ind = jnp.argsort(t, axis=-1)
   t_sorted = t[t_ind]
@@ -132,6 +136,7 @@ def _find_cauchy_point(
       )
   )
 
+
   init_c = jnp.zeros(m.shape[-1:], dtype=m.dtype)
   init_p = jnp.dot(w.T, d)
   init_df = -jnp.dot(d, d)
@@ -144,6 +149,7 @@ def _find_cauchy_point(
       init_c,
       init_p,
   )
+
 
   def _cond(state):
     return (-state[1] / state[2] >= dt[state[0]]) & (state[0] < x.shape[-1])
@@ -207,6 +213,7 @@ def _minimize_subspace(
   alpha = jnp.where(active_set_mask & (jnp.abs(du) > 0.0), alpha, 1.0)
   alpha_star = jnp.min(alpha, axis=-1)
   alpha_star = jnp.minimum(alpha_star, 1.0)
+
   return jnp.where(active_set_mask, x_cauchy + alpha_star * du, x_cauchy)
 
 
@@ -318,6 +325,7 @@ class LBFGSB(base.IterativeSolver):
   def init_state(
       self, init_params: Any, bounds: Optional[Any], *args, **kwargs
   ) -> LbfgsbState:
+
     """Initialize the solver state.
 
     Args:
@@ -379,6 +387,7 @@ class LBFGSB(base.IterativeSolver):
       *args,
       **kwargs,
   ) -> base.OptStep:
+
     """Performs one iteration of LBFGS.
 
     Args:
@@ -603,3 +612,4 @@ class LBFGSB(base.IterativeSolver):
       self.run_ls = jax.jit(linesearch_solver.run)
     else:
       self.run_ls = linesearch_solver.run
+
