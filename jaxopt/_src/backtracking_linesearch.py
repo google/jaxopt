@@ -40,6 +40,7 @@ class BacktrackingLineSearchState(NamedTuple):
   grad: Any
   num_fun_eval: int
   num_grad_eval: int
+  failed: bool
   aux: Optional[Any] = None
 
 
@@ -133,7 +134,8 @@ class BacktrackingLineSearch(base.IterativeLineSearch):
                                        num_fun_eval=num_fun_eval,
                                        num_grad_eval=num_grad_eval,
                                        done=jnp.asarray(False),
-                                       grad=grad)
+                                       grad=grad,
+                                       failed=jnp.asarray(False))
 
   def update(self,
              stepsize: float,
@@ -233,6 +235,7 @@ class BacktrackingLineSearch(base.IterativeLineSearch):
                              stepsize,
                              stepsize * self.decrease_factor)
     done = state.done | (error <= self.tol)
+    failed = state.failed | ((state.iter_num + 1 == self.maxiter) & ~done)
 
     new_state = BacktrackingLineSearchState(iter_num=state.iter_num + 1,
                                             value=new_value,
@@ -242,7 +245,8 @@ class BacktrackingLineSearch(base.IterativeLineSearch):
                                             num_fun_eval=num_fun_eval,
                                             num_grad_eval=num_grad_eval,
                                             done=done,
-                                            error=error)
+                                            error=error,
+                                            failed=failed)
 
     return base.LineSearchStep(stepsize=new_stepsize, state=new_state)
 

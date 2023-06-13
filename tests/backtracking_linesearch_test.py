@@ -41,6 +41,7 @@ class BacktrackingLinesearchTest(test_util.JaxoptTestCase):
       initial_grad,
       final_state):
     self.assertTrue(jnp.all(final_state.done))
+    self.assertFalse(jnp.any(final_state.failed))
 
     descent_direction = tree_scalar_mul(-1, initial_grad)
     # Check sufficient decrease for all line search methods.
@@ -126,6 +127,42 @@ class BacktrackingLinesearchTest(test_util.JaxoptTestCase):
     self.assertLessEqual(state.error, 1e-5)
     self._check_conditions_satisfied(
         cond, ls.c1, ls.c2, stepsize, initial_value, initial_grad, state)
+
+    # Failed linesearch (high c1 ensures convergence condition is not met).
+    ls = BacktrackingLineSearch(fun=fun, maxiter=20, condition=cond, c1=2.)
+    _, state = ls.run(init_stepsize=1.0, params=w_init, data=data)
+    self.assertTrue(jnp.all(state.failed))
+    self.assertFalse(jnp.any(state.done))
+
+  @parameterized.product(
+      cond=["armijo", "goldstein", "strong-wolfe", "wolfe"],
+      val=[onp.inf, onp.nan])
+  def test_backtracking_linesearch_non_finite(self, cond, val):
+
+    def fun(x):
+      result = jnp.where(x > 4., val, (x - 2)**2)
+      grad = jnp.where(x > 4., onp.nan, 2 * (x - 2.))
+      return result, grad
+
+    x_init = -0.001
+
+    # Make sure initial step triggers a non-finite value.
+    ls = BacktrackingLineSearch(
+        fun=fun, condition=cond, max_stepsize=2.0, value_and_grad=True)
+    stepsize = 1.25
+    state = ls.init_state(init_stepsize=stepsize, params=x_init)
+
+    # Run this twice and check that we decrease the stepsize but don't
+    # terminate.
+    for _ in range(2):
+      stepsize, state = ls.update(stepsize=stepsize, state=state, params=x_init)
+      self.assertFalse(state.done)
+
+    # The linesearch should have backtracked to the safe region, and the
+    # quadratic bowl will guarantee termination of the linesearch for parameters
+    # sufficiently close.
+    stepsize, state = ls.update(stepsize=stepsize, state=state, params=x_init)
+    self.assertTrue(state.done)
 
 
 if __name__ == '__main__':

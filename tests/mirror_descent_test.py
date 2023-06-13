@@ -66,7 +66,8 @@ def make_stepsize_schedule(max_stepsize, n_steps, power=1.0) -> Callable:
 class MirrorDescentTest(test_util.JaxoptTestCase):
 
   @parameterized.named_parameters(
-      ('kl', None),
+      # FIXME: Re-enable when JAX numerical stability issue is solved.
+      # ('kl', None),
       ('kl_stable', projection_grad_kl_stable),
   )
   def test_multiclass_svm_dual(self, projection_grad):
@@ -110,7 +111,8 @@ class MirrorDescentTest(test_util.JaxoptTestCase):
     self.assertArraysAllClose(W_fit, W_skl, atol=atol)
 
   @parameterized.named_parameters(
-      ('kl', None),
+      # FIXME: Re-enable when JAX numerical stability issue is solved.
+      # ('kl', None),
       ('kl_stable', projection_grad_kl_stable),
   )
   def test_multiclass_svm_dual_implicit_diff(self, projection_grad):

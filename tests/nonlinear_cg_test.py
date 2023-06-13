@@ -73,7 +73,7 @@ class NonlinearCGTest(test_util.JaxoptTestCase):
   @parameterized.product(method=["fletcher-reeves",
                                  "polak-ribiere",
                                  "hestenes-stiefel"],
-                         linesearch=["backtracking", "zoom"])
+                         linesearch=["backtracking", "zoom", "hager-zhang"])
   def test_binary_logreg(self, method, linesearch):
     X, y = datasets.make_classification(n_samples=10, n_features=5, n_classes=2,
                                         n_informative=3, random_state=0)

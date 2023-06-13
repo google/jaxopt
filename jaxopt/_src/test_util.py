@@ -323,21 +323,26 @@ class JaxoptTestCase(parameterized.TestCase):
                      canonicalize_dtypes=True, err_msg=''):
     """Assert that x and y, either arrays or nested tuples/lists, are close."""
     if isinstance(x, dict):
-      self.assertIsInstance(y, dict)
-      self.assertEqual(set(x.keys()), set(y.keys()))
+      self.assertIsInstance(y, dict, msg=err_msg)
+      self.assertEqual(set(x.keys()), set(y.keys()), msg=err_msg)
       for k in x.keys():
         self.assertAllClose(x[k], y[k], check_dtypes=check_dtypes, atol=atol,
                             rtol=rtol, canonicalize_dtypes=canonicalize_dtypes,
                             err_msg=err_msg)
     elif is_sequence(x) and not hasattr(x, '__array__'):
-      self.assertTrue(is_sequence(y) and not hasattr(y, '__array__'))
-      self.assertEqual(len(x), len(y))
+      self.assertTrue(
+          is_sequence(y) and not hasattr(y, '__array__'), msg=err_msg
+      )
+      self.assertEqual(len(x), len(y), msg=err_msg)
       for x_elt, y_elt in zip(x, y):
         self.assertAllClose(x_elt, y_elt, check_dtypes=check_dtypes, atol=atol,
                             rtol=rtol, canonicalize_dtypes=canonicalize_dtypes,
                             err_msg=err_msg)
     elif hasattr(x, '__array__') or onp.isscalar(x):
-      self.assertTrue(hasattr(y, '__array__') or onp.isscalar(y))
+      self.assertTrue(
+          hasattr(y, '__array__') or onp.isscalar(y),
+          msg=f'{err_msg}: {x} is an array but {y} is not.',
+      )
       if check_dtypes:
         self.assertDtypesMatch(x, y, canonicalize_dtypes=canonicalize_dtypes)
       x = onp.asarray(x)

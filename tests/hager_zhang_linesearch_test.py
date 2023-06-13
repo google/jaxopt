@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from absl.testing import absltest
+from absl.testing import parameterized
 
 import jax
 import jax.numpy as jnp
@@ -39,6 +40,7 @@ class HagerZhangLinesearchTest(test_util.JaxoptTestCase):
       initial_grad,
       final_state):
     self.assertTrue(jnp.all(final_state.done))
+    self.assertFalse(jnp.any(final_state.failed))
 
     descent_direction = tree_scalar_mul(-1, initial_grad)
     sufficient_decrease = jnp.all(
@@ -83,6 +85,29 @@ class HagerZhangLinesearchTest(test_util.JaxoptTestCase):
     stepsize, state = ls.run(init_stepsize=1., params=w_init, data=data)
     self._check_conditions_satisfied(
         ls.c1, ls.c2, stepsize, initial_value, initial_grad, state)
+
+    # Failed linesearch (high c1 ensures convergence condition is not met).
+    ls = HagerZhangLineSearch(fun=fun, maxiter=20, c1=2.)
+    _, state = ls.run(init_stepsize=1., params=w_init, data=data)
+    self.assertTrue(jnp.all(state.failed))
+    self.assertFalse(jnp.any(state.done))
+
+  @parameterized.product(val=[onp.inf, onp.nan])
+  def test_hager_zhang_linesearch_non_finite(self, val):
+
+    def fun(x):
+      result = jnp.where(x > 4., val, (x - 2)**2)
+      grad = jnp.where(x > 4., onp.nan, 2 * (x - 2.))
+      return result, grad
+    x_init = -0.001
+
+    ls = HagerZhangLineSearch(fun=fun, value_and_grad=True, jit=False)
+    stepsize = 1.25
+    state = ls.init_state(init_stepsize=1.25, params=x_init)
+
+    stepsize, state = ls.update(stepsize=stepsize, state=state, params=x_init)
+    # Should work around the Nan/Inf regions and provide a reasonable step size.
+    self.assertTrue(state.done)
 
 
 if __name__ == '__main__':

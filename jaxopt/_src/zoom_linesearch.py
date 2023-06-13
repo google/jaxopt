@@ -1,4 +1,4 @@
-# Copyright 2022 Google LLC
+# Copyright 2023 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,487 +14,733 @@
 
 """Zoom line search algorithm."""
 
-# Original code by Joshua George Albert:
-# https://github.com/google/jax/pull/3101
+import dataclasses
+import functools
+from typing import Any
+from typing import Callable
+from typing import NamedTuple
+from typing import Optional
 
-from typing import Any, NamedTuple, Optional, Union
-from functools import partial
-
-#from jax._src.numpy.util import _promote_dtypes_inexact
-import jax.numpy as jnp
 import jax
 from jax import lax
-from jaxopt.tree_util import tree_vdot, tree_add_scalar_mul, tree_map
+import jax.numpy as jnp
+from jaxopt._src import base
 from jaxopt._src.tree_util import tree_single_dtype
+from jaxopt.tree_util import tree_add_scalar_mul
+from jaxopt.tree_util import tree_scalar_mul
+from jaxopt.tree_util import tree_vdot
+# pylint: disable=g-bare-generic
+# pylint: disable=invalid-name
 
-_dot = partial(jnp.dot, precision=lax.Precision.HIGHEST)
+_dot = functools.partial(jnp.dot, precision=lax.Precision.HIGHEST)
 
 
 def _cubicmin(a, fa, fpa, b, fb, c, fc):
+  """Cubic interpolation.
+
+  Finds a critical point of a cubic polynomial
+  p(x) = A *(x-a)^3 + B*(x-a)^2 + C*(x-a) + D, that goes through
+  the points (a,fa), (b,fb), and (c,fc) with derivative at a of fpa.
+  May return NaN (if radical<0), in that case, the point will be ignored.
+  Taken from scipy.optimize._linesearch.py.
+
+  Args:
+    a: scalar
+    fa: value of a function f at a
+    fpa: slope of a function f at a
+    b: scalar
+    fb: value of a function f at b
+    c: scalar
+    fc: value of a function f at c
+
+  Returns:
+    xmin: point at which p'(xmin) = 0
+  """
   C = fpa
   db = b - a
   dc = c - a
   denom = (db * dc) ** 2 * (db - dc)
-  d1 = jnp.array([[dc ** 2, -db ** 2],
-                  [-dc ** 3, db ** 3]])
+  d1 = jnp.array([[dc**2, -(db**2)], [-(dc**3), db**3]])
   A, B = _dot(d1, jnp.array([fb - fa - C * db, fc - fa - C * dc])) / denom
 
-  radical = B * B - 3. * A * C
-  xmin = a + (-B + jnp.sqrt(radical)) / (3. * A)
+  radical = B * B - 3.0 * A * C
+  xmin = a + (-B + jnp.sqrt(radical)) / (3.0 * A)
 
   return xmin
 
 
 def _quadmin(a, fa, fpa, b, fb):
+  """Quadratic interpolation.
+
+  Finds a critical point of a quadratic polynomial
+  p(x) = B*(x-a)^2 + C*(x-a) + D, that goes through
+  the points (a,fa), (b,fb) with derivative at a of fpa.
+  Taken from scipy.optimize._linesearch.py.
+
+  Args:
+    a: scalar
+    fa: value of a function f at a
+    fpa: slope of a function f at a
+    b: scalar
+    fb: value of a function f at b
+
+  Returns:
+    xmin: point at which p'(xmin) = 0
+  """
   D = fa
   C = fpa
   db = b - a
-  B = (fb - D - C * db) / (db ** 2)
-  xmin = a - C / (2. * B)
+  B = (fb - D - C * db) / (db**2)
+  xmin = a - C / (2.0 * B)
   return xmin
 
 
-def _binary_replace(replace_bit, original_dict, new_dict, keys=None):
-  if keys is None:
-    keys = new_dict.keys()
-  out = dict()
-  for key in keys:
-    #out[key] = jnp.where(replace_bit, new_dict[key], original_dict[key])
-    out[key] = tree_map(lambda x, y: jnp.where(replace_bit, x, y),
-                        new_dict[key],
-                        original_dict[key])
-  return out
+def _set_values(cond, candidate, default):
+  def _set_val(x, y):
+    return jnp.where(cond, x, y)
+
+  return jax.tree_util.tree_map(_set_val, candidate, default)
 
 
-class _ZoomState(NamedTuple):
-  done: Union[bool, jnp.ndarray]
-  failed: Union[bool, jnp.ndarray]
-  j: Union[int, jnp.ndarray]
-  a_lo: Union[float, jnp.ndarray]
-  phi_lo: Union[float, jnp.ndarray]
-  dphi_lo: Union[float, jnp.ndarray]
-  a_hi: Union[float, jnp.ndarray]
-  phi_hi: Union[float, jnp.ndarray]
-  dphi_hi: Union[float, jnp.ndarray]
-  a_rec: Union[float, jnp.ndarray]
-  phi_rec: Union[float, jnp.ndarray]
-  a_star: Union[float, jnp.ndarray]
-  phi_star: Union[float, jnp.ndarray]
-  dphi_star: Union[float, jnp.ndarray]
-  g_star: Union[float, jnp.ndarray]
-  nfev: Union[int, jnp.ndarray]
-  ngev: Union[int, jnp.ndarray]
-  aux_lo: Union[float, jnp.ndarray]
-  aux_hi: Union[float, jnp.ndarray]
-  aux_star: Union[float, jnp.ndarray]
+def _check_failure_status(fail_code):
+  """Print failure reason according to fail value."""
+  if fail_code == 1:
+    print("Provided descent direction is not a descent direction.")
+  elif fail_code == 2:
+    print("Maximal stepsize reached.")
+  elif fail_code == 3:
+    print("Maximal number of line search iterations reached.")
+  elif fail_code == 4:
+    print(
+        "Length of searched interval has been reduced below machine precision."
+    )
+  elif fail_code == 5:
+    print("NaN or Inf values encountered in function values.")
 
 
-def _zoom(restricted_func_and_grad, wolfe_one, wolfe_two, a_lo, phi_lo,
-          dphi_lo, a_hi, phi_hi, dphi_hi, g_0, pass_through, has_aux=False, aux=jnp.nan):
+class ZoomLineSearchState(NamedTuple):
+  """Named tuple containing state information for core loop."""
+
+  iter_num: int
+  params: Any  # either initial or final
+  value: float  # either initial or final
+  grad: Any  # either initial or final
+
+  # unchanged after initialization
+  value_init: float  #  (redundant with value, left for readability)
+  slope_init: float
+  descent_direction: Any
+
+  num_fun_eval: int
+  num_grad_eval: int
+
+  error: float
+  done: bool
+  fail_code: int  # encode failure status, see _check_status
+  failed: bool  # comply to semantic used by other line searches
+
+  # Used only during the interval search
+  interval_found: bool
+  prev_stepsize: float
+  prev_value_step: float
+  prev_slope_step: float
+
+  # Set up after interval search done, modified during zoom
+  low: float
+  value_low: float
+  slope_low: float
+  high: float
+  value_high: float
+  slope_high: float
+  cubic_ref: float
+  value_cubic_ref: float
+
+  # Safeguard point: we may not be able to satisfy the curvature condition
+  # but we can still return a point that satisfies the decrease condition
+  safe_stepsize: float
+
+  aux: Optional[Any] = None  # either initial or final
+
+
+@dataclasses.dataclass(eq=False)
+class ZoomLineSearch(base.IterativeLineSearch):
+  """Inexact line search that satisfies sufficient decrease (Armijo) and small curvature (strong Wolfe) conditions.
+
+  Algorithms 3.5, 3.6 from [1], pages 60-62.
+
+  The sufficient decrease condition may be impossible to satisfy close to a
+  minimum, in that case, we switch to an approximate sufficient decrease
+  condition (approximate Wolfe) taken from [2].
+
+  [1] J. Nocedal and S. Wright, 'Numerical Optimization', 2nd edition, 2006.
+  [2] W. Hager, H. Zhang, Algorithm 851: CG_DESCENT, a Conjugate Gradient Method
+    with Guaranteed Descent.
+
+  Attributes:
+    fun: a function of the form ``fun(params, *args, **kwargs)``, where
+      ``params`` are parameters of the model, ``*args`` and ``**kwargs`` are
+      additional arguments.
+    value_and_grad: if ``False``, ``fun`` should return the function value only.
+      If ``True``, ``fun`` should return both the function value and the
+      gradient.
+    has_aux: if ``False``, ``fun`` should return the function value only. If
+      ``True``, ``fun`` should return a pair ``(value, aux)`` where ``aux`` is a
+      pytree of auxiliary values. (default: False)
+    c1: constant used to check if a sufficient decrease has been found (Armijo)
+      (default: 1e-4)
+    c2: constant used to check if a small curvature has been found (strong
+      Wolfe) (default: 0.9)
+    c3: constant used to check if an approximate sufficient decrease
+      (approximate Wolfe) has been found (default: 1e-6)
+    rel_tol_cubic: point computed by cubic interpolation accepted if inside
+      rel_tol_cubic*interval_size (default: 0.2)
+    rel_tol_quad: point computed by quadratic interpolation accepted if inside
+      rel_tol_quad*interval_size (default: 0.1)
+    increase_factor: factor to mutliply stepsize at initialization until finding
+      interval satisfying curvature condition (default: 2.)
+    max_stepsize: maximal possible stepsize. (default: 2**30)
+    tol: tolerance of the stopping criterion. (default: 0.0)
+    maxiter: maximum number of line search iterations. (default: 30)
+    verbose: whether to print error on every iteration or not. verbose=True will
+      automatically disable jit. (default: False)
+    jit: whether to JIT-compile the optimization loop (default: "auto").
+    unroll: whether to unroll the optimization loop (default: "auto").
   """
-  Implementation of zoom. Algorithm 3.6 from Wright and Nocedal, 'Numerical
-  Optimization', 1999, pg. 59-61. Tries cubic, quadratic, and bisection methods
-  of zooming.
-  """
-  init_state = _ZoomState(
-      done=False,
-      failed=False,
-      j=0,
-      a_lo=a_lo,
-      phi_lo=phi_lo,
-      dphi_lo=dphi_lo,
-      a_hi=a_hi,
-      phi_hi=phi_hi,
-      dphi_hi=dphi_hi,
-      a_rec=(a_lo + a_hi) / 2.,
-      phi_rec=(phi_lo + phi_hi) / 2.,
-      a_star=1.0,
-      phi_star=phi_lo,
-      dphi_star=dphi_lo,
-      g_star=g_0,
-      nfev=0,
-      ngev=0,
-      # the auxiliary values are not used in the body of the loop
-      # but are just set at the end, so we need them to have matching shapes
-      # and dtypes
-      aux_lo=aux,
-      aux_hi=aux,
-      aux_star=aux,
-  )
-  delta1 = 0.2
-  delta2 = 0.1
 
-  def body(state):
-    # Body of zoom algorithm. We use boolean arithmetic to avoid using jax.cond
-    # so that it works on GPU/TPU.
-    dalpha = (state.a_hi - state.a_lo)
-    a = jnp.minimum(state.a_hi, state.a_lo)
-    b = jnp.maximum(state.a_hi, state.a_lo)
-    cchk = delta1 * dalpha
-    qchk = delta2 * dalpha
+  fun: Callable
+  value_and_grad: bool = False
+  has_aux: bool = False
 
-    # This will cause the line search to stop, and since the Wolfe conditions
-    # are not satisfied the minimization should stop too.
-    threshold = jnp.where((jnp.finfo(dalpha).bits < 64), 1e-5, 1e-10)
-    state = state._replace(failed=state.failed | (dalpha <= threshold))
+  c1: float = 1e-4
+  c2: float = 0.9
+  c3: float = 1e-6
+  rel_tol_cubic: float = 0.2
+  rel_tol_quad: float = 0.1
+  increase_factor: float = 2.0
 
-    # Cubmin is sometimes nan, though in this case the bounds check will fail.
-    a_j_cubic = _cubicmin(state.a_lo, state.phi_lo, state.dphi_lo, state.a_hi,
-                          state.phi_hi, state.a_rec, state.phi_rec)
-    use_cubic = (state.j > 0) & (a_j_cubic > a + cchk) & (a_j_cubic < b - cchk)
-    a_j_quad = _quadmin(state.a_lo, state.phi_lo, state.dphi_lo, state.a_hi, state.phi_hi)
-    use_quad = (~use_cubic) & (a_j_quad > a + qchk) & (a_j_quad < b - qchk)
-    a_j_bisection = (state.a_lo + state.a_hi) / 2.
+  tol: float = 0.0
+  maxiter: int = 30
+  # max_stepsize needs to be large enough for the linesearch to be able
+  # to find a good stepsize
+  max_stepsize: float = 2**30
+
+  verbose: bool = False
+  jit: base.AutoOrBoolean = "auto"
+  unroll: base.AutoOrBoolean = "auto"
+
+  def _value_and_slope_on_line(
+      self, params, stepsize, descent_direction, args, kwargs
+  ):
+    step = tree_add_scalar_mul(params, stepsize, descent_direction)
+    (value_step, aux_step), grad_step = self._value_and_grad_fun_with_aux(
+        step, *args, **kwargs
+    )
+    slope_step = tree_vdot(grad_step, descent_direction)
+    return value_step, slope_step, step, grad_step, aux_step
+
+  def _decrease_error(
+      self, stepsize, value_step, slope_step, value_init, slope_init
+  ):
+    # We consider either the usual sufficient decrease (Armijo condition), see
+    # equation (3.7a) of [1]
+    exact_decrease_error = (
+        value_step - value_init - self.c1 * stepsize * slope_init
+    )
+    # or an approximate decrease condition, see equation (23) of [2]
+    approx_decrease_error_ = slope_step - (2 * self.c1 - 1.0) * slope_init
+
+    # The classical Armijo condition may fail to be satisfied if we are too
+    # close to a minimum, causing the optimizer to fail as explained in [2]
+
+    # We switch to approximate Wolfe conditions only if we are close enough to
+    # the minimizer which is captured by the following criterion.
+    delta_values = value_step - value_init - self.c3 * jnp.abs(value_init)
+    approx_decrease_error = jnp.maximum(approx_decrease_error_, delta_values)
+    # We take then the *minimum* of both errors.
+    return jnp.minimum(approx_decrease_error, exact_decrease_error)
+
+  def _curvature_error(self, slope_step, slope_init):
+    # See equation (3.7b) of [1].
+    return jnp.abs(slope_step) - self.c2 * jnp.abs(slope_init)
+
+  def _make_safe_step(self, _, state, args, kwargs):
+    safe_stepsize = state.safe_stepsize
+    step = tree_add_scalar_mul(
+        state.params, safe_stepsize, state.descent_direction
+    )
+    (value_step, aux_step), grad_step = self._value_and_grad_fun_with_aux(
+        step, *args, **kwargs
+    )
+    new_state = state._replace(
+        params=step, value=value_step, grad=grad_step, aux=aux_step
+    )
+    return safe_stepsize, new_state
+
+  def _keep_step(self, stepsize, state, _, __):
+    return stepsize, state
+
+  def _search_interval(self, init_stepsize, state, args, kwargs):
+    """Line search procedure described in Algorithm 3.5 of [1]."""
+    # init_stepsize only used for iter_num = 0
+
+    iter_num = state.iter_num
+
+    params_init = state.params
+    grad_init = state.grad
+    aux_init = state.aux
+
+    fail_code = state.fail_code
+
+    value_init = state.value_init
+    slope_init = state.slope_init
+    descent_direction = state.descent_direction
+
+    prev_stepsize = state.prev_stepsize
+    prev_value_step = state.prev_value_step
+    prev_slope_step = state.prev_slope_step
+
+    safe_stepsize = state.safe_stepsize
+
+    # Choose new point, larger than previous one or set to initial guess
+    # for first iteration.
+    larger_stepsize = self.increase_factor * prev_stepsize
+    new_stepsize_ = jnp.where(iter_num == 0, init_stepsize, larger_stepsize)
+    new_stepsize = jnp.minimum(new_stepsize_, self.max_stepsize)
+
+    max_stepsize_reached = new_stepsize == self.max_stepsize
+    fail_check1 = jnp.where(
+        (fail_code == 0) & max_stepsize_reached, 2, fail_code
+    )
+
+    new_value_step, new_slope_step, new_step, new_grad_step, new_aux_step = (
+        self._value_and_slope_on_line(
+            params_init, new_stepsize, descent_direction, args, kwargs
+        )
+    )
+    is_value_nan = jnp.isnan(new_value_step) | jnp.isinf(new_value_step)
+    fail_check2 = jnp.where((fail_check1 == 0) & is_value_nan, 5, fail_check1)
+
+    decrease_error_ = self._decrease_error(
+        new_stepsize, new_value_step, new_slope_step, value_init, slope_init
+    )
+    decrease_error = jnp.maximum(decrease_error_, 0.0)
+    curvature_error_ = self._curvature_error(new_slope_step, slope_init)
+    curvature_error = jnp.maximum(curvature_error_, 0.0)
+    new_error = jnp.maximum(decrease_error, curvature_error)
+
+    # If the new point satisfies at least the decrease error we keep it
+    # in case the curvature error cannot be satisfied.
+    safe_decrease = decrease_error <= self.tol
+    new_safe_stepsize = jnp.where(safe_decrease, new_stepsize, safe_stepsize)
+
+    # If the new point not good, set high and low values according to
+    # conditions described in Algorithm 3.5 of [1]
+    set_high_to_new = (decrease_error > 0.0) | (
+        (new_value_step >= prev_value_step) & (iter_num > 0)
+    )
+    set_low_to_new = (new_slope_step >= 0.0) & (~set_high_to_new)
+
+    # By default we set high to new and correct if we should have set
+    # low to new. If none should have set, the search for the interval
+    # continues anyway.
+    low_, value_low_, slope_low_, high_, value_high_, slope_high_ = (
+        prev_stepsize,
+        prev_value_step,
+        prev_slope_step,
+        new_stepsize,
+        new_value_step,
+        new_slope_step,
+    )
+
+    default = [low_, value_low_, slope_low_, high_, value_high_, slope_high_]
+    candidate = [
+        new_stepsize,
+        new_value_step,
+        new_slope_step,
+        prev_stepsize,
+        prev_value_step,
+        prev_slope_step,
+    ]
+    [low, value_low, slope_low, high, value_high, slope_high] = _set_values(
+        set_low_to_new, candidate, default
+    )
+
+    # If high or low have been set or the point is good, the interval has been
+    # found. Otherwise we'll keep on augmenting the stepsize.
+    interval_found = set_high_to_new | set_low_to_new | (new_error <= self.tol)
+
+    # If new_error <= self.tol, the line search is done. In that case, we set
+    # directly the new parameters, gradient, value and aux to the ones found.
+    default = [0.0, params_init, value_init, grad_init, aux_init]
+    candidate = [
+        new_stepsize,
+        new_step,
+        new_value_step,
+        new_grad_step,
+        new_aux_step,
+    ]
+    best_stepsize, next_params, next_value, next_grad, next_aux = _set_values(
+        new_error <= self.tol, candidate, default
+    )
+
+    done = new_error <= self.tol
+
+    max_iter_reached = (iter_num + 1 >= self.maxiter) & (~done)
+    new_fail_code = jnp.where(
+        (fail_check2 == 0) & max_iter_reached, 3, fail_check2
+    )
+
+    new_state = state._replace(
+        iter_num=iter_num + 1,
+        params=next_params,
+        value=next_value,
+        grad=next_grad,
+        aux=next_aux,
+        #
+        error=new_error,
+        done=done,
+        fail_code=new_fail_code,
+        failed=jnp.asarray(new_fail_code > 0),
+        interval_found=interval_found,
+        #
+        prev_stepsize=new_stepsize,
+        prev_value_step=new_value_step,
+        prev_slope_step=new_slope_step,
+        #
+        low=low,
+        value_low=value_low,
+        slope_low=slope_low,
+        high=high,
+        value_high=value_high,
+        slope_high=slope_high,
+        cubic_ref=low,
+        value_cubic_ref=value_low,
+        #
+        safe_stepsize=new_safe_stepsize,
+        #
+        num_fun_eval=state.num_fun_eval + 1,
+        num_grad_eval=state.num_grad_eval + 1,
+    )
+    return base.LineSearchStep(stepsize=best_stepsize, state=new_state)
+
+  def _zoom_into_interval(self, stepsize, state, args, kwargs):
+    """Zoom procedure described in Algorithm 3.6 of [1]."""
+
+    # The stepsize is not used, only low, high, etc... are used to
+    # find a good point
+    dtype = stepsize.dtype
+    del stepsize
+
+    iter_num = state.iter_num
+
+    params_init = state.params
+    grad_init = state.grad
+    aux_init = state.aux
+
+    value_init = state.value_init
+    slope_init = state.slope_init
+    descent_direction = state.descent_direction
+
+    fail_code = state.fail_code
+
+    low = state.low
+    value_low = state.value_low
+    slope_low = state.slope_low
+    high = state.high
+    value_high = state.value_high
+    slope_high = state.slope_high
+    cubic_ref = state.cubic_ref
+    value_cubic_ref = state.value_cubic_ref
+
+    safe_stepsize = state.safe_stepsize
+
+    # Check if interval not too small otherwise fail
+    delta = jnp.abs(high - low)
+    left = jnp.minimum(high, low)
+    right = jnp.maximum(high, low)
+    cubic_chk = self.rel_tol_cubic * delta
+    quad_chk = self.rel_tol_quad * delta
+    threshold = jnp.where((jnp.finfo(delta).bits < 64), 1e-5, 1e-10)
+    too_small_int = delta <= threshold
+    fail_check1 = jnp.where((fail_code == 0) & too_small_int, 4, fail_code)
+
+    # Find new point by interpolation
+    middle_cubic = _cubicmin(
+        low, value_low, slope_low, high, value_high, cubic_ref, value_cubic_ref
+    )
+    middle_cubic_valid = (middle_cubic > left + cubic_chk) & (
+        middle_cubic < right - cubic_chk
+    )
+    use_cubic = middle_cubic_valid
+    middle_quad = _quadmin(low, value_low, slope_low, high, value_high)
+    middle_quad_valid = (middle_quad > left + quad_chk) & (
+        middle_quad < right - quad_chk
+    )
+    use_quad = (~use_cubic) & middle_quad_valid
+    middle_bisection = (low + high) / 2.0
     use_bisection = (~use_cubic) & (~use_quad)
 
-    a_j = jnp.where(use_cubic, a_j_cubic, state.a_rec)
-    a_j = jnp.where(use_quad, a_j_quad, a_j)
-    a_j = jnp.where(use_bisection, a_j_bisection, a_j)
+    middle = jnp.where(use_cubic, middle_cubic, cubic_ref)
+    middle = jnp.where(use_quad, middle_quad, middle)
+    middle = jnp.where(use_bisection, middle_bisection, middle).astype(dtype)
 
-    # TODO(jakevdp): should we use some sort of fixed-point approach here instead?
-    if has_aux:
-      (phi_j, dphi_j, g_j), aux_j = restricted_func_and_grad(a_j)
-    else:
-      phi_j, dphi_j, g_j = restricted_func_and_grad(a_j)
-      aux_j = jnp.nan
-    phi_j = phi_j.astype(state.phi_lo.dtype)
-    dphi_j = dphi_j.astype(state.dphi_lo.dtype)
-    #g_j = g_j.astype(state.g_star.dtype)
-    state = state._replace(nfev=state.nfev + 1,
-                           ngev=state.ngev + 1)
+    # Check if new point is good
+    value_middle, slope_middle, step, grad_step, aux_step = (
+        self._value_and_slope_on_line(
+            params_init, middle, descent_direction, args, kwargs
+        )
+    )
+    is_value_nan = jnp.isnan(value_middle) | jnp.isinf(value_middle)
+    fail_check2 = jnp.where((fail_check1 == 0) & is_value_nan, 5, fail_check1)
 
-    hi_to_j = wolfe_one(a_j, phi_j) | (phi_j >= state.phi_lo)
-    star_to_j = wolfe_two(dphi_j) & (~hi_to_j)
-    hi_to_lo = (dphi_j * (state.a_hi - state.a_lo) >= 0.) & (~hi_to_j) & (~star_to_j)
-    lo_to_j = (~hi_to_j) & (~star_to_j)
+    decrease_error_ = self._decrease_error(
+        middle, value_middle, slope_middle, value_init, slope_init
+    )
+    decrease_error = jnp.maximum(decrease_error_, 0.0)
+    curvature_error_ = self._curvature_error(slope_middle, slope_init)
+    curvature_error = jnp.maximum(curvature_error_, 0.0)
 
-    state = state._replace(
-        **_binary_replace(
-            hi_to_j,
-            state._asdict(),
-            dict(
-                a_hi=a_j,
-                phi_hi=phi_j,
-                dphi_hi=dphi_j,
-                aux_hi=aux_j,
-                a_rec=state.a_hi,
-                phi_rec=state.phi_hi,
-            ),
-        ),
+    new_error = jnp.maximum(decrease_error, curvature_error)
+
+    # If the new point satisfies at least the decrease error we keep it in case
+    # the curvature error cannot be satisfied. We take the largest possible one
+    safe_decrease = decrease_error <= self.tol
+    new_safe_stepsize_ = jnp.where(safe_decrease, middle, safe_stepsize)
+    new_safe_stepsize = jnp.maximum(new_safe_stepsize_, safe_stepsize)
+
+    # If both armijo and curvature conditions are satisfied, we are done.
+    done = new_error <= self.tol
+    default = [0.0, params_init, value_init, grad_init, aux_init]
+    candidate = [middle, step, value_middle, grad_step, aux_step]
+    best_stepsize, next_params, next_value, next_grad, next_aux = _set_values(
+        new_error <= self.tol, candidate, default
     )
 
-    # for termination
-    state = state._replace(
-        done=star_to_j | state.done,
-        **_binary_replace(
-            star_to_j,
-            state._asdict(),
-            dict(
-                a_star=a_j,
-                phi_star=phi_j,
-                dphi_star=dphi_j,
-                g_star=g_j,
-                aux_star=aux_j,
-            )
-        ),
+    # Otherwise, we update high and low values
+    set_high_to_middle = (decrease_error > 0.0) | (value_middle >= value_low)
+    secant_interval = slope_middle * (high - low)
+    set_high_to_low = (secant_interval >= 0.0) & (~set_high_to_middle)
+    set_low_to_middle = ~set_high_to_middle
+
+    # Set high to middle, or low, or keep as it is
+    default = [high, value_high, slope_high]
+    candidate = [middle, value_middle, slope_middle]
+    [new_high_, new_value_high_, new_slope_high_] = _set_values(
+        set_high_to_middle, candidate, default
     )
-    state = state._replace(
-        **_binary_replace(
-            hi_to_lo,
-            state._asdict(),
-            dict(
-                a_hi=state.a_lo,
-                phi_hi=state.phi_lo,
-                dphi_hi=state.dphi_lo,
-                aux_hi=state.aux_lo,
-                a_rec=state.a_hi,
-                phi_rec=state.phi_hi,
-            ),
-        ),
+    default = [new_high_, new_value_high_, new_slope_high_]
+    candidate = [low, value_low, slope_low]
+    [new_high, new_value_high, new_slope_high] = _set_values(
+        set_high_to_low, candidate, default
     )
-    state = state._replace(
-        **_binary_replace(
-            lo_to_j,
-            state._asdict(),
-            dict(
-                a_lo=a_j,
-                phi_lo=phi_j,
-                dphi_lo=dphi_j,
-                aux_lo=aux_j,
-                a_rec=state.a_lo,
-                phi_rec=state.phi_lo,
-            ),
-        ),
+
+    # Set low to middle or keep as it is
+    default = [low, value_low, slope_low]
+    candidate = [middle, value_middle, slope_middle]
+    [new_low, new_value_low, new_slope_low] = _set_values(
+        set_low_to_middle, candidate, default
     )
-    state = state._replace(j=state.j + 1)
-    # Choose higher cutoff for maxiter than Scipy as Jax takes longer to find
-    # the same value - possibly floating point issues?
-    state = state._replace(failed= state.failed | (state.j >= 30))
 
-    # For dtype consistency
-    state = state._replace(a_lo=state.a_lo.astype(init_state.a_lo.dtype),
-                           a_hi=state.a_hi.astype(init_state.a_hi.dtype),
-                           a_rec=state.a_rec.astype(init_state.a_rec.dtype))
-
-    return state
-
-  state = lax.while_loop(lambda state: (~state.done) & (~pass_through) & (~state.failed),
-                         body,
-                         init_state)
-
-  return state
-
-
-class _LineSearchState(NamedTuple):
-  done: Union[bool, jnp.ndarray]
-  failed: Union[bool, jnp.ndarray]
-  i: Union[int, jnp.ndarray]
-  a_i1: Union[float, jnp.ndarray]
-  phi_i1: Union[float, jnp.ndarray]
-  dphi_i1: Union[float, jnp.ndarray]
-  nfev: Union[int, jnp.ndarray]
-  ngev: Union[int, jnp.ndarray]
-  a_star: Union[float, jnp.ndarray]
-  phi_star: Union[float, jnp.ndarray]
-  dphi_star: Union[float, jnp.ndarray]
-  g_star: jnp.ndarray
-  aux_star: Union[float, jnp.ndarray]
-
-
-class _LineSearchResults(NamedTuple):
-  """Results of line search.
-  Parameters:
-    failed: True if the strong Wolfe criteria were satisfied
-    nit: integer number of iterations
-    nfev: integer number of functions evaluations
-    ngev: integer number of gradients evaluations
-    k: integer number of iterations
-    a_k: integer step size
-    f_k: final function value
-    g_k: final gradient value
-    status: integer end status
-  """
-  failed: Union[bool, jnp.ndarray]
-  nit: Union[int, jnp.ndarray]
-  nfev: Union[int, jnp.ndarray]
-  ngev: Union[int, jnp.ndarray]
-  k: Union[int, jnp.ndarray]
-  a_k: Union[int, jnp.ndarray]
-  f_k: jnp.ndarray
-  g_k: jnp.ndarray
-  status: Union[bool, jnp.ndarray]
-  aux: Union[float, jnp.ndarray]
-
-
-def zoom_linesearch(f, xk, pk, old_fval=None, old_old_fval=None, gfk=None,
-                    c1=1e-4, c2=0.9, maxiter=20, value_and_grad=False,
-                    has_aux=False, aux=None, args=[], kwargs={}):
-  """Inexact line search that satisfies strong Wolfe conditions.
-  Algorithm 3.5 from Wright and Nocedal, 'Numerical Optimization', 1999,
-  pages 59-61.
-
-  Args:
-    f: function of the form f(x) where x is a flat ndarray and returns a real
-      scalar. The function should be composed of operations with vjp defined.
-    x0: initial guess.
-    pk: direction to search in. Assumes the direction is a descent direction.
-    old_fval, gfk: initial value of value_and_gradient as position.
-    old_old_fval: unused argument, only for scipy API compliance.
-    maxiter: maximum number of iterations to search
-    c1, c2: Wolfe criteria constant, see ref.
-    value_and_grad: whether f returns just the value (False) or the value and
-      grad (True).
-    has_aux: if ``False``, ``f`` should return the function value only.
-      If ``True``, ``f`` should return a pair ``(value, aux)`` where ``aux``
-      is a pytree of auxiliary values.
-    aux: auxiliary pytree data example for ``f``.
-    args, kwargs: optional positional and keywords arguments to be passed to f.
-  Returns: LineSearchResults
-  """
-  #xk, pk = _promote_dtypes_inexact(xk, pk)
-  #xk = jnp.asarray(xk)
-  #pk = jnp.asarray(pk)
-
-  if value_and_grad:
-    f_value_and_grad = f
-  else:
-    f_value_and_grad = jax.value_and_grad(f, has_aux=has_aux)
-
-  def restricted_func_and_grad(t):
-    dtype = tree_single_dtype(xk)
-    if dtype is not None:
-      t = jnp.asarray(t, dtype=dtype)
-    xkp1 = tree_add_scalar_mul(xk, t, pk)
-    if has_aux:
-      (phi, aux), g = f_value_and_grad(xkp1, *args, **kwargs)
-    else:
-      phi, g = f_value_and_grad(xkp1, *args, **kwargs)
-    dphi = jnp.real(tree_vdot(g, pk))
-    if has_aux:
-      return (phi, dphi, g), aux
-    else:
-      return phi, dphi, g
-
-  if old_fval is None or gfk is None or (aux is None and has_aux):
-    if has_aux:
-      (phi_0, dphi_0, gfk), aux = restricted_func_and_grad(0)
-    else:
-      phi_0, dphi_0, gfk = restricted_func_and_grad(0)
-  else:
-    phi_0 = old_fval
-    dphi_0 = jnp.real(tree_vdot(gfk, pk))
-  if not has_aux:
-    aux = jnp.nan
-  if old_old_fval is not None:
-    candidate_start_value = 1.01 * 2 * (phi_0 - old_old_fval) / dphi_0
-    start_value = jnp.where(candidate_start_value > 1, 1.0, candidate_start_value)
-  else:
-    start_value = 1
-
-  def wolfe_one(a_i, phi_i):
-    # actually negation of W1
-    return phi_i > phi_0 + c1 * a_i * dphi_0
-
-  def wolfe_two(dphi_i):
-    return jnp.abs(dphi_i) <= -c2 * dphi_0
-
-  state = _LineSearchState(
-      done=False,
-      failed=False,
-      # algorithm begins at 1 as per Wright and Nocedal, however Scipy has a
-      # bug and starts at 0. See https://github.com/scipy/scipy/issues/12157
-      i=1,
-      a_i1=jnp.zeros([], dtype=phi_0.dtype),
-      phi_i1=phi_0,
-      dphi_i1=dphi_0,
-      nfev=1 if (old_fval is None or gfk is None) else 0,
-      ngev=1 if (old_fval is None or gfk is None) else 0,
-      a_star=0.0,
-      phi_star=phi_0,
-      dphi_star=dphi_0,
-      g_star=gfk,
-      aux_star=aux,
-  )
-
-  def body(state):
-    # no amax in this version, we just double as in scipy.
-    # unlike original algorithm we do our next choice at the start of this loop
-    a_i = jnp.where(state.i == 1, start_value, state.a_i1 * 2.)
-
-    if has_aux:
-      (phi_i, dphi_i, g_i), aux_i = restricted_func_and_grad(a_i)
-    else:
-      phi_i, dphi_i, g_i = restricted_func_and_grad(a_i)
-      aux_i = jnp.nan
-    state = state._replace(nfev=state.nfev + 1,
-                           ngev=state.ngev + 1)
-
-    star_to_zoom1 = wolfe_one(a_i, phi_i) | ((phi_i >= state.phi_i1) & (state.i > 1))
-    star_to_i = wolfe_two(dphi_i) & (~star_to_zoom1)
-    star_to_zoom2 = (dphi_i >= 0.) & (~star_to_zoom1) & (~star_to_i)
-
-    zoom1 = _zoom(restricted_func_and_grad,
-                  wolfe_one,
-                  wolfe_two,
-                  state.a_i1,
-                  state.phi_i1,
-                  state.dphi_i1,
-                  a_i,
-                  phi_i,
-                  dphi_i,
-                  gfk,
-                  ~star_to_zoom1,
-                  has_aux,
-                  aux_i)
-
-    state = state._replace(nfev=state.nfev + zoom1.nfev,
-                           ngev=state.ngev + zoom1.ngev)
-
-    zoom2 = _zoom(restricted_func_and_grad,
-                  wolfe_one,
-                  wolfe_two,
-                  a_i,
-                  phi_i,
-                  dphi_i,
-                  state.a_i1,
-                  state.phi_i1,
-                  state.dphi_i1,
-                  gfk,
-                  ~star_to_zoom2,
-                  has_aux,
-                  aux_i)
-
-    state = state._replace(nfev=state.nfev + zoom2.nfev,
-                           ngev=state.ngev + zoom2.ngev)
-
-    state = state._replace(
-        done=star_to_zoom1 | state.done,
-        failed=(star_to_zoom1 & zoom1.failed) | state.failed,
-        **_binary_replace(
-            star_to_zoom1,
-            state._asdict(),
-            zoom1._asdict(),
-            keys=['a_star', 'phi_star', 'dphi_star', 'g_star', 'aux_star'],
-        ),
+    # Update cubic reference point.
+    # If high changed then it can be used as the new ref point.
+    # Otherwise, low has been updated and not kept as high
+    # so it can be used as the new ref point.
+    [new_cubic_ref, new_value_cubic_ref] = _set_values(
+        set_high_to_middle | set_high_to_low,
+        [high, value_high],
+        [low, value_low],
     )
-    state = state._replace(
-        done=star_to_i | state.done,
-        **_binary_replace(
-            star_to_i,
-            state._asdict(),
-            dict(
-                a_star=a_i,
-                phi_star=phi_i,
-                dphi_star=dphi_i,
-                g_star=g_i,
-                aux_star=aux_i,
-            ),
-        ),
-    )
-    state = state._replace(
-        done=star_to_zoom2 | state.done,
-        failed=(star_to_zoom2 & zoom2.failed) | state.failed,
-        **_binary_replace(
-            star_to_zoom2,
-            state._asdict(),
-            zoom2._asdict(),
-            keys=['a_star', 'phi_star', 'dphi_star', 'g_star', 'aux_star'],
-        ),
-    )
-    state = state._replace(i=state.i + 1, a_i1=a_i, phi_i1=phi_i, dphi_i1=dphi_i)
-    return state
 
-  state = lax.while_loop(lambda state: (~state.done) & (state.i <= maxiter) & (~state.failed),
-                         body,
-                         state)
+    max_iter_reached = (iter_num + 1 >= self.maxiter) & (~done)
+    new_fail_code = jnp.where(
+        (fail_check2 == 0) & max_iter_reached, 3, fail_check2
+    )
 
-  status = jnp.where(
-      state.failed,
-      jnp.array(1),  # zoom failed
-          jnp.where(
-              state.i > maxiter,
-              jnp.array(3),  # maxiter reached
-              jnp.array(0),  # passed (should be)
-          ),
-  )
-  # Step sizes which are too small causes the optimizer to get stuck with a
-  # direction of zero in <64 bit mode - avoid with a floor on minimum step size.
-  alpha_k = state.a_star
-  alpha_k = jnp.where((jnp.finfo(alpha_k).bits != 64)
-                    & (jnp.abs(alpha_k) < 1e-8),
-                      jnp.sign(alpha_k) * 1e-8,
-                      alpha_k)
-  param_dtype = tree_single_dtype(xk)
-  results = _LineSearchResults(
-      failed=state.failed | (~state.done),
-      nit=state.i - 1,  # because iterations started at 1
-      nfev=state.nfev,
-      ngev=state.ngev,
-      k=state.i,
-      a_k=alpha_k.astype(param_dtype),
-      f_k=state.phi_star,
-      aux=state.aux_star,
-      g_k=state.g_star,
-      status=status,
-  )
-  return results
+    new_state = state._replace(
+        iter_num=iter_num + 1,
+        params=next_params,
+        value=next_value,
+        grad=next_grad,
+        aux=next_aux,
+        #
+        error=new_error,
+        done=done,
+        fail_code=new_fail_code,
+        failed=jnp.asarray(new_fail_code > 0),
+        #
+        low=new_low,
+        value_low=new_value_low,
+        slope_low=new_slope_low,
+        high=new_high,
+        value_high=new_value_high,
+        slope_high=new_slope_high,
+        cubic_ref=new_cubic_ref,
+        value_cubic_ref=new_value_cubic_ref,
+        #
+        safe_stepsize=new_safe_stepsize,
+        #
+        num_fun_eval=state.num_fun_eval + 1,
+        num_grad_eval=state.num_grad_eval + 1,
+    )
+    return base.LineSearchStep(stepsize=best_stepsize, state=new_state)
+
+  def init_state(
+      self,
+      init_stepsize: float,
+      params: Any,
+      value: Optional[float] = None,
+      grad: Optional[Any] = None,
+      descent_direction: Optional[Any] = None,
+      *args,
+      **kwargs,
+  ):
+    """Initialize the line search state by computing all relevant quantities and store it in the initial state.
+
+    Args:
+      init_stepsize: initial step size value (used in update, not in
+        init_state).
+      params: current parameters.
+      value: current function value (recomputed if None).
+      grad: current gradient (recomputed if None).
+      descent_direction: descent direction (negative gradient if None).
+      *args: additional positional arguments to be passed to ``fun``.
+      **kwargs: additional keyword arguments to be passed to ``fun``.
+
+    Returns:
+      state
+    """
+    # FIXME: Signature issue in base.IterativeLineSearch: Keyword argument
+    # before variable positional arguments.
+    dtype = tree_single_dtype(params)
+    num_fun_eval = jnp.asarray(0)
+    num_grad_eval = jnp.asarray(0)
+    del init_stepsize
+    aux = None
+    if value is None or grad is None:
+      (value, aux), grad = self._value_and_grad_fun_with_aux(
+          params, *args, **kwargs
+      )
+      num_fun_eval = num_fun_eval + 1
+      num_grad_eval = num_grad_eval + 1
+
+    # TODO(vroulet): ideally, we shall also provide aux as arguments to avoid
+    # recomputing the function. It's especially problematic if the function
+    # provided has an artificial aux = None coming from its instanciation via
+    # base._make_funs_with_aux. This requires changing the signature of
+    # base.IterativeLineSearch.
+    if aux is None and self.has_aux:
+      _, aux = self._fun_with_aux(params, *args, **kwargs)
+
+    if descent_direction is None:
+      descent_direction = tree_scalar_mul(-1.0, grad)
+
+    slope = tree_vdot(grad, descent_direction)
+
+    fail_code = jnp.where(slope > 0, 1, 0)
+
+    return ZoomLineSearchState(
+        iter_num=jnp.asarray(0),
+        params=params,
+        value=value,
+        grad=grad,
+        aux=aux,
+        #
+        value_init=value,
+        slope_init=slope,
+        descent_direction=descent_direction,
+        #
+        error=jnp.asarray(jnp.inf),
+        done=jnp.asarray(False),
+        fail_code=fail_code,
+        failed=jnp.asarray(fail_code > 0),
+        interval_found=jnp.asarray(False),
+        #
+        prev_stepsize=jnp.asarray(0.0).astype(dtype),
+        prev_value_step=value,
+        prev_slope_step=slope,
+        #
+        low=jnp.asarray(0.0).astype(dtype),
+        value_low=value,
+        slope_low=slope,
+        high=jnp.asarray(0.0).astype(dtype),
+        value_high=value,
+        slope_high=slope,
+        cubic_ref=jnp.asarray(0.0).astype(dtype),
+        value_cubic_ref=value,
+        #
+        safe_stepsize=jnp.asarray(0.0).astype(dtype),
+        num_fun_eval=num_fun_eval,
+        num_grad_eval=num_grad_eval,
+    )
+
+  def update(
+      self,
+      stepsize: float,
+      state: NamedTuple,
+      params: Any,
+      value: Optional[float] = None,
+      grad: Optional[Any] = None,
+      descent_direction: Optional[Any] = None,
+      *args,
+      **kwargs,
+  ) -> base.LineSearchStep:
+    """Combines Algorithms 3.5 and 3.6 of [1].
+
+    Final state contains next_params, next_value, next_grad, next_aux if the
+    linesearch succeeded.
+
+    Args:
+      stepsize: current estimate of the step size.
+      state: named tuple containing the line search state.
+      params: current parameters (not used, recorded during init in state).
+      value: current function value (not used, recorded during init in state).
+      grad: current gradient (not used, recorded during init in state).
+      descent_direction: descent direction (not used, recorded during init in
+        state).
+      *args: additional positional arguments to be passed to ``fun``.
+      **kwargs: additional keyword arguments to be passed to ``fun``.
+
+    Returns:
+      (stepsize, state)
+    """
+    # FIXME: Signature issue in base.IterativeLineSearch: Keyword argument
+    # before variable positional arguments.
+    # Params, value, grad, descent direction recorded in state at initialization
+    dtype = tree_single_dtype(params)
+    init_stepsize = jnp.asarray(stepsize).astype(dtype)
+    del params
+    del value
+    del grad
+    del descent_direction
+
+    best_stepsize, new_state_ = lax.cond(
+        state.interval_found,
+        self._zoom_into_interval,
+        self._search_interval,
+        init_stepsize,
+        state,
+        args,
+        kwargs,
+    )
+
+    best_stepsize, new_state = lax.cond(
+        (new_state_.failed) & (new_state_.iter_num == self.maxiter),
+        self._make_safe_step,
+        self._keep_step,
+        best_stepsize,
+        new_state_,
+        args,
+        kwargs,
+    )
+
+    if self.verbose:
+      _check_failure_status(new_state.fail_code)
+
+    return base.LineSearchStep(stepsize=best_stepsize, state=new_state)
+
+  def __post_init__(self):
+    self._fun_with_aux, _, self._value_and_grad_fun_with_aux = (
+        base._make_funs_with_aux(  # pylint: disable=protected-access
+            self.fun, value_and_grad=self.value_and_grad, has_aux=self.has_aux
+        )
+    )

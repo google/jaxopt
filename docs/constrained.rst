@@ -146,6 +146,7 @@ descent, we can use our SciPy wrapper.
   :toctree: _autosummary
 
     jaxopt.ScipyBoundedMinimize
+    jaxopt.LBFGSB
 
 This example shows how to apply non-negativity constraints, which can
 be achieved by setting box constraints :math:`[0, \infty)`::

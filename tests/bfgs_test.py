@@ -75,7 +75,7 @@ class BfgsTest(test_util.JaxoptTestCase):
 
     self.assertArraysAllClose(x1, x2, atol=1e-5)
 
-  @parameterized.product(linesearch=["backtracking", "zoom"])
+  @parameterized.product(linesearch=["backtracking", "zoom", "hager-zhang"])
   def test_binary_logreg(self, linesearch):
     X, y = datasets.make_classification(n_samples=10, n_features=5,
                                         n_classes=2, n_informative=3,
@@ -96,7 +96,7 @@ class BfgsTest(test_util.JaxoptTestCase):
                                  multiclass=False)
     self.assertArraysAllClose(w_fit, w_skl, atol=5e-2)
 
-  @parameterized.product(linesearch=["backtracking", "zoom"])
+  @parameterized.product(linesearch=["backtracking", "zoom", "hager-zhang"])
   def test_multiclass_logreg(self, linesearch):
     X, y = datasets.make_classification(n_samples=10, n_features=5,
                                         n_classes=3, n_informative=3,

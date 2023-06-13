@@ -22,8 +22,9 @@ Constrained
 .. autosummary::
   :toctree: _autosummary
 
-    jaxopt.ProjectedGradient
+    jaxopt.LBFGSB
     jaxopt.MirrorDescent
+    jaxopt.ProjectedGradient
     jaxopt.ScipyBoundedMinimize
 
 Quadratic programming
@@ -135,7 +136,7 @@ Line search
   :toctree: _autosummary
 
     jaxopt.BacktrackingLineSearch
-
+    jaxopt.HagerZhangLineSearch
 
 
 Perturbed optimizers
@@ -146,6 +147,7 @@ Perturbed optimizers
 
     jaxopt.perturbations.make_perturbed_argmax
     jaxopt.perturbations.make_perturbed_max
+    jaxopt.perturbations.make_perturbed_fun
     jaxopt.perturbations.Gumbel
     jaxopt.perturbations.Normal
 

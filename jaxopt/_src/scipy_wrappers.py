@@ -22,8 +22,8 @@
 """
 
 import abc
+import dataclasses
 from dataclasses import dataclass
-
 from typing import Any
 from typing import Callable
 from typing import Dict
@@ -34,16 +34,56 @@ from typing import Tuple
 from typing import Union
 
 import jax
+from jax.config import config
 import jax.numpy as jnp
 import jax.tree_util as tree_util
-
+from jax.tree_util import register_pytree_node_class
 from jaxopt._src import base
 from jaxopt._src import implicit_diff as idf
 from jaxopt._src import projection
 from jaxopt._src.tree_util import tree_sub
-
 import numpy as onp
 import scipy as osp
+from scipy.optimize import LbfgsInvHessProduct
+
+
+@register_pytree_node_class
+class LbfgsInvHessProductPyTree(LbfgsInvHessProduct):
+  """
+  Registers the LbfgsInvHessProduct object as a PyTree.
+  This object is typically returned by the L-BFSG-B optimizer to efficiently 
+  store the inverse of the Hessian matrix evaluated at the best-fit parameters. 
+  """
+
+  def __init__(self, sk, yk):
+    """
+    Construct the operator.
+    This is the same constructor as the original LbfgsInvHessProduct class,
+    except that numpy has been replaced by jax.numpy and no call to the 
+    numpy.ndarray constuctor is performed.
+    """
+    if sk.shape != yk.shape or sk.ndim != 2:
+      raise ValueError('sk and yk must have matching shape, (n_corrs, n)')
+    n_corrs, n = sk.shape
+    self.dtype = jnp.float64 if config.jax_enable_x64 is True else jnp.float32
+    self.shape = (n, n)
+    self.sk = sk
+    self.yk = yk
+    self.n_corrs = n_corrs
+    self.rho = 1 / jnp.einsum('ij,ij->i', sk, yk)
+
+
+  def __repr__(self):
+      return "LbfgsInvHessProduct(sk={}, yk={})".format(self.sk, self.yk)
+
+  def tree_flatten(self):
+      children = (self.sk, self.yk)
+      aux_data = None
+      return (children, aux_data)
+
+  @classmethod
+  def tree_unflatten(cls, aux_data, children):
+      return cls(*children)
 
 
 class ScipyMinimizeInfo(NamedTuple):
@@ -52,6 +92,7 @@ class ScipyMinimizeInfo(NamedTuple):
   success: bool
   status: int
   iter_num: int
+  hess_inv: Optional[Union[jnp.ndarray, LbfgsInvHessProductPyTree]]
 
 
 class ScipyRootInfo(NamedTuple):
@@ -241,22 +282,10 @@ class ScipyMinimize(ScipyWrapper):
 
   Attributes:
     fun: a smooth function of the form `fun(x, *args, **kwargs)`.
-    method: the `method` argument for `scipy.optimize.minimize`.
-      Should be one of
-        * 'Nelder-Mead'
-        * 'Powell'
-        * 'CG'
-        * 'BFGS'
-        * 'Newton-CG'
-        * 'L-BFGS-B'
-        * 'TNC'
-        * 'COBYLA'
-        * 'SLSQP'
-        * 'trust-constr'
-        * 'dogleg'
-        * 'trust-ncg'
-        * 'trust-exact'
-        * 'trust-krylov'
+    method: the `method` argument for `scipy.optimize.minimize`. Should be one
+      of * 'Nelder-Mead' * 'Powell' * 'CG' * 'BFGS' * 'Newton-CG' * 'L-BFGS-B' *
+      'TNC' * 'COBYLA' * 'SLSQP' * 'trust-constr' * 'dogleg' * 'trust-ncg' *
+      'trust-exact' * 'trust-krylov'
     tol: the `tol` argument for `scipy.optimize.minimize`.
     options: the `options` argument for `scipy.optimize.minimize`.
     callback: called after each iteration, as callback(xk), where xk is the
@@ -269,12 +298,14 @@ class ScipyMinimize(ScipyWrapper):
     has_aux: whether function `fun` outputs one (False) or more values (True).
       When True it will be assumed by default that `fun(...)[0]` is the
       objective.
+    value_and_grad: See base.make_funs_with_aux for more detail.
   """
   fun: Callable = None
   callback: Callable = None
   tol: Optional[float] = None
   options: Optional[Dict[str, Any]] = None
   maxiter: int = 500
+  value_and_grad: Union[bool, Callable] = False
 
   def optimality_fun(self, sol, *args, **kwargs):
     """Optimality function mapping compatible with `@custom_root`."""
@@ -312,10 +343,21 @@ class ScipyMinimize(ScipyWrapper):
                                 options=self.options)
 
     params = tree_util.tree_map(jnp.asarray, onp_to_jnp(res.x))
+
+    if hasattr(res, 'hess_inv'):
+      if isinstance(res.hess_inv, osp.optimize.LbfgsInvHessProduct):
+        hess_inv = LbfgsInvHessProductPyTree(res.hess_inv.sk,
+                                             res.hess_inv.yk)
+      elif isinstance(res.hess_inv, onp.ndarray):
+        hess_inv = jnp.asarray(res.hess_inv)
+    else:
+      hess_inv = None
+
     info = ScipyMinimizeInfo(fun_val=jnp.asarray(res.fun),
                              success=res.success,
                              status=res.status,
-                             iter_num=res.nit)
+                             iter_num=res.nit,
+                             hess_inv=hess_inv)
     return base.OptStep(params, info)
 
   def run(self,
@@ -335,14 +377,13 @@ class ScipyMinimize(ScipyWrapper):
 
   def __post_init__(self):
     super().__post_init__()
-
-    if self.has_aux:
-      self.fun = lambda x, *args, **kwargs: self.fun(x, *args, **kwargs)[0]
+    self.fun, self._grad_fun, self._value_and_grad_fun = (
+        base._make_funs_without_aux(self.fun, self.value_and_grad, self.has_aux)
+    )
 
     # Pre-compile useful functions.
-    self._grad_fun = jax.grad(self.fun)
-    self._value_and_grad_fun = jax.value_and_grad(self.fun)
     if self.jit:
+      self.fun = jax.jit(self.fun)
       self._grad_fun = jax.jit(self._grad_fun)
       self._value_and_grad_fun = jax.jit(self._value_and_grad_fun)
 

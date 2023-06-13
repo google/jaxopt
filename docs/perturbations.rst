@@ -13,7 +13,7 @@ Consider a maximum function of the form:
 
     F(\theta) = \max_{y \in \mathcal{C}} \langle y, \theta\rangle\,,
 
-where :math:`\mathcal{C}` is a convex set. 
+where :math:`\mathcal{C}` is a convex set.
 
 
 
@@ -32,7 +32,7 @@ The function :meth:`jaxopt.perturbations.make_perturbed_max` transforms the func
 
     F_{\varepsilon}(\theta) = \mathbb{E}\left[ F(\theta + \varepsilon Z) \right]\,,
 
-where :math:`Z` is a random variable. The distribution of this random variable can be specified through the keyword argument ``noise``. The default is a Gumbel distribution, which is a good choice for discrete variables. For continuous variables, a normal distribution is more appropriate. 
+where :math:`Z` is a random variable. The distribution of this random variable can be specified through the keyword argument ``noise``. The default is a Gumbel distribution, which is a good choice for discrete variables. For continuous variables, a normal distribution is more appropriate.
 
 
 Argmax perturbations
@@ -44,7 +44,7 @@ Consider an arg-max function of the form:
 
     y^*(\theta) = \mathop{\mathrm{arg\,max}}_{y \in \mathcal{C}} \langle y, \theta\rangle\,,
 
-where :math:`\mathcal{C}` is a convex set. 
+where :math:`\mathcal{C}` is a convex set.
 
 
 The function :meth:`jaxopt.perturbations.make_perturbed_argmax` transforms the function :math:`y^\star` into a the following differentiable function  using random perturbations:
@@ -54,7 +54,7 @@ The function :meth:`jaxopt.perturbations.make_perturbed_argmax` transforms the f
 
     y_{\varepsilon}^*(\theta) = \mathbb{E}\left[ \mathop{\mathrm{arg\,max}}_{y \in \mathcal{C}} \langle y, \theta + \varepsilon Z \rangle \right]\,,
 
-where :math:`Z` is a random variable. The distribution of this random variable can be specified through the keyword argument ``noise``. The default is a Gumbel distribution, which is a good choice for discrete variables. For continuous variables, a normal distribution is more appropriate. 
+where :math:`Z` is a random variable. The distribution of this random variable can be specified through the keyword argument ``noise``. The default is a Gumbel distribution, which is a good choice for discrete variables. For continuous variables, a normal distribution is more appropriate.
 
 
 .. autosummary::
@@ -63,10 +63,41 @@ where :math:`Z` is a random variable. The distribution of this random variable c
     jaxopt.perturbations.make_perturbed_argmax
 
 
+Scalar perturbations
+--------------------
+
+Consider any function, :math:`f` that is not necessarily differentiable, e.g. piecewise-constant of the form:
+
+.. math::
+
+    f(\theta) = g(y^*(\theta))\,,
+
+where :math:`\mathop{\mathrm{arg\,max}}_{y \in \mathcal{C}} \langle y, \theta\rangle`` and :math:`\mathcal{C}` is a convex set.
+
+
+The function :meth:`jaxopt.perturbations.make_perturbed_fun` transforms the function :math:`f` into a the following differentiable function  using random perturbations:
+
+.. math::
+
+    f_{\varepsilon}(\theta) = \mathbb{E}\left[ f(\theta + \varepsilon Z) \right]\,,
+
+where :math:`Z` is a random variable. The distribution of this random variable can be specified through the keyword argument ``noise``. The default is a Gumbel distribution, which is a good choice for discrete variables. For continuous variables, a normal distribution is more appropriate. This can be particulary useful in the example given above, when :math:`f` is only defined on the discrete set, not its convex hull, i.e.
+
+.. math::
+
+    f_{\varepsilon}(\theta) = \mathbb{E}\left[ g(\mathop{\mathrm{arg\,max}}_{y \in \mathcal{C}} \langle y, \theta + \varepsilon Z \rangle) \right]\,,
+
+
+.. autosummary::
+  :toctree: _autosummary
+
+    jaxopt.perturbations.make_perturbed_fun
+
+
 Noise distributions
 -------------------
 
-The functions :meth:`jaxopt.perturbations.make_perturbed_max` and :meth:`jaxopt.perturbations.make_perturbed_argmax` take a keyword argument ``noise`` that specifies the distribution of random perturbations. Pre-defined distributions for this argument are the following:
+The functions :meth:`jaxopt.perturbations.make_perturbed_max`, :meth:`jaxopt.perturbations.make_perturbed_argmax` and :meth:`jaxopt.perturbations.make_perturbed_fun` take a keyword argument ``noise`` that specifies the distribution of random perturbations. Pre-defined distributions for this argument are the following:
 
 .. autosummary::
   :toctree: _autosummary

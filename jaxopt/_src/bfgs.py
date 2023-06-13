@@ -12,47 +12,48 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""BFGS"""
+"""BFGS."""
 
-from functools import partial
-
+import dataclasses
+import functools
 from typing import Any
 from typing import Callable
 from typing import NamedTuple
 from typing import Optional
 from typing import Union
 
-from dataclasses import dataclass
-
 import jax
 import jax.numpy as jnp
-
 from jaxopt._src import base
-from jaxopt._src.backtracking_linesearch import BacktrackingLineSearch
-from jaxopt._src.zoom_linesearch import zoom_linesearch
+from jaxopt._src.linesearch_util import _reset_stepsize
+from jaxopt._src.linesearch_util import _setup_linesearch
+from jaxopt._src.scipy_wrappers import make_onp_to_jnp
+from jaxopt._src.scipy_wrappers import pytree_topology_from_example
+from jaxopt._src.tree_util import tree_single_dtype
 from jaxopt.tree_util import tree_add_scalar_mul
 from jaxopt.tree_util import tree_l2_norm
 from jaxopt.tree_util import tree_sub
-from jaxopt._src.tree_util import tree_single_dtype
-from jaxopt._src.scipy_wrappers import make_onp_to_jnp
-from jaxopt._src.scipy_wrappers import pytree_topology_from_example
+# pylint: disable=g-bare-generic
+# pylint: disable=invalid-name
 
-
-_dot = partial(jnp.dot, precision=jax.lax.Precision.HIGHEST)
-_einsum = partial(jnp.einsum, precision=jax.lax.Precision.HIGHEST)
+_dot = functools.partial(jnp.dot, precision=jax.lax.Precision.HIGHEST)
+_einsum = functools.partial(jnp.einsum, precision=jax.lax.Precision.HIGHEST)
 
 
 # Note that BFGS is not meant to be used with high-dimensional problems.
 # We support pytrees via flattening.
 def pytree_to_flat_array(pytree, dtype):
   """Utility to flatten a pytree."""
-  flattened = [jnp.asarray(leaf, dtype).reshape(-1)
-               for leaf in jax.tree_util.tree_leaves(pytree)]
+  flattened = [
+      jnp.asarray(leaf, dtype).reshape(-1)
+      for leaf in jax.tree_util.tree_leaves(pytree)
+  ]
   return jnp.concatenate(flattened)
 
 
 class BfgsState(NamedTuple):
   """Named tuple containing state information."""
+
   iter_num: int
   value: float
   grad: Any
@@ -62,7 +63,7 @@ class BfgsState(NamedTuple):
   aux: Optional[Any] = None
 
 
-@dataclass(eq=False)
+@dataclasses.dataclass(eq=False)
 class BFGS(base.IterativeSolver):
   """BFGS solver.
 
@@ -71,27 +72,23 @@ class BFGS(base.IterativeSolver):
 
   Attributes:
     fun: a smooth function of the form ``fun(x, *args, **kwargs)``.
-    value_and_grad: whether ``fun`` just returns the value (False) or both
-      the value and gradient (True).
-    has_aux: whether ``fun`` outputs auxiliary data or not.
-      If ``has_aux`` is False, ``fun`` is expected to be
-        scalar-valued.
-      If ``has_aux`` is True, then we have one of the following
-        two cases.
-      If ``value_and_grad`` is False, the output should be
-      ``value, aux = fun(...)``.
-      If ``value_and_grad == True``, the output should be
-      ``(value, aux), grad = fun(...)``.
-      At each iteration of the algorithm, the auxiliary outputs are stored
-        in ``state.aux``.
-
+    value_and_grad: whether ``fun`` just returns the value (False) or both the
+      value and gradient (True).
+    has_aux: whether ``fun`` outputs auxiliary data or not. If ``has_aux`` is
+      False, ``fun`` is expected to be scalar-valued. If ``has_aux`` is True,
+      then we have one of the following two cases. If ``value_and_grad`` is
+      False, the output should be ``value, aux = fun(...)``. If ``value_and_grad
+      == True``, the output should be ``(value, aux), grad = fun(...)``. At each
+      iteration of the algorithm, the auxiliary outputs are stored in
+      ``state.aux``.
     maxiter: maximum number of proximal gradient descent iterations.
     tol: tolerance of the stopping criterion.
-
-    stepsize: a stepsize to use (if <= 0, use backtracking line search),
-      or a callable specifying the **positive** stepsize to use at each iteration.
+    stepsize: a stepsize to use (if <= 0, use backtracking line search), or a
+      callable specifying the **positive** stepsize to use at each iteration.
     linesearch: the type of line search to use: "backtracking" for backtracking
       line search or "zoom" for zoom line search.
+    condition: condition used to select the stepsize when using backtracking
+      linesearch
     maxls: maximum number of iterations to use in the line search.
     decrease_factor: factor by which to decrease the stepsize during line search
       (default: 0.8).
@@ -99,14 +96,11 @@ class BFGS(base.IterativeSolver):
       (default: 1.5).
     max_stepsize: upper bound on stepsize.
     min_stepsize: lower bound on stepsize.
-
     implicit_diff: whether to enable implicit diff or autodiff of unrolled
       iterations.
     implicit_diff_solve: the linear system solver to use.
-
     jit: whether to JIT-compile the optimization loop (default: "auto").
     unroll: whether to unroll the optimization loop (default: "auto").
-
     verbose: whether to print error on every iteration or not.
       Warning: verbose=True will automatically disable jit.
 
@@ -141,37 +135,37 @@ class BFGS(base.IterativeSolver):
 
   verbose: bool = False
 
-  def init_state(self,
-                 init_params: Any,
-                 *args,
-                 **kwargs) -> BfgsState:
+  def init_state(self, init_params: Any, *args, **kwargs) -> BfgsState:
     """Initialize the solver state.
 
     Args:
       init_params: pytree containing the initial parameters.
       *args: additional positional arguments to be passed to ``fun``.
       **kwargs: additional keyword arguments to be passed to ``fun``.
+
     Returns:
       state
     """
-    (value, aux), grad = self._value_and_grad_with_aux(init_params, *args, **kwargs)
+    (value, aux), grad = self._value_and_grad_with_aux(
+        init_params, *args, **kwargs
+    )
 
     dtype = tree_single_dtype(init_params)
     flat_init_params = pytree_to_flat_array(init_params, dtype)
 
-    return BfgsState(iter_num=jnp.asarray(0),
-                     value=value,
-                     grad=grad,
-                     stepsize=jnp.asarray(self.max_stepsize, dtype=dtype),
-                     error=jnp.asarray(jnp.inf),
-                     H=jnp.eye(len(flat_init_params), dtype=dtype),
-                     aux=aux)
+    return BfgsState(
+        iter_num=jnp.asarray(0),
+        value=value,
+        grad=grad,
+        stepsize=jnp.asarray(self.max_stepsize, dtype=dtype),
+        error=jnp.asarray(jnp.inf),
+        H=jnp.eye(len(flat_init_params), dtype=dtype),
+        aux=aux,
+    )
 
-  def update(self,
-             params: Any,
-             state: BfgsState,
-             *args,
-             **kwargs) -> base.OptStep:
+  def update(
+      self, params: Any, state: BfgsState, *args, **kwargs
+  ) -> base.OptStep:
     """Performs one iteration of BFGS.
 
     Args:
@@ -179,6 +173,7 @@ class BFGS(base.IterativeSolver):
       state: named tuple containing the solver state.
       *args: additional positional arguments to be passed to ``fun``.
       **kwargs: additional keyword arguments to be passed to ``fun``.
+
     Returns:
       (params, state)
     """
@@ -190,72 +185,28 @@ class BFGS(base.IterativeSolver):
 
     descent_direction = flat_array_to_pytree(-_dot(state.H, flat_grad))
 
-    if not isinstance(self.stepsize, Callable) and self.stepsize <= 0:
-      # with line search
-
-      if self.linesearch == "backtracking":
-        ls = BacktrackingLineSearch(fun=self._value_and_grad_with_aux,
-                                    value_and_grad=True,
-                                    maxiter=self.maxls,
-                                    decrease_factor=self.decrease_factor,
-                                    max_stepsize=self.max_stepsize,
-                                    condition=self.condition,
-                                    jit=self.jit,
-                                    unroll=self.unroll,
-                                    has_aux=True)
-        init_stepsize = jnp.where(state.stepsize <= self.min_stepsize,
-                                  # If stepsize became too small, we restart it.
-                                  self.max_stepsize,
-                                  # Else, we increase a bit the previous one.
-                                  state.stepsize * self.increase_factor)
-        new_stepsize, ls_state = ls.run(init_stepsize,
-                                        params, value, grad,
-                                        descent_direction,
-                                        *args, **kwargs)
-        new_value = ls_state.value
-        new_aux = ls_state.aux
-        new_params = ls_state.params
-        new_grad = ls_state.grad
-
-      elif self.linesearch == "zoom":
-        ls_state = zoom_linesearch(f=self._value_and_grad_with_aux,
-                                   xk=params, pk=descent_direction,
-                                   old_fval=value, gfk=grad, maxiter=self.maxls,
-                                   value_and_grad=True, has_aux=True, aux=state.aux,
-                                   args=args, kwargs=kwargs)
-        new_value = ls_state.f_k
-        new_aux = ls_state.aux
-        new_stepsize = ls_state.a_k
-        new_grad = ls_state.g_k
-        # FIXME: zoom_linesearch currently doesn't return new_params
-        # so we have to recompute it.
-        t = new_stepsize.astype(tree_single_dtype(params))
-        new_params = tree_add_scalar_mul(params, t, descent_direction)
-        # FIXME: (zaccharieramzi) sometimes the linesearch fails
-        # and therefore its value g_k does not correspond
-        # to the gradient at the new parameters.
-        # with the following conditional loop we have a hot fix that just
-        # recomputes the value, gradient and auxiliary value
-        # at the new parameters. It would be better to understand
-        # what the g_k passed by zoom_linesearch is in this case
-        # and why it is wrong.
-        (new_value, new_aux), new_grad = jax.lax.cond(
-          ls_state.failed,
-          lambda: self._value_and_grad_with_aux(new_params, *args, **kwargs),
-          lambda: ((new_value, new_aux), new_grad),
-        )
-      else:
-        raise ValueError("Invalid name in 'linesearch' option.")
-
+    use_linesearch = (
+        not isinstance(self.stepsize, Callable) and self.stepsize <= 0
+    )
+    if use_linesearch:
+      init_stepsize = self._reset_stepsize(state.stepsize)
+      new_stepsize, ls_state = self.run_ls(
+          init_stepsize, params, value, grad, descent_direction, *args, **kwargs
+      )
+      new_params = ls_state.params
+      new_value = ls_state.value
+      new_grad = ls_state.grad
+      new_aux = ls_state.aux
     else:
-      # without line search
       if isinstance(self.stepsize, Callable):
         new_stepsize = self.stepsize(state.iter_num)
       else:
         new_stepsize = self.stepsize
 
       new_params = tree_add_scalar_mul(params, new_stepsize, descent_direction)
-      (new_value, new_aux), new_grad = self._value_and_grad_with_aux(new_params, *args, **kwargs)
+      (new_value, new_aux), new_grad = self._value_and_grad_with_aux(
+          new_params, *args, **kwargs
+      )
 
     s = tree_sub(new_params, params)
     y = tree_sub(new_grad, grad)
@@ -266,16 +217,18 @@ class BFGS(base.IterativeSolver):
     sy = jnp.outer(flat_s, flat_y)
     ss = jnp.outer(flat_s, flat_s)
     w = jnp.eye(len(flat_grad), dtype=rho.dtype) - rho * sy
-    new_H = _einsum('ij,jk,lk', w, state.H, w) + rho * ss
+    new_H = _einsum("ij,jk,lk", w, state.H, w) + rho * ss
     new_H = jnp.where(jnp.isfinite(rho), new_H, state.H)
 
-    new_state = BfgsState(iter_num=state.iter_num + 1,
-                          value=new_value,
-                          grad=new_grad,
-                          stepsize=jnp.asarray(new_stepsize),
-                          error=tree_l2_norm(new_grad),
-                          H=new_H,
-                          aux=new_aux)
+    new_state = BfgsState(
+        iter_num=state.iter_num + 1,
+        value=new_value,
+        grad=new_grad,
+        stepsize=jnp.asarray(new_stepsize),
+        error=tree_l2_norm(new_grad),
+        H=new_H,
+        aux=new_aux,
+    )
 
     return base.OptStep(params=new_params, state=new_state)
 
@@ -284,13 +237,40 @@ class BFGS(base.IterativeSolver):
     return self._value_and_grad_fun(params, *args, **kwargs)[1]
 
   def _value_and_grad_fun(self, params, *args, **kwargs):
-    (value, aux), grad = self._value_and_grad_with_aux(params, *args, **kwargs)
+    (value, _), grad = self._value_and_grad_with_aux(params, *args, **kwargs)
     return value, grad
 
   def __post_init__(self):
-    _, _, self._value_and_grad_with_aux = \
-      base._make_funs_with_aux(fun=self.fun,
-                               value_and_grad=self.value_and_grad,
-                               has_aux=self.has_aux)
+    _, _, self._value_and_grad_with_aux = base._make_funs_with_aux(  # pylint: disable=protected-access
+        fun=self.fun, value_and_grad=self.value_and_grad, has_aux=self.has_aux
+    )
 
     self.reference_signature = self.fun
+    jit, unroll = self._get_loop_options()
+    linesearch_solver = _setup_linesearch(
+        linesearch=self.linesearch,
+        fun=self._value_and_grad_with_aux,
+        value_and_grad=True,
+        has_aux=True,
+        maxlsiter=self.maxls,
+        max_stepsize=self.max_stepsize,
+        jit=jit,
+        unroll=unroll,
+        verbose=self.verbose,
+        condition=self.condition,
+        decrease_factor=self.decrease_factor,
+        increase_factor=self.increase_factor,
+    )
+
+    self._reset_stepsize = functools.partial(
+        _reset_stepsize,
+        self.linesearch,
+        self.max_stepsize,
+        self.min_stepsize,
+        self.increase_factor,
+    )
+
+    if jit:
+      self.run_ls = jax.jit(linesearch_solver.run)
+    else:
+      self.run_ls = linesearch_solver.run

@@ -601,6 +601,40 @@ class ScipyBoundedLeastSquaresTest(ScipyLeastSquaresTest):
       self.assertArraysAllClose(array_num, array_custom, atol=1e-2)
 
 
+class BFGSInverseHessianTest(test_util.JaxoptTestCase):
+
+  def setUp(self):
+    super().setUp()
+
+    true_sol = [0.5, -1.2]
+    # define a very simple objective
+    self.objective = lambda x: (x[0] - true_sol[0])**2. + (x[1] - true_sol[1])**2.
+    # analytical derivative of the objective function
+    self.derivative = lambda x: [(x[0] - true_sol[0]) * 2., (x[1] - true_sol[1]) * 2.]
+    # define the starting point as a random sample from the domain
+    r_min, r_max = -5.0, 5.0
+    onp.random.seed(6574)
+    self.x0 = r_min + onp.random.rand(2) * (r_max - r_min)
+
+  def test_inverse_hessian_bfgs(self):
+    # perform the bfgs algorithm search
+    res_scipy = osp.optimize.minimize(self.objective, self.x0, 
+                                      method='BFGS', jac=self.derivative)
+    # run the same algorithm via jaxopt
+    res_jaxopt = ScipyMinimize(method='BFGS', fun=self.objective).run(self.x0)
+    # compare the two returned inverse Hessian matrices
+    self.assertAllClose(res_scipy.hess_inv, res_jaxopt.state.hess_inv)
+
+  def test_inverse_hessian_lbfgs(self):
+    # perform the l-bfgs-b algorithm search
+    res_scipy = osp.optimize.minimize(self.objective, self.x0, 
+                                      method='L-BFGS-B', jac=self.derivative)
+    # run the same algorithm via jaxopt
+    res_jaxopt = ScipyMinimize(method='L-BFGS-B', fun=self.objective).run(self.x0)
+    # compare the two returned inverse Hessian matrices
+    self.assertAllClose(res_scipy.hess_inv.todense(), res_jaxopt.state.hess_inv.todense())
+
+
 if __name__ == '__main__':
   # Uncomment the line below in order to run in float64.
   # jax.config.update("jax_enable_x64", True)

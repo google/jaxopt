@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from jaxopt import implicit_diff
+from jaxopt import isotonic
 from jaxopt import loss
 from jaxopt import objective
 from jaxopt import projection
@@ -35,6 +36,7 @@ from jaxopt._src.gradient_descent import GradientDescent
 from jaxopt._src.hager_zhang_linesearch import HagerZhangLineSearch
 from jaxopt._src.iterative_refinement import IterativeRefinement
 from jaxopt._src.lbfgs import LBFGS
+from jaxopt._src.lbfgsb import LBFGSB
 from jaxopt._src.levenberg_marquardt import LevenbergMarquardt
 from jaxopt._src.mirror_descent import MirrorDescent
 from jaxopt._src.nonlinear_cg import NonlinearCG
@@ -49,3 +51,4 @@ from jaxopt._src.scipy_wrappers import ScipyBoundedMinimize
 from jaxopt._src.scipy_wrappers import ScipyLeastSquares
 from jaxopt._src.scipy_wrappers import ScipyMinimize
 from jaxopt._src.scipy_wrappers import ScipyRootFinding
+from jaxopt._src.zoom_linesearch import ZoomLineSearch
