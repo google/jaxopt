@@ -28,9 +28,6 @@ import jax
 import jax.numpy as jnp
 
 from jaxopt._src import base
-from jaxopt._src.backtracking_linesearch import BacktrackingLineSearch
-from jaxopt._src.hager_zhang_linesearch import HagerZhangLineSearch
-from jaxopt._src.zoom_linesearch import zoom_linesearch
 from jaxopt.tree_util import tree_map
 from jaxopt.tree_util import tree_vdot
 from jaxopt.tree_util import tree_add_scalar_mul
@@ -39,6 +36,8 @@ from jaxopt.tree_util import tree_sub
 from jaxopt.tree_util import tree_sum
 from jaxopt.tree_util import tree_l2_norm
 from jaxopt._src.tree_util import tree_single_dtype
+from jaxopt._src.linesearch_util import _reset_stepsize
+from jaxopt._src.linesearch_util import _setup_linesearch
 
 
 def inv_hessian_product_leaf(v: jnp.ndarray,
@@ -48,6 +47,7 @@ def inv_hessian_product_leaf(v: jnp.ndarray,
                              gamma: float = 1.0,
                              start: int = 0):
 
+  """Product between an approximate Hessian inverse and the leaf of a pytree."""
   history_size = len(s_history)
 
   indices = (start + jnp.arange(history_size)) % history_size
@@ -67,7 +67,7 @@ def inv_hessian_product_leaf(v: jnp.ndarray,
     r = r + s_history[i] * (alpha - beta)
     return r, beta
 
-  r, beta = jax.lax.scan(body_left, r, (indices, alpha))
+  r, _ = jax.lax.scan(body_left, r, (indices, alpha))
 
   return r
 
@@ -97,6 +97,9 @@ def inv_hessian_product(pytree: Any,
       i.e., `gamma * I`.
     start: starting index in the circular buffer.
 
+  Returns:
+    Product between approximate Hessian inverse and the pytree
+
   Reference:
     Jorge Nocedal and Stephen Wright.
     Numerical Optimization, second edition.
@@ -110,6 +113,7 @@ def inv_hessian_product(pytree: Any,
 
 
 def compute_gamma(s_history: Any, y_history: Any, last: int):
+  """Compute scalar gamma defining the initialization of the approximate Hessian."""
   # Let gamma = vdot(y_history[last], s_history[last]) / sqnorm(y_history[last]).
   # The initial inverse Hessian approximation can be set to gamma * I.
   # See Numerical Optimization, second edition, equation (7.20).
@@ -179,6 +183,8 @@ class LBFGS(base.IterativeSolver):
       line search.
     stop_if_linesearch_fails: whether to stop iterations if the line search fails.
       When True, this matches the behavior of core JAX.
+    condition: condition used to select the stepsize when using backtracking
+      linesearch
     maxls: maximum number of iterations to use in the line search.
     decrease_factor: factor by which to decrease the stepsize during line search
       (default: 0.8).
@@ -256,6 +262,7 @@ class LBFGS(base.IterativeSolver):
       init_params: pytree containing the initial parameters.
       *args: additional positional arguments to be passed to ``fun``.
       **kwargs: additional keyword arguments to be passed to ``fun``.
+
     Returns:
       state
     """
@@ -301,6 +308,7 @@ class LBFGS(base.IterativeSolver):
       state: named tuple containing the solver state.
       *args: additional positional arguments to be passed to ``fun``.
       **kwargs: additional keyword arguments to be passed to ``fun``.
+
     Returns:
       (params, state)
     """
@@ -318,83 +326,17 @@ class LBFGS(base.IterativeSolver):
 
     use_linesearch = not isinstance(self.stepsize, Callable) and self.stepsize <= 0
     if use_linesearch:
-      # with line search
-
-      if self.linesearch == "backtracking":
-        ls = BacktrackingLineSearch(fun=self._value_and_grad_with_aux,
-                                    value_and_grad=True,
-                                    maxiter=self.maxls,
-                                    decrease_factor=self.decrease_factor,
-                                    max_stepsize=self.max_stepsize,
-                                    condition=self.condition,
-                                    jit=self.jit,
-                                    unroll=self.unroll,
-                                    has_aux=True)
-        init_stepsize = jnp.where(state.stepsize <= self.min_stepsize,
-                                  # If stepsize became too small, we restart it.
-                                  self.max_stepsize,
-                                  # Else, we increase a bit the previous one.
-                                  state.stepsize * self.increase_factor)
-        new_stepsize, ls_state = ls.run(init_stepsize,
-                                        params, value, grad,
-                                        descent_direction,
-                                        *args, **kwargs)
-        new_value = ls_state.value
-        new_aux = ls_state.aux
-        new_params = ls_state.params
-        new_grad = ls_state.grad
-
-      elif self.linesearch == "zoom":
-        ls_state = zoom_linesearch(f=self._value_and_grad_with_aux,
-                                   xk=params, pk=descent_direction,
-                                   old_fval=value, gfk=grad, maxiter=self.maxls,
-                                   value_and_grad=True, has_aux=True, aux=state.aux,
-                                   args=args, kwargs=kwargs)
-        new_value = ls_state.f_k
-        new_aux = ls_state.aux
-        new_stepsize = ls_state.a_k
-        new_grad = ls_state.g_k
-        # FIXME: zoom_linesearch currently doesn't return new_params
-        # so we have to recompute it.
-        t = new_stepsize.astype(tree_single_dtype(params))
-        new_params = tree_add_scalar_mul(params, t, descent_direction)
-        # FIXME: (zaccharieramzi) sometimes the linesearch fails
-        # and therefore its value g_k does not correspond
-        # to the gradient at the new parameters.
-        # with the following conditional loop we have a hot fix that just
-        # recomputes the value, gradient and auxiliary value
-        # at the new parameters. It would be better to understand
-        # what the g_k passed by zoom_linesearch is in this case
-        # and why it is wrong.
-        (new_value, new_aux), new_grad = jax.lax.cond(
-          ls_state.failed,
-          lambda: self._value_and_grad_with_aux(new_params, *args, **kwargs),
-          lambda: ((new_value, new_aux), new_grad),
-        )
-      elif self.linesearch == "hager-zhang":
-        # By default Hager-Zhang uses the Wolfe Conditions & Approximate Wolfe
-        # Conditions.
-        ls = HagerZhangLineSearch(fun=self._value_and_grad_fun,
-                                  value_and_grad=True,
-                                  maxiter=self.maxls,
-                                  max_stepsize=self.max_stepsize,
-                                  jit=self.jit,
-                                  unroll=self.unroll)
-        # Note that HZL doesn't use the previous step size.
-        new_stepsize, ls_state = ls.run(self.max_stepsize,
-                                        params, value, grad,
-                                        descent_direction,
-                                        *args, **kwargs)
-        new_params = ls_state.params
-        new_value = ls_state.value
-        new_grad = ls_state.grad
-        new_aux = ls_state.aux
-      else:
-        raise ValueError("Invalid name in 'linesearch' option.")
+      init_stepsize = self._reset_stepsize(state.stepsize)
+      new_stepsize, ls_state = self.run_ls(
+          init_stepsize, params, value, grad, descent_direction, *args, **kwargs
+      )
+      new_params = ls_state.params
+      new_value = ls_state.value
+      new_grad = ls_state.grad
+      new_aux = ls_state.aux
       failed_linesearch = ls_state.failed
 
     else:
-      # without line search
       if isinstance(self.stepsize, Callable):
         new_stepsize = self.stepsize(state.iter_num)
       else:
@@ -442,7 +384,7 @@ class LBFGS(base.IterativeSolver):
                           **kwargs):
     if isinstance(params, base.OptStep):
       params = params.params
-    (value, aux), grad = self._value_and_grad_with_aux(params, *args, **kwargs)
+    (value, _), grad = self._value_and_grad_with_aux(params, *args, **kwargs)
     return value, grad
 
   def __post_init__(self):
@@ -452,3 +394,33 @@ class LBFGS(base.IterativeSolver):
                                has_aux=self.has_aux)
 
     self.reference_signature = self.fun
+
+    jit, unroll = self._get_loop_options()
+
+    linesearch_solver = _setup_linesearch(
+        linesearch=self.linesearch,
+        fun=self._value_and_grad_with_aux,
+        value_and_grad=True,
+        has_aux=True,
+        maxlsiter=self.maxls,
+        max_stepsize=self.max_stepsize,
+        jit=jit,
+        unroll=unroll,
+        verbose=self.verbose,
+        condition=self.condition,
+        decrease_factor=self.decrease_factor,
+        increase_factor=self.increase_factor,
+    )
+
+    self._reset_stepsize = partial(
+        _reset_stepsize,
+        self.linesearch,
+        self.max_stepsize,
+        self.min_stepsize,
+        self.increase_factor,
+    )
+
+    if jit:
+      self.run_ls = jax.jit(linesearch_solver.run)
+    else:
+      self.run_ls = linesearch_solver.run
