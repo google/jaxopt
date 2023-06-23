@@ -129,6 +129,22 @@ class TreeUtilTest(test_util.JaxoptTestCase):
     got = tree_util.tree_l2_norm(self.tree_A)
     self.assertAllClose(expected, got)
 
+  def test_tree_inf_norm(self):
+    expected = jnp.max(jnp.abs(self.array_A))
+    got = tree_util.tree_inf_norm(self.array_A)
+    self.assertAllClose(expected, got)
+
+    expected = jnp.maximum(jnp.max(jnp.abs(self.tree_A[0])),
+                           jnp.max(jnp.abs(self.tree_A[1])))
+    got = tree_util.tree_inf_norm(self.tree_A)
+    self.assertAllClose(expected, got)
+
+    tree_a_with_empty_leaves = ({'a': self.tree_A, 'b': jnp.array([])},
+                                jnp.array([]))
+    expected = tree_util.tree_inf_norm(self.tree_A)
+    got = tree_util.tree_inf_norm(tree_a_with_empty_leaves)
+    self.assertAllClose(expected, got)
+
   def test_tree_zeros_like(self):
     tree = tree_util.tree_zeros_like(self.tree_A)
     self.assertAllClose(tree_util.tree_l2_norm(tree), 0.0)
