@@ -167,8 +167,8 @@ def tree_gram(a):
 
 def tree_inf_norm(tree_x):
   """Computes the infinity norm of a pytree."""
-  leaf_inf_norm = tree_map(lambda x: jnp.max(jnp.abs(x)), tree_x)
-  return tree_reduce(jnp.maximum, leaf_inf_norm)
+  leaves_vec = tree_leaves(tree_map(jnp.ravel, tree_x))
+  return jnp.max(jnp.abs(jnp.concatenate(leaves_vec)))
 
 
 def tree_where(cond, a, b):
