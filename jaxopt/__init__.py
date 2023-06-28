@@ -52,3 +52,4 @@ from jaxopt._src.scipy_wrappers import ScipyBoundedMinimize
 from jaxopt._src.scipy_wrappers import ScipyLeastSquares
 from jaxopt._src.scipy_wrappers import ScipyMinimize
 from jaxopt._src.scipy_wrappers import ScipyRootFinding
+from jaxopt._src.zoom_linesearch import ZoomLineSearch

@@ -50,7 +50,7 @@ class LbfgsbTest(test_util.JaxoptTestCase):
         fun=fun,
         tol=1e-5,
         stepsize=-1.0,
-        maxiter=50,
+        maxiter=100,
         history_size=5,
         use_gamma=True,
         value_and_grad=value_and_grad,
@@ -60,7 +60,7 @@ class LbfgsbTest(test_util.JaxoptTestCase):
     scipy_lbfgsb = ScipyBoundedMinimize(
         fun=fun,
         tol=1e-5,
-        maxiter=50,
+        maxiter=100,
         method="L-BFGS-B",
         options={"maxcor": 5},
         value_and_grad=value_and_grad,

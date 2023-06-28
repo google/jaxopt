@@ -21,12 +21,15 @@ from typing import Optional
 
 from dataclasses import dataclass
 
+import functools
+
 import jax
 import jax.numpy as jnp
 
 from jaxopt._src import base
-from jaxopt._src.backtracking_linesearch import BacktrackingLineSearch
-from jaxopt._src.zoom_linesearch import zoom_linesearch
+from jaxopt._src.linesearch_util import _reset_stepsize
+from jaxopt._src.linesearch_util import _setup_linesearch
+
 from jaxopt.tree_util import tree_vdot
 from jaxopt.tree_util import tree_scalar_mul
 from jaxopt.tree_util import tree_add_scalar_mul
@@ -38,6 +41,7 @@ from jaxopt._src.tree_util import tree_single_dtype
 
 class NonlinearCGState(NamedTuple):
   """Named tuple containing state information."""
+
   iter_num: int
   stepsize: float
   error: float
@@ -82,10 +86,13 @@ class NonlinearCG(base.IterativeSolver):
     implicit_diff: whether to enable implicit diff or autodiff of unrolled
       iterations.
     implicit_diff_solve: the linear system solver to use.
+
     jit: whether to JIT-compile the optimization loop (default: "auto").
     unroll: whether to unroll the optimization loop (default: "auto").
+
     verbose: whether to print error on every iteration or not.
       Warning: verbose=True will automatically disable jit.
+
   Reference:
     Jorge Nocedal and Stephen Wright.
     Numerical Optimization, second edition.
@@ -122,10 +129,12 @@ class NonlinearCG(base.IterativeSolver):
                  *args,
                  **kwargs) -> NonlinearCGState:
     """Initialize the solver state.
+
     Args:
       init_params: pytree containing the initial parameters.
       *args: additional positional arguments to be passed to ``fun``.
       **kwargs: additional keyword arguments to be passed to ``fun``.
+
     Returns:
       state
     """
@@ -147,11 +156,13 @@ class NonlinearCG(base.IterativeSolver):
              *args,
              **kwargs) -> base.OptStep:
     """Performs one iteration of Fletcher-Reeves Algorithm.
+
     Args:
       params: pytree containing the parameters.
       state: named tuple containing the solver state.
       *args: additional positional arguments to be passed to ``fun``.
       **kwargs: additional keyword arguments to be passed to ``fun``.
+
     Returns:
       (params, state)
     """
@@ -161,61 +172,26 @@ class NonlinearCG(base.IterativeSolver):
     grad = state.grad
     descent_direction = state.descent_direction
 
+    # Kept choice of no descent direction for backtracking line-search
+    # FIXME: should discuss why it was the case
     if self.linesearch == "backtracking":
-      ls = BacktrackingLineSearch(fun=self._value_and_grad_with_aux,
-                                  value_and_grad=True,
-                                  maxiter=self.maxls,
-                                  decrease_factor=self.decrease_factor,
-                                  condition=self.condition,
-                                  max_stepsize=self.max_stepsize,
-                                  has_aux=True)
-
-      init_stepsize = jnp.where(state.stepsize <= self.min_stepsize,
-                                # If stepsize became too small, we restart it.
-                                self.max_stepsize,
-                                # Otherwise, we increase a bit the previous one.
-                                state.stepsize * self.increase_factor)
-
-      new_stepsize, ls_state = ls.run(init_stepsize,
-                                      params,
-                                      value,
-                                      grad,
-                                      None, # descent_direction
-                                      *args, **kwargs)
-      new_value = ls_state.value
-      new_aux = ls_state.aux
-      new_params = ls_state.params
-      new_grad = ls_state.grad
-
-    elif self.linesearch == "zoom":
-      ls_state = zoom_linesearch(f=self._value_and_grad_with_aux,
-                                 xk=params, pk=descent_direction,
-                                 old_fval=value, gfk=grad, maxiter=self.maxls,
-                                 value_and_grad=True, has_aux=True, aux=state.aux,
-                                 args=args, kwargs=kwargs)
-      new_value = ls_state.f_k
-      new_aux = ls_state.aux
-      new_stepsize = ls_state.a_k
-      new_grad = ls_state.g_k
-      # FIXME: zoom_linesearch currently doesn't return new_params
-      # so we have to recompute it.
-      t = new_stepsize.astype(tree_single_dtype(params))
-      new_params = tree_add_scalar_mul(params, t, descent_direction)
-      # FIXME: (zaccharieramzi) sometimes the linesearch fails
-      # and therefore its value g_k does not correspond
-      # to the gradient at the new parameters.
-      # with the following conditional loop we have a hot fix that just
-      # recomputes the value, gradient and auxiliary value
-      # at the new parameters. It would be better to understand
-      # what the g_k passed by zoom_linesearch is in this case
-      # and why it is wrong.
-      (new_value, new_aux), new_grad = jax.lax.cond(
-        ls_state.failed,
-        lambda: self._value_and_grad_with_aux(new_params, *args, **kwargs),
-        lambda: ((new_value, new_aux), new_grad),
-      )
+      ls_descent_direction = None
     else:
-      raise ValueError("Invalid name in 'linesearch' option.")
+      ls_descent_direction = descent_direction
+    init_stepsize = self._reset_stepsize(state.stepsize)
+    new_stepsize, ls_state = self.run_ls(
+        init_stepsize,
+        params,
+        value,
+        grad,
+        ls_descent_direction,
+        *args,
+        **kwargs,
+    )
+    new_params = ls_state.params
+    new_value = ls_state.value
+    new_grad = ls_state.grad
+    new_aux = ls_state.aux
 
     if self.method == "polak-ribiere":
       # See Numerical Optimization, second edition, equation (5.44).
@@ -228,7 +204,7 @@ class NonlinearCG(base.IterativeSolver):
       gTg = tree_vdot(grad, grad)
       gTg = jnp.where(gTg >= eps, gTg, eps)
       new_beta = tree_div(tree_vdot(new_grad, new_grad), gTg)
-    elif self.method == 'hestenes-stiefel':
+    elif self.method == "hestenes-stiefel":
       # See Numerical Optimization, second edition, equation (5.45).
       grad_diff = tree_sub(new_grad, grad)
       dTg = tree_vdot(descent_direction, grad_diff)
@@ -256,7 +232,7 @@ class NonlinearCG(base.IterativeSolver):
     return self._grad_fun(params, *args, **kwargs)
 
   def _value_and_grad_fun(self, params, *args, **kwargs):
-    (value, aux), grad = self._value_and_grad_with_aux(params, *args, **kwargs)
+    (value, _), grad = self._value_and_grad_with_aux(params, *args, **kwargs)
     return value, grad
 
   def _grad_fun(self, params, *args, **kwargs):
@@ -269,3 +245,33 @@ class NonlinearCG(base.IterativeSolver):
                                has_aux=self.has_aux)
 
     self.reference_signature = self.fun
+
+    jit, unroll = self._get_loop_options()
+
+    linesearch_solver = _setup_linesearch(
+        linesearch=self.linesearch,
+        fun=self._value_and_grad_with_aux,
+        value_and_grad=True,
+        has_aux=True,
+        maxlsiter=self.maxls,
+        max_stepsize=self.max_stepsize,
+        jit=jit,
+        unroll=unroll,
+        verbose=self.verbose,
+        condition=self.condition,
+        decrease_factor=self.decrease_factor,
+        increase_factor=self.increase_factor,
+    )
+    
+    self._reset_stepsize = functools.partial(
+        _reset_stepsize,
+        self.linesearch,
+        self.max_stepsize,
+        self.min_stepsize,
+        self.increase_factor,
+    )
+
+    if jit:
+      self.run_ls = jax.jit(linesearch_solver.run)
+    else:
+      self.run_ls = linesearch_solver.run
