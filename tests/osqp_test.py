@@ -29,6 +29,7 @@ from jaxopt import projection
 from jaxopt._src.base import KKTSolution
 from jaxopt._src.osqp import BoxOSQP
 from jaxopt._src.osqp import OSQP
+from jaxopt._src.osqp import extract_Qc_from_obj
 from jaxopt._src.cvxpy_wrapper import CvxpyQP
 from jaxopt._src import test_util
 
@@ -501,7 +502,7 @@ class BoxOSQPTest(test_util.JaxoptTestCase):
     jac_prox = jax.jacrev(run_prox)(data)
     self.assertArraysAllClose(jac_osqp, jac_prox, atol=1e-2)
 
-  def test_convenience_api_simple_problem(self):
+  def test_fun_api(self):
     hyper_params = dict(params_obj=None, params_eq=None, params_ineq=None)
 
     def fun(x, params_obj):
@@ -511,7 +512,7 @@ class BoxOSQPTest(test_util.JaxoptTestCase):
     problem_size = 66
     x_init = jnp.arange(problem_size, dtype=jnp.float32)
     solver = BoxOSQP(fun=fun)
-    (_, _, cste), c = solver._get_Q_c(x_init, hyper_params['params_obj'])
+    (_, _, cste), c = extract_Qc_from_obj(x_init, hyper_params['params_obj'], solver.fun)
 
     self.assertAlmostEqual(cste, 17.0)
     self.assertArraysAllClose(c, jnp.ones(problem_size), atol=1e-3, rtol=1e-2)
@@ -519,27 +520,39 @@ class BoxOSQPTest(test_util.JaxoptTestCase):
   def test_convenience_api_random_problem(self):
     (Q, c), A , (l, u) = get_random_osqp_problem(3, 1, 1)
 
-    hyper_params = dict(params_obj=(Q, c), params_eq=A, params_ineq=(l, u))
+    params_obj = dict(foo=Q, bar=c)  # mimic arbitrary pytree.
+    hyper_params = dict(params_obj=params_obj, params_eq=A, params_ineq=(l, u))
     cste = 42.
-    def fun(x, fun_params):
-      Q, c = fun_params
+    def convex_quadratic(x, params_obj):
+      Q, c = params_obj['foo'], params_obj['bar']
       return 0.5*jnp.dot(x, jnp.dot(Q, x)) + jnp.dot(c, x) + cste
 
     init_x = jnp.array([1., 2., 3])
     tol = 1e-4
 
-    solver_with_fun = BoxOSQP(fun=fun, tol=tol)
-    (_, _, cste_approx), c_approx = solver_with_fun._get_Q_c(init_x, hyper_params['params_obj'])
+    solver_with_fun = BoxOSQP(fun=convex_quadratic, tol=tol)
+    (_, _, cste_approx), c_approx = extract_Qc_from_obj(init_x,
+                                                        hyper_params['params_obj'],
+                                                        solver_with_fun.fun)
     self.assertAlmostEqual(cste_approx, cste)
     self.assertArraysAllClose(c_approx, c, atol=1e-2, rtol=1e-2)
+
+    try:
+      # attempt to run without providing init_params, despite fun != None.
+      init_params = solver_with_fun.init_params(init_x=None, **hyper_params)
+    except ValueError as e:
+      pass  # here, a failure is the expected behavior.
+    else:
+      self.fail("Expected ValueError when init_params is not provided (`fun` API).")
 
     init_params = solver_with_fun.init_params(init_x, **hyper_params)
     sol_with_fun, state_with_fun = solver_with_fun.run(init_params, **hyper_params)
     self.assertLessEqual(state_with_fun.error, tol)
     
+    hyper_params_without_fun = dict(params_obj=(Q, c), params_eq=A, params_ineq=(l, u))
     solver_without_fun = BoxOSQP(tol=tol)
-    init_params = solver_without_fun.init_params(init_x, **hyper_params)
-    sol_without_fun, state_without_fun = solver_without_fun.run(init_params, **hyper_params)
+    init_params = solver_without_fun.init_params(init_x, **hyper_params_without_fun)
+    sol_without_fun, state_without_fun = solver_without_fun.run(init_params, **hyper_params_without_fun)
     self.assertLessEqual(state_without_fun.error, tol)
 
     tree_map((lambda x,y: self.assertArraysAllClose(x, y, atol=1e-2)), sol_with_fun, sol_without_fun)
