@@ -337,8 +337,8 @@ class HagerZhangLineSearch(base.IterativeLineSearch):
       value: Optional[float] = None,
       grad: Optional[Any] = None,
       descent_direction: Optional[Any] = None,
-      fun_args: list[Any] = [],
-      fun_kwargs: dict[str, Any] = {},
+      fun_args: list = [],
+      fun_kwargs: dict = {},
   ) -> HagerZhangLineSearchState:
     """Initialize the line search state.
 
@@ -419,8 +419,8 @@ class HagerZhangLineSearch(base.IterativeLineSearch):
       value: Optional[float] = None,
       grad: Optional[Any] = None,
       descent_direction: Optional[Any] = None,
-      fun_args: list[Any] = [],
-      fun_kwargs: dict[str, Any] = {},
+      fun_args: list = [],
+      fun_kwargs: dict = {},
   ) -> base.LineSearchStep:
     """Performs one iteration of Hager-Zhang line search.
 

@@ -475,8 +475,8 @@ class IterativeLineSearch(IterativeSolver):
           value: Optional[float] = None,
           grad: Optional[Any] = None,
           descent_direction: Optional[Any] = None,
-          fun_args: list[Any] = [],
-          fun_kwargs: dict[str, Any] = {}) -> LineSearchStep:
+          fun_args: list = [],
+          fun_kwargs: dict = {}) -> LineSearchStep:
 
     return super()._run(init_stepsize, params, value, grad, descent_direction,
                         fun_args, fun_kwargs)

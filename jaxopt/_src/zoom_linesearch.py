@@ -592,8 +592,8 @@ class ZoomLineSearch(base.IterativeLineSearch):
       value: Optional[float] = None,
       grad: Optional[Any] = None,
       descent_direction: Optional[Any] = None,
-      fun_args: list[Any] = [],
-      fun_kwargs: dict[str, Any] = {},
+      fun_args: list = [],
+      fun_kwargs: dict = {},
   ) -> base.LineSearchStep:
     """Initialize the line search state by computing all relevant quantities and store it in the initial state.
 
@@ -682,8 +682,8 @@ class ZoomLineSearch(base.IterativeLineSearch):
       value: Optional[float] = None,
       grad: Optional[Any] = None,
       descent_direction: Optional[Any] = None,
-      fun_args: list[Any] = [],
-      fun_kwargs: dict[str, Any] = {},
+      fun_args: list = [],
+      fun_kwargs: dict = {},
   ) -> base.LineSearchStep:
     """Combines Algorithms 3.5 and 3.6 of [1].
 

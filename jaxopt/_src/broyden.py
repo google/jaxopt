@@ -333,7 +333,7 @@ class Broyden(base.IterativeSolver):
         new_stepsize, ls_state = ls.run(init_stepsize,
                                         params, value, None,
                                         descent_direction,
-                                        *args, **kwargs)
+                                        fun_args=args, fun_kwargs=kwargs)
         new_value, new_aux = ls_state.aux
         new_params = ls_state.params
       else:
