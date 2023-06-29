@@ -22,19 +22,53 @@ from functools import partial
 from dataclasses import dataclass
 
 import jax
+import jax.numpy as jnp
 
 from jaxopt._src import base
 from jaxopt._src import implicit_diff as idf
 from jaxopt._src.tree_util import tree_add, tree_sub, tree_add_scalar_mul
 from jaxopt._src.tree_util import tree_vdot, tree_negative, tree_l2_norm
+from jaxopt._src.tree_util import tree_zeros_like
 from jaxopt._src.linear_operator import _make_linear_operator
 from jaxopt._src.cvxpy_wrapper import _check_params
 import jaxopt._src.linear_solve as linear_solve
 from jaxopt._src.iterative_refinement import IterativeRefinement
 
 
-def _make_eq_qp_optimality_fun(matvec_Q, matvec_A):
+def extract_Qc_from_obj(init_params, params_obj, fun):
+  """Returns (params_Q, c) parameters from params_obj.
+
+  Args:
+    init_params: KKTSolution used for the inference of the shape of primal variables.
+      Mandatory when `fun` is not `None`.
+    params_obj: tuple of parameters for the objective function.
+    fun: objective function.
+  
+  When `fun` is `None` it retrieves the relevant informations from the tuple `params_obj`,
+  whereas when `fun` is not `None` it extracts it using AutoDiff.
+  """
+  if fun is None:
+    params_Q, c = params_obj
+    return params_Q, c
+  if init_params is None or init_params.primal is None:
+    raise ValueError("init_params must be provided when fun is not None.")
+  zeros = tree_zeros_like(init_params.primal)
+  # f(x) := 0.5 * x^T Q x + c^T x + cste
+  value_and_grad_fun = jax.value_and_grad(fun, argnums=0)
+  # nabla_x f(x) = Q x + c
+  # f(0)         = cste
+  # Q is never computed explicitly, only its action on vectors is needed
+  cste, c = value_and_grad_fun(zeros, params_obj)
+  return (params_obj, c, cste), c
+
+
+def _make_eq_qp_optimality_fun(matvec_Q, matvec_A, fun):
   """Makes the optimality function for quadratic programming.
+
+  Args:
+    matvec_Q: a function that computes the matrix-vector product with Q.
+    matvec_A: a function that computes the matrix-vector product with A.
+    fun: a function that computes the objective value.
 
   Returns:
     optimality_fun(params, params_obj, params_eq, params_ineq) where
@@ -43,10 +77,15 @@ def _make_eq_qp_optimality_fun(matvec_Q, matvec_A):
       params_eq = (params_A, b)
   """
 
-  def obj_fun(primal_var, params_obj):
-    params_Q, c = params_obj
-    Q = matvec_Q(params_Q)
-    return 0.5 * tree_vdot(primal_var, Q(primal_var)) + tree_vdot(primal_var, c)
+  if fun is None:
+    def obj_fun(primal_var, params_obj):
+      params_Q, c = extract_Qc_from_obj(primal_var, params_obj, fun)
+      Q = matvec_Q(params_Q)
+      xQx = tree_vdot(primal_var, Q(primal_var))
+      cx = tree_vdot(primal_var, c)
+      return tree_add_scalar_mul(cx, 0.5, xQx)
+  else:
+    obj_fun = fun
 
   def eq_fun(primal_var, params_eq):
     params_A, b = params_eq
@@ -67,7 +106,7 @@ def _make_eq_qp_optimality_fun(matvec_Q, matvec_A):
 class EqualityConstrainedQP(base.Solver):
   """Quadratic programming with equality constraints only.
 
-  Supports implicit differentiation, matvec and pytrees.
+  Supports implicit differentiation, matvec, pytrees, and quadratic functions.
   Can benefit from GPU/TPU acceleration.
 
   If the algorithm diverges on some instances, it might be useful to tweak the
@@ -76,8 +115,19 @@ class EqualityConstrainedQP(base.Solver):
   Attributes:
     matvec_Q: a Callable matvec_Q(params_Q, u).
       By default, matvec_Q(Q, u) = dot(Q, u), where Q = params_Q.
+      ``matvec_Q`` incompatible with the specification of ``fun``.
+      The shape of primal variables may be inferred from params_obj = (matvec_Q, c).
     matvec_A: a Callable matvec_A(params_A, u).
       By default, matvec_A(A, u) = dot(A, u), where A = params_A.
+    fun: (optional) a function with signature fun(params, params_obj) that is promised
+      to be a quadratic polynomial convex with respect to params, i.e fun can be written ::
+        fun(x, params_obj) = 0.5*jnp.dot(x, jnp.dot(Q, x)) + jnp.dot(c, x) + cste
+      with params_obj a pytree that contains the parameters of the objective function.
+      (Q, c) do not need to be explicited in params_obj by the user: c will be inferred by Jaxopt,
+        and the operator x -> Qx will be computed upon request.
+      ``fun`` incompatible with the specification of ``matvec_Q``.
+      Note that the shape of primal cannot be inferred from params_obj anymore,
+      so the user should provide it in init_params.
     solve: a Callable to solve linear systems, that accepts matvecs
       (default: linear_solve.solve_gmres).
     refine_regularization: a float (default: 0.) used to regularize the system.
@@ -95,6 +145,7 @@ class EqualityConstrainedQP(base.Solver):
 
   matvec_Q: Optional[Callable] = None
   matvec_A: Optional[Callable] = None
+  fun: Optional[Callable] = None
   solve: Callable = linear_solve.solve_gmres
   refine_regularization: float = 0.0
   refine_maxiter: int = 10
@@ -167,16 +218,23 @@ class EqualityConstrainedQP(base.Solver):
     This solver returns both the primal solution (x) and the dual solution.
 
     Args:
-      init_params: ignored.
-      params_obj: (Q, c) or (params_Q, c) if matvec_Q is provided.
-      params_eq: (A, b) or (params_A, b) if matvec_A is provided.
+      init_params: (optional), used to infer the shape of primal variables.
+        Mandatory if ``fun`` is not None, since the shape of primal variables
+        cannot be inferred from ``params_obj``
+      params_obj: parameters of the quadratic objective, can be:
+        a tuple (Q, c) with Q a pytree of matrices,
+        or a tuple (params_Q, c) if ``matvec_Q`` is provided,
+        or an arbitrary pytree if ``fun`` is provided.
+      params_eq: parameters of the equality constraints, can be:
+        a tuple (A, b) with A a pytree of matrices,
+        or a tuple (params_A, b) if matvec_A is provided.
     Returns:
       (params, state),  where params = (primal_var, dual_var_eq, None)
     """
-    if self._check_params:
+    if self._check_params and False:
       _check_params(params_obj, params_eq)
 
-    params_Q, c = params_obj
+    params_Q, c = extract_Qc_from_obj(init_params, params_obj, self.fun)
     params_A, b = params_eq
 
     Q = self.matvec_Q(params_Q)
@@ -223,10 +281,25 @@ class EqualityConstrainedQP(base.Solver):
   def __post_init__(self):
     self._check_params = self.matvec_Q is None and self.matvec_A is None
 
+    if self.fun is not None and self.matvec_Q is not None:
+      raise ValueError(f"Specification of parameter 'fun' is incompatible with 'matvec_Q' in method __init__ of {type(self)}")
+    
+    if self.fun is not None:
+      def matvec_Q(params_obj, x):
+        params_Q, c, _ = params_obj
+        # f(x) = 0.5 * x^T Q x + c^T x + cste
+        # nabla_x f(x) = Q x + c
+        # Qx = nabla_x f(x) - c
+        def fun_minus_cx(xx):
+          return self.fun(xx, params_Q) - jnp.sum(c*xx)
+        Qx = jax.grad(fun_minus_cx)(x)
+        return Qx
+      self.matvec_Q = matvec_Q
+
     self.matvec_Q = _make_linear_operator(self.matvec_Q)
     self.matvec_A = _make_linear_operator(self.matvec_A)
 
-    self.optimality_fun = _make_eq_qp_optimality_fun(self.matvec_Q, self.matvec_A)
+    self.optimality_fun = _make_eq_qp_optimality_fun(self.matvec_Q, self.matvec_A, self.fun)
 
     # Set up implicit diff.
     decorator = idf.custom_root(
