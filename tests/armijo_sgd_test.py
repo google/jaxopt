@@ -140,7 +140,7 @@ class ArmijoSgdTest(test_util.JaxoptTestCase):
     tol = 1e-3
     opt = ArmijoSGD(fun=fun, reset_option='goldstein', maxiter=1000, tol=tol)
     iterable = dataset_loader(X, y, n_iter=200)
-    state = opt.init_state(params, l2reg=l2reg)
+    state = opt.init_state(params, l2reg=l2reg, data=(X, y))
     @jax.jit
     def jitted_update(params, state, data):
       return opt.update(params, state, l2reg=l2reg, data=data)
@@ -169,7 +169,8 @@ class ArmijoSgdTest(test_util.JaxoptTestCase):
     pytree_init = (W_init, b_init)
 
     tol = 3e-1
-    opt = ArmijoSGD(fun=fun, maxiter=10, tol=tol)  # few iterations due to speed issues
+    # few iterations due to speed issues
+    opt = ArmijoSGD(fun=fun, maxiter=10, tol=tol)
     iterable = dataset_loader(X, y, n_iter=200)
     params, _ = opt.run_iterator(pytree_init, iterable, l2reg=l2reg)
 

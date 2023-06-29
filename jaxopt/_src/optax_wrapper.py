@@ -106,13 +106,16 @@ class OptaxSolver(base.StochasticSolver):
     opt_state = self.opt.init(init_params)
 
     if self.has_aux:
-      _, aux = self.fun(init_params, *args, **kwargs)
+      value, aux = self.fun(init_params, *args, **kwargs)
     else:
+      value = self.fun(init_params, *args, **kwargs)
       aux = None
 
+    params_dtype = tree_util.tree_single_dtype(init_params)
+
     return OptaxState(iter_num=jnp.asarray(0),
-                      value=jnp.asarray(jnp.inf),
-                      error=jnp.asarray(jnp.inf),
+                      value=jnp.asarray(jnp.inf, value.dtype),
+                      error=jnp.asarray(jnp.inf, dtype=params_dtype),
                       aux=aux,
                       internal_state=opt_state)
 
@@ -144,9 +147,11 @@ class OptaxSolver(base.StochasticSolver):
     params = self._apply_updates(params, delta)
 
     # Computes optimality error before update to re-use grad evaluation.
+    dtype = tree_util.tree_single_dtype(params)
+    error = tree_util.tree_l2_norm(grad)
     new_state = OptaxState(iter_num=state.iter_num + 1,
-                           error=tree_util.tree_l2_norm(grad),
-                           value=value,
+                           error=jnp.asarray(error, dtype=dtype),
+                           value=jnp.asarray(value),
                            aux=aux,
                            internal_state=opt_state)
     return base.OptStep(params=params, state=new_state)

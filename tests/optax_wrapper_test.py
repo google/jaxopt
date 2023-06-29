@@ -46,7 +46,7 @@ class OptaxWrapperTest(test_util.JaxoptTestCase):
 
     opt = OptaxSolver(opt=optax.adam(1e-3), fun=fun)
 
-    state = opt.init_state(params)
+    state = opt.init_state(params, l2reg=l2reg, data=data)
     for _ in range(200):
       params, state = opt.update(params, state, l2reg=l2reg, data=data)
 

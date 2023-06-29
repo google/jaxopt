@@ -35,6 +35,7 @@ from jaxopt._src.tree_util import tree_add_scalar_mul
 from jaxopt._src.tree_util import tree_l2_norm
 from jaxopt._src.tree_util import tree_sub
 from jaxopt._src.tree_util import tree_vdot
+from jaxopt._src.tree_util import tree_single_dtype
 
 
 def fista_line_search(
@@ -183,17 +184,19 @@ class ProximalGradient(base.IterativeSolver):
     else:
       aux = None
 
+    dtype = tree_single_dtype(init_params)
+
     if self.acceleration:
       state = ProxGradState(iter_num=jnp.asarray(0),
                             velocity=init_params,
                             t=jnp.asarray(1.0),
-                            stepsize=jnp.asarray(1.0),
-                            error=jnp.asarray(jnp.inf),
+                            stepsize=jnp.asarray(1.0, dtype=dtype),
+                            error=jnp.asarray(jnp.inf, dtype=dtype),
                             aux=aux)
     else:
       state = ProxGradState(iter_num=jnp.asarray(0),
-                            stepsize=jnp.asarray(1.0),
-                            error=jnp.asarray(jnp.inf),
+                            stepsize=jnp.asarray(1.0, dtype=dtype),
+                            error=jnp.asarray(jnp.inf, dtype=dtype),
                             aux=aux)
 
     return state
@@ -238,6 +241,7 @@ class ProximalGradient(base.IterativeSolver):
       return next_x, next_stepsize
 
   def _update(self, x, state, hyperparams_prox, args, kwargs):
+    dtype = tree_single_dtype(x)
     iter_num = state.iter_num
     stepsize = state.stepsize
     (x_fun_val, aux), x_fun_grad = self._value_and_grad_with_aux(x, *args,
@@ -246,11 +250,13 @@ class ProximalGradient(base.IterativeSolver):
                                        stepsize, hyperparams_prox, args, kwargs)
     error = self._error(tree_sub(next_x, x), next_stepsize)
     next_state = ProxGradState(iter_num=iter_num + 1,
-                               stepsize=next_stepsize,
-                               error=error, aux=aux)
+                               stepsize=jnp.asarray(next_stepsize, dtype=dtype),
+                               error=jnp.asarray(error, dtype=dtype),
+                               aux=aux)
     return base.OptStep(params=next_x, state=next_state)
 
   def _update_accel(self, x, state, hyperparams_prox, args, kwargs):
+    dtype = tree_single_dtype(x)
     iter_num = state.iter_num
     y = state.velocity
     t = state.t
@@ -264,7 +270,8 @@ class ProximalGradient(base.IterativeSolver):
     next_y = tree_add_scalar_mul(next_x, (t - 1) / next_t, diff_x)
     next_error = self._error(diff_x, next_stepsize)
     next_state = ProxGradState(iter_num=iter_num + 1, velocity=next_y, t=next_t,
-                               stepsize=next_stepsize, error=next_error,
+                               stepsize=jnp.asarray(next_stepsize, dtype=dtype),
+                               error=jnp.asarray(next_error, dtype=dtype),
                                aux=aux)
     return base.OptStep(params=next_x, state=next_state)
 
