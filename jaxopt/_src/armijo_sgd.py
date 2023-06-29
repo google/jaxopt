@@ -133,7 +133,10 @@ class ArmijoState(NamedTuple):
 class ArmijoSGD(base.StochasticSolver):
   """SGD with Armijo line search.
 
-  This implementation assumes that the interpolation property holds.
+  This implementation assumes that the "interpolation property" holds, see for example Vaswani et al. 2019 (https://arxiv.org/abs/1905.09997):
+    the global optimum over D must also be a global optimum for any finite sample of D
+  This is typically achieved by overparametrized models (e.g neural networks)
+  in classification tasks with separable classes, or on regression tasks without noise.
   In practice this algorithm works well outside this setting.
 
   Attributes:

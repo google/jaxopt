@@ -54,7 +54,10 @@ class PolyakSGD(base.StochasticSolver):
   take over-confident steps. This is why ``max_stepsize`` is the most important
   hyper-parameter.
 
-  This implementation assumes that the interpolation property holds.
+  This implementation assumes that the interpolation property holds:
+    the global optimum over D must also be a global optimum for any finite sample of D
+  This is typically achieved by overparametrized models (e.g neural networks)
+  in classification tasks with separable classes, or on regression tasks without noise.
 
   Attributes:
     fun: a function of the form ``fun(params, *args, **kwargs)``, where
