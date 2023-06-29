@@ -20,6 +20,7 @@ import jax.numpy as jnp
 
 import numpy as onp
 
+import jaxopt
 from jaxopt import NonlinearCG
 from jaxopt import objective
 from jaxopt._src import test_util
@@ -70,19 +71,33 @@ class NonlinearCGTest(test_util.JaxoptTestCase):
     w_fit, info = cg_model.run(w, data=data)
     self.assertLessEqual(info.error, 5e-2)
 
-  @parameterized.product(method=["fletcher-reeves",
-                                 "polak-ribiere",
-                                 "hestenes-stiefel"],
-                         linesearch=["backtracking", "zoom"])
-  def test_binary_logreg(self, method, linesearch):
-    X, y = datasets.make_classification(n_samples=10, n_features=5, n_classes=2,
-                                        n_informative=3, random_state=0)
+  @parameterized.product(
+      method=["fletcher-reeves", "polak-ribiere", "hestenes-stiefel"],
+      linesearch=[
+          "backtracking",
+          "zoom",
+          jaxopt.BacktrackingLineSearch(
+              objective.binary_logreg, decrease_factor=0.5
+          ),
+      ],
+      linesearch_init=["max", "current", "increase"],
+  )
+  def test_binary_logreg(self, method, linesearch, linesearch_init):
+    X, y = datasets.make_classification(
+        n_samples=10, n_features=5, n_classes=2, n_informative=3, random_state=0
+    )
     data = (X, y)
     fun = objective.binary_logreg
 
     w_init = jnp.zeros(X.shape[1])
-    cg_model = NonlinearCG(fun=fun, tol=1e-3, maxiter=100, method=method,
-                           linesearch=linesearch)
+    cg_model = NonlinearCG(
+        fun=fun,
+        tol=1e-3,
+        maxiter=100,
+        method=method,
+        linesearch=linesearch,
+        linesearch_init=linesearch_init,
+    )
 
     # Test with positional argument.
     w_fit, info = cg_model.run(w_init, data)

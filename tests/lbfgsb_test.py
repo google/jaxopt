@@ -20,6 +20,7 @@ from absl.testing import parameterized
 import jax
 import jax.numpy as jnp
 from jaxopt import LBFGSB
+from jaxopt import BacktrackingLineSearch
 from jaxopt import objective
 from jaxopt import OptStep
 from jaxopt import ScipyBoundedMinimize
@@ -154,7 +155,12 @@ class LbfgsbTest(test_util.JaxoptTestCase):
 
   @parameterized.product(
       use_gamma=[True, False],
-      linesearch=["backtracking", "zoom", "hager-zhang"],
+      linesearch=[
+          "backtracking",
+          "zoom",
+          "hager-zhang",
+          BacktrackingLineSearch(objective.multiclass_logreg_with_intercept),
+      ],
   )
   def test_multiclass_logreg(self, use_gamma, linesearch):
     x, y = datasets.make_classification(

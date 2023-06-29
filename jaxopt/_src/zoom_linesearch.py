@@ -592,9 +592,9 @@ class ZoomLineSearch(base.IterativeLineSearch):
       value: Optional[float] = None,
       grad: Optional[Any] = None,
       descent_direction: Optional[Any] = None,
-      *args,
-      **kwargs,
-  ):
+      fun_args: list[Any] = [],
+      fun_kwargs: dict[str, Any] = {},
+  ) -> base.LineSearchStep:
     """Initialize the line search state by computing all relevant quantities and store it in the initial state.
 
     Args:
@@ -604,8 +604,8 @@ class ZoomLineSearch(base.IterativeLineSearch):
       value: current function value (recomputed if None).
       grad: current gradient (recomputed if None).
       descent_direction: descent direction (negative gradient if None).
-      *args: additional positional arguments to be passed to ``fun``.
-      **kwargs: additional keyword arguments to be passed to ``fun``.
+      fun_args: additional positional arguments to be passed to ``fun``.
+      fun_kwargs: additional keyword arguments to be passed to ``fun``.
 
     Returns:
       state
@@ -619,7 +619,7 @@ class ZoomLineSearch(base.IterativeLineSearch):
     aux = None
     if value is None or grad is None:
       (value, aux), grad = self._value_and_grad_fun_with_aux(
-          params, *args, **kwargs
+          params, *fun_args, **fun_kwargs
       )
       num_fun_eval = num_fun_eval + 1
       num_grad_eval = num_grad_eval + 1
@@ -630,7 +630,7 @@ class ZoomLineSearch(base.IterativeLineSearch):
     # base._make_funs_with_aux. This requires changing the signature of
     # base.IterativeLineSearch.
     if aux is None and self.has_aux:
-      _, aux = self._fun_with_aux(params, *args, **kwargs)
+      _, aux = self._fun_with_aux(params, *fun_args, **fun_kwargs)
 
     if descent_direction is None:
       descent_direction = tree_scalar_mul(-1.0, grad)
@@ -682,8 +682,8 @@ class ZoomLineSearch(base.IterativeLineSearch):
       value: Optional[float] = None,
       grad: Optional[Any] = None,
       descent_direction: Optional[Any] = None,
-      *args,
-      **kwargs,
+      fun_args: list[Any] = [],
+      fun_kwargs: dict[str, Any] = {},
   ) -> base.LineSearchStep:
     """Combines Algorithms 3.5 and 3.6 of [1].
 
@@ -698,8 +698,8 @@ class ZoomLineSearch(base.IterativeLineSearch):
       grad: current gradient (not used, recorded during init in state).
       descent_direction: descent direction (not used, recorded during init in
         state).
-      *args: additional positional arguments to be passed to ``fun``.
-      **kwargs: additional keyword arguments to be passed to ``fun``.
+      fun_args: additional positional arguments to be passed to ``fun``.
+      fun_kwargs: additional keyword arguments to be passed to ``fun``.
 
     Returns:
       (stepsize, state)
@@ -720,8 +720,8 @@ class ZoomLineSearch(base.IterativeLineSearch):
         self._search_interval,
         init_stepsize,
         state,
-        args,
-        kwargs,
+        fun_args,
+        fun_kwargs,
     )
 
     best_stepsize, new_state = lax.cond(
@@ -730,8 +730,8 @@ class ZoomLineSearch(base.IterativeLineSearch):
         self._keep_step,
         best_stepsize,
         new_state_,
-        args,
-        kwargs,
+        fun_args,
+        fun_kwargs,
     )
 
     if self.verbose:

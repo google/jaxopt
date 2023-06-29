@@ -81,16 +81,21 @@ class BacktrackingLinesearchTest(test_util.JaxoptTestCase):
 
     rng = onp.random.RandomState(0)
     w_init = rng.randn(X.shape[1])
-    ls = BacktrackingLineSearch(fun=augmented_fun, maxiter=20, condition='armijo', has_aux=True)
-    stepsize, state = ls.run(init_stepsize=1.0, params=w_init, data=data)
+    ls = BacktrackingLineSearch(
+        fun=augmented_fun, maxiter=20, condition="armijo", has_aux=True
+    )
+    _, state = ls.run(
+        init_stepsize=1.0, params=w_init, fun_kwargs={"data": data}
+    )
     _, aux_at_params = augmented_fun(state.params, data)
     self.assertArraysEqual(aux_at_params, state.aux)
 
   @parameterized.product(cond=[
       "armijo", "goldstein", "strong-wolfe", "wolfe"])
   def test_backtracking_linesearch(self, cond):
-    X, y = datasets.make_classification(n_samples=10, n_features=5, n_classes=2,
-                                        n_informative=3, random_state=0)
+    X, y = datasets.make_classification(
+        n_samples=10, n_features=5, n_classes=2, n_informative=3, random_state=0
+    )
     data = (X, y)
     fun = objective.binary_logreg
 
@@ -102,18 +107,23 @@ class BacktrackingLinesearchTest(test_util.JaxoptTestCase):
     # Manual loop.
     ls = BacktrackingLineSearch(fun=fun, condition=cond)
     stepsize = 1.0
-    state = ls.init_state(init_stepsize=1.0, params=w_init, data=data)
+    state = ls.init_state(
+        init_stepsize=1.0, params=w_init, fun_kwargs={"data": data}
+    )
     stepsize, state = ls.update(stepsize=stepsize, state=state, params=w_init,
-                                data=data)
+                                fun_kwargs={"data": data})
     error1 = state.error
-    stepsize, state = ls.update(stepsize=stepsize, state=state, params=w_init,
-                                data=data)
+    _, state = ls.update(
+        stepsize=stepsize, state=state, params=w_init, fun_kwargs={"data": data}
+    )
     error2 = state.error
     self.assertLessEqual(error2, error1)
 
     # Call to run.
     ls = BacktrackingLineSearch(fun=fun, maxiter=20, condition=cond)
-    stepsize, state = ls.run(init_stepsize=1.0, params=w_init, data=data)
+    stepsize, state = ls.run(
+        init_stepsize=1.0, params=w_init, fun_kwargs={"data": data}
+    )
     self.assertLessEqual(state.error, 1e-5)
     self._check_conditions_satisfied(
         cond, ls.c1, ls.c2, stepsize, initial_value, initial_grad, state)
@@ -123,14 +133,18 @@ class BacktrackingLinesearchTest(test_util.JaxoptTestCase):
                                 condition=cond,
                                 maxiter=20,
                                 value_and_grad=True)
-    stepsize, state = ls.run(init_stepsize=1.0, params=w_init, data=data)
+    stepsize, state = ls.run(
+        init_stepsize=1.0, params=w_init, fun_kwargs={"data": data}
+    )
     self.assertLessEqual(state.error, 1e-5)
     self._check_conditions_satisfied(
         cond, ls.c1, ls.c2, stepsize, initial_value, initial_grad, state)
 
     # Failed linesearch (high c1 ensures convergence condition is not met).
     ls = BacktrackingLineSearch(fun=fun, maxiter=20, condition=cond, c1=2.)
-    _, state = ls.run(init_stepsize=1.0, params=w_init, data=data)
+    _, state = ls.run(
+        init_stepsize=1.0, params=w_init, fun_kwargs={"data": data}
+    )
     self.assertTrue(jnp.all(state.failed))
     self.assertFalse(jnp.any(state.done))
 

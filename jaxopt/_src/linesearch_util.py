@@ -15,6 +15,7 @@
 """Line searches utilities."""
 
 from jax import numpy as jnp
+from jaxopt._src import base
 from jaxopt._src.backtracking_linesearch import BacktrackingLineSearch
 from jaxopt._src.hager_zhang_linesearch import HagerZhangLineSearch
 from jaxopt._src.zoom_linesearch import ZoomLineSearch
@@ -30,12 +31,9 @@ def _setup_linesearch(
     jit,
     unroll,
     verbose,
-    condition,  # for backtracking only
-    decrease_factor,  # for backtracking only
-    increase_factor,  # for zoom only
 ):
   """Instantiate linesearch."""
-  
+
   available_linesearches = ["backtracking", "zoom", "hager-zhang"]
   if linesearch == "backtracking":
     linesearch_solver = BacktrackingLineSearch(
@@ -43,9 +41,7 @@ def _setup_linesearch(
         value_and_grad=value_and_grad,
         has_aux=has_aux,
         maxiter=maxlsiter,
-        decrease_factor=decrease_factor,
         max_stepsize=max_stepsize,
-        condition=condition,
         jit=jit,
         unroll=unroll,
         verbose=verbose,
@@ -57,7 +53,6 @@ def _setup_linesearch(
         has_aux=has_aux,
         maxiter=maxlsiter,
         max_stepsize=max_stepsize,
-        increase_factor=increase_factor,
         jit=jit,
         unroll=unroll,
         verbose=verbose,
@@ -73,6 +68,8 @@ def _setup_linesearch(
         unroll=unroll,
         verbose=verbose,
     )
+  elif isinstance(linesearch, base.IterativeLineSearch):
+    linesearch_solver = linesearch
   else:
     raise ValueError(
         f"Linesearch {linesearch} not available/tested. "
@@ -81,19 +78,16 @@ def _setup_linesearch(
   return linesearch_solver
 
 
-def _reset_stepsize(
-    linesearch, max_stepsize, min_stepsize, increase_factor, stepsize
+def _init_stepsize(
+    strategy, max_stepsize, min_stepsize, increase_factor, stepsize
 ):
   """Set stepsize at the start of the linesearch from previous guess."""
-  available_linesearches = ["backtracking", "zoom", "hager-zhang"]
-  if linesearch == "hager-zhang":
-    # FIXME: HZL should be able to use the previous stepsize (see the paper)
-    # For now, the current implementation is simply initialized at the maximum
-    # stepsize.
+  available_strategies = ["max", "current", "increase"]
+  if strategy == "max":
     init_stepsize = max_stepsize
-  elif linesearch == "zoom":
+  elif strategy == "current":
     init_stepsize = stepsize
-  elif linesearch == "backtracking":
+  elif strategy == "increase":
     init_stepsize = jnp.where(
         stepsize <= min_stepsize,
         # If stepsize became too small, we restart it.
@@ -103,7 +97,7 @@ def _reset_stepsize(
     )
   else:
     raise ValueError(
-        f"Linesearch {linesearch} not available/tested. "
-        f"Available linesearches: {available_linesearches}"
+        f"Strategy {strategy} not available/tested. "
+        f"Available linesearches: {available_strategies}"
     )
   return init_stepsize

@@ -180,7 +180,9 @@ class ZoomLinesearchTest(test_util.JaxoptTestCase):
 
     # Call to run.
     ls = ZoomLineSearch(fun=fun, maxiter=20)
-    stepsize, state = ls.run(init_stepsize=1.0, params=w_init, data=data)
+    stepsize, state = ls.run(
+        init_stepsize=1.0, params=w_init, fun_kwargs={"data": data}
+    )
 
     self._assert_line_conds(
         w_init, descent_dir, stepsize, fun_, jax.grad(fun_), c1=ls.c1, c2=ls.c2
@@ -193,7 +195,9 @@ class ZoomLinesearchTest(test_util.JaxoptTestCase):
     ls = ZoomLineSearch(
         fun=jax.value_and_grad(fun), maxiter=20, value_and_grad=True
     )
-    stepsize, state = ls.run(init_stepsize=1.0, params=w_init, data=data)
+    stepsize, state = ls.run(
+        init_stepsize=1.0, params=w_init, fun_kwargs={"data": data}
+    )
 
     self._assert_line_conds(
         w_init, descent_dir, stepsize, fun_, jax.grad(fun_), c1=ls.c1, c2=ls.c2
