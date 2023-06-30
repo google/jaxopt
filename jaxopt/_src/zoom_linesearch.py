@@ -26,6 +26,7 @@ from jax import lax
 import jax.numpy as jnp
 from jaxopt._src import base
 from jaxopt._src.base import _make_funs_with_aux
+from jaxopt._src.cond import cond
 from jaxopt._src.tree_util import tree_single_dtype
 from jaxopt.tree_util import tree_add_scalar_mul
 from jaxopt.tree_util import tree_scalar_mul
@@ -713,25 +714,29 @@ class ZoomLineSearch(base.IterativeLineSearch):
     del value
     del grad
     del descent_direction
+    
+    jit, _ = self._get_loop_options()
 
-    best_stepsize, new_state_ = lax.cond(
-        state.interval_found,
-        self._zoom_into_interval,
-        self._search_interval,
+    best_stepsize_, new_state_ = cond(
+        state.interval_found, 
+        self._zoom_into_interval, 
+        self._search_interval, 
         init_stepsize,
         state,
         fun_args,
         fun_kwargs,
+        jit=jit
     )
 
-    best_stepsize, new_state = lax.cond(
-        (new_state_.failed) & (new_state_.iter_num == self.maxiter),
+    best_stepsize, new_state = cond(
+        (new_state_.failed) & (new_state_.iter_num == self.maxiter), 
         self._make_safe_step,
         self._keep_step,
-        best_stepsize,
+        best_stepsize_,
         new_state_,
         fun_args,
         fun_kwargs,
+        jit=jit
     )
 
     if self.verbose:

@@ -30,6 +30,7 @@ from jax.tree_util import tree_reduce
 
 from jaxopt._src import base
 from jaxopt._src import implicit_diff as idf
+from jaxopt._src.cond import cond
 from jaxopt.tree_util import tree_add, tree_sub, tree_mul
 from jaxopt.tree_util import tree_scalar_mul, tree_add_scalar_mul
 from jaxopt.tree_util import tree_map, tree_vdot
@@ -291,13 +292,6 @@ class OSQPLUSolver:
     sol = tree_map(lu_solve, b, lu_factors)
 
     return sol, osqp_state.solver_state
-
-
-def ifelse_cond(cond, if_fun, else_fun, operand, jit):
-  if not jit:
-    with jax.disable_jit():
-      return jax.lax.cond(cond, if_fun, else_fun, operand)
-  return jax.lax.cond(cond, if_fun, else_fun, operand)
 
 
 @dataclass(eq=False)
@@ -704,23 +698,27 @@ class BoxOSQP(base.IterativeSolver):
     if self.verbose >= 3:
       print(f"primal_residuals={primal_residuals}, dual_residuals={dual_residuals}")
 
-    # We need our own ifelse_cond because automatic jitting of jax.lax.cond branches
+    # We need our own ifelse cond because automatic jitting of jax.lax.cond branches
     # could pose problems with non jittable matvecs, or prevent printing when verbose > 0.
-    rho_bar, solver_state = ifelse_cond(
-      jnp.mod(state.iter_num, self.stepsize_updates_frequency) == 0,
-      lambda _: self._update_stepsize(rho_bar, solver_state, primal_residuals, dual_residuals, Q, c, A, x, y),
-      lambda _: (rho_bar, solver_state),
-      operand=None, jit=jit)
+    rho_bar, solver_state = cond(
+        jnp.mod(state.iter_num, self.stepsize_updates_frequency) == 0,
+        lambda _: self._update_stepsize(rho_bar, solver_state, primal_residuals, dual_residuals, Q, c, A, x, y),
+        lambda _: (rho_bar, solver_state),
+        None,
+        jit=jit
+    )
 
     sol = BoxOSQP._get_full_KKT_solution(primal=(x, z), y=y)
 
-    # Same remark as above for ifelse_cond.
-    error, status = ifelse_cond(
-      jnp.mod(state.iter_num, self.termination_check_frequency) == 0,
-      lambda _: self._check_termination_conditions(primal_residuals, dual_residuals,
-                                                   params, sol, Q, c, A, l, u),
-      lambda s: (state.error, s),
-      operand=(state.status), jit=jit)
+    # Same remark as above for ifelse cond.
+    error, status = cond(
+        jnp.mod(state.iter_num, self.termination_check_frequency) == 0,
+        lambda _: self._check_termination_conditions(primal_residuals, dual_residuals,
+                                                      params, sol, Q, c, A, l, u),
+        lambda s: (state.error, s),
+        state.status,
+        jit=jit
+    )
 
     if not jit:
       if status == BoxOSQP.PRIMAL_INFEASIBLE:
