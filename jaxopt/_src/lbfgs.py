@@ -284,7 +284,7 @@ class LBFGS(base.IterativeSolver):
     (value, aux), grad = self._value_and_grad_with_aux(init_params, *args, **kwargs)
     return LbfgsState(value=value,
                       grad=grad,
-                      error=jnp.asarray(jnp.inf),
+                      error=jnp.asarray(jnp.inf, dtype=dtype),
                       **state_kwargs,
                       aux=aux,
                       failed_linesearch=jnp.asarray(False))
@@ -372,11 +372,13 @@ class LBFGS(base.IterativeSolver):
     else:
       gamma = jnp.array(1.0)
 
+    dtype = tree_single_dtype(params)
+    error = tree_l2_norm(new_grad)
     new_state = LbfgsState(iter_num=state.iter_num + 1,
                            value=new_value,
                            grad=new_grad,
                            stepsize=jnp.asarray(new_stepsize),
-                           error=tree_l2_norm(new_grad),
+                           error=jnp.asarray(error, dtype=dtype),
                            s_history=s_history,
                            y_history=y_history,
                            rho_history=rho_history,

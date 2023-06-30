@@ -146,9 +146,11 @@ class NonlinearCG(base.IterativeSolver):
                                                        *args,
                                                        **kwargs)
 
+    dtype = tree_single_dtype(init_params)
+
     return NonlinearCGState(iter_num=jnp.asarray(0),
-                            stepsize=jnp.asarray(self.max_stepsize),
-                            error=jnp.asarray(jnp.inf),
+                            stepsize=jnp.asarray(self.max_stepsize, dtype=dtype),
+                            error=jnp.asarray(jnp.inf, dtype=dtype),
                             value=value,
                             grad=grad,
                             descent_direction=tree_scalar_mul(-1.0, grad),
@@ -229,9 +231,11 @@ class NonlinearCG(base.IterativeSolver):
     new_descent_direction = tree_add_scalar_mul(tree_scalar_mul(-1, new_grad),
                                                 new_beta,
                                                 descent_direction)
+    error = tree_l2_norm(grad)
+    dtype = tree_single_dtype(params)
     new_state = NonlinearCGState(iter_num=state.iter_num + 1,
-                                 stepsize=jnp.asarray(new_stepsize),
-                                 error=tree_l2_norm(grad),
+                                 stepsize=jnp.asarray(new_stepsize, dtype=dtype),
+                                 error=jnp.asarray(error, dtype=dtype),
                                  value=new_value,
                                  grad=new_grad,
                                  descent_direction=new_descent_direction,
@@ -272,7 +276,7 @@ class NonlinearCG(base.IterativeSolver):
     )
 
     self.run_ls = linesearch_solver.run
-    
+
     if self.condition is not None:
       warnings.warn("Argument condition is deprecated", DeprecationWarning)
     if self.decrease_factor is not None:

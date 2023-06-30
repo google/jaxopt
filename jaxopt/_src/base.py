@@ -389,8 +389,10 @@ class StochasticSolver(IterativeSolver):
     Returns:
       (params, state)
     """
-    # TODO(mblondel): data-dependent initialization schemes need a batch.
-    state = self.init_state(init_params, *args, **kwargs)
+    # Some initializations need the data so we need to draw a batch from the
+    # iterator.
+    data = next(iterator)
+    state = self.init_state(init_params, *args, **kwargs, data=data)
     params = init_params
 
     # TODO(mblondel): try and benchmark lax.fori_loop with host_call for `next`.

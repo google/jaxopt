@@ -161,7 +161,7 @@ class BFGS(base.IterativeSolver):
                      value=value,
                      grad=grad,
                      stepsize=jnp.asarray(self.max_stepsize, dtype=dtype),
-                     error=jnp.asarray(jnp.inf),
+                     error=jnp.asarray(jnp.inf, dtype=dtype),
                      H=jnp.eye(len(flat_init_params), dtype=dtype),
                      aux=aux)
 
@@ -233,11 +233,12 @@ class BFGS(base.IterativeSolver):
     new_H = _einsum('ij,jk,lk', w, state.H, w) + rho * ss
     new_H = jnp.where(jnp.isfinite(rho), new_H, state.H)
 
+    error = tree_l2_norm(new_grad)
     new_state = BfgsState(iter_num=state.iter_num + 1,
                           value=new_value,
                           grad=new_grad,
                           stepsize=jnp.asarray(new_stepsize),
-                          error=tree_l2_norm(new_grad),
+                          error=jnp.asarray(error, dtype=dtype),
                           H=new_H,
                           aux=new_aux)
 

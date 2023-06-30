@@ -161,24 +161,6 @@ def lsq_linear_cube_osp_jac(X, y, l, eps=1e-5, tol=1e-10, max_iter=None):
           lsq_linear_cube_osp(X, y, l - eps, tol, max_iter)) / (2 * eps)
 
 
-def check_states_have_same_types(state1, state2):
-  if len(state1._fields) != len(state2._fields):
-    raise ValueError("state1 and state2 should have the same number of "
-                     "attributes.")
-
-  for attr1, attr2 in zip(state1._fields, state2._fields):
-    if attr1 != attr2:
-      raise ValueError("Attribute names do not agree: %s and %s." % (attr1,
-                                                                     attr2))
-
-    type1 = type(getattr(state1, attr1)).__name__
-    type2 = type(getattr(state2, attr2)).__name__
-
-    if type1 != type2:
-      raise ValueError("Attribute '%s' has different types in state1 and "
-                       "state2: %s vs. %s" % (attr1, type1, type2))
-
-
 # Test utilities copied from JAX core so we don't depend on their private API.
 
 _dtype_to_32bit_dtype = {
