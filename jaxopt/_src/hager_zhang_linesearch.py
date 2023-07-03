@@ -36,7 +36,8 @@ import jax.numpy as jnp
 from jaxopt._src import base
 from jaxopt.tree_util import tree_add_scalar_mul
 from jaxopt.tree_util import tree_scalar_mul
-from jaxopt.tree_util import tree_vdot
+from jaxopt.tree_util import tree_vdot_real
+from jaxopt.tree_util import tree_conj
 
 
 def _failed_nan(value, grad):
@@ -63,6 +64,8 @@ class HagerZhangLineSearchState(NamedTuple):
 @dataclass(eq=False)
 class HagerZhangLineSearch(base.IterativeLineSearch):
   """Hager-Zhang line search.
+
+  Supports complex variables.
 
   Attributes:
     fun: a function of the form ``fun(params, *args, **kwargs)``, where
@@ -113,7 +116,7 @@ class HagerZhangLineSearch(base.IterativeLineSearch):
       (value, _), grad = self._value_and_grad_fun(z, *args, **kwargs)
     else:
       value, grad = self._value_and_grad_fun(z, *args, **kwargs)
-    return value, tree_vdot(grad, descent_direction)
+    return value, tree_vdot_real(tree_conj(grad), descent_direction)
 
   def _satisfies_wolfe_and_approx_wolfe(
       self,
@@ -124,7 +127,7 @@ class HagerZhangLineSearch(base.IterativeLineSearch):
       grad_initial,
       approx_wolfe_threshold_value,
       descent_direction):
-    gd_vdot = tree_vdot(grad_initial, descent_direction)
+    gd_vdot = tree_vdot_real(tree_conj(grad_initial), descent_direction)
 
     # Armijo condition
     # armijo = value_c <= value_initial + self.c1 * c * gd_vdot
@@ -387,7 +390,7 @@ class HagerZhangLineSearch(base.IterativeLineSearch):
 
 
     if descent_direction is None:
-      descent_direction = tree_scalar_mul(-1, grad)
+      descent_direction = tree_scalar_mul(-1, tree_conj(grad))
 
     approx_wolfe_threshold_value = (
         value + self.approximate_wolfe_threshold * jnp.abs(value))
@@ -477,7 +480,7 @@ class HagerZhangLineSearch(base.IterativeLineSearch):
     new_num_grad_eval = state.num_grad_eval + 1
 
     if descent_direction is None:
-      descent_direction = tree_scalar_mul(-1, grad)
+      descent_direction = tree_scalar_mul(-1, tree_conj(grad))
 
     approx_wolfe_threshold_value = (
         value + self.approximate_wolfe_threshold * jnp.abs(value))

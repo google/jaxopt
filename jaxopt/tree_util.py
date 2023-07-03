@@ -22,6 +22,7 @@ from jaxopt._src.tree_util import tree_scalar_mul
 from jaxopt._src.tree_util import tree_add_scalar_mul
 from jaxopt._src.tree_util import tree_dot
 from jaxopt._src.tree_util import tree_vdot
+from jaxopt._src.tree_util import tree_vdot_real
 from jaxopt._src.tree_util import tree_div
 from jaxopt._src.tree_util import tree_sum
 from jaxopt._src.tree_util import tree_l2_norm
@@ -30,3 +31,6 @@ from jaxopt._src.tree_util import tree_zeros_like
 from jaxopt._src.tree_util import tree_ones_like
 from jaxopt._src.tree_util import tree_negative
 from jaxopt._src.tree_util import tree_inf_norm
+from jaxopt._src.tree_util import tree_conj
+from jaxopt._src.tree_util import tree_real
+from jaxopt._src.tree_util import tree_imag
