@@ -21,6 +21,7 @@
 # [2] J. Nocedal and S. Wright.  Numerical Optimization, second edition.
 
 import dataclasses
+import inspect
 import warnings
 from typing import Any, Callable, NamedTuple, Optional, Union
 
@@ -558,6 +559,9 @@ class LBFGSB(base.IterativeSolver):
       params = params.params
     (value, _), grad = self._value_and_grad_with_aux(params, *args, **kwargs)
     return value, grad
+  
+  def _grad_fun(self, params, *args, **kwargs):
+    return self._value_and_grad_fun(params, *args, **kwargs)[1]
 
   def __post_init__(self):
     _, _, self._value_and_grad_with_aux = base._make_funs_with_aux(
@@ -565,8 +569,16 @@ class LBFGSB(base.IterativeSolver):
         value_and_grad=self.value_and_grad,
         has_aux=self.has_aux,
     )
+    
+    # Sets up reference signature.
+    fun = getattr(self.fun, "subfun", self.fun)
+    signature = inspect.signature(fun)
+    parameters = list(signature.parameters.values())
+    new_param = inspect.Parameter(name="bounds",
+                                  kind=inspect.Parameter.POSITIONAL_OR_KEYWORD)
+    parameters.insert(1, new_param)
+    self.reference_signature = inspect.Signature(parameters)
 
-    self.reference_signature = self.fun
 
     jit, unroll = self._get_loop_options()
     linesearch_solver = _setup_linesearch(
