@@ -320,6 +320,45 @@ class LbfgsTest(test_util.JaxoptTestCase):
 
     self.assertEqual(N_CALLS, n_iter + 1)
 
+  def test_first_stepsize_inf(self):
+    """Test LBFGS when the first stepsize gives an inf.
+    
+    The issue was in the zoom linesearch that did not handle well initial stepsizes returning Nan values.
+    """
+    def get_data(n_samples=200, n_features=500, random_state=42):
+      rng = onp.random.RandomState(random_state)
+      beta = rng.randn(n_features)
+
+      X = rng.randn(n_samples, n_features)
+      y = onp.sign(X @ beta)
+
+      X_test = rng.randn(n_samples, n_features)
+      y_test = onp.sign(X_test @ beta)
+
+      data = dict(X=jnp.array(X),
+                  y=jnp.array(y),
+                  X_test=jnp.array(X_test),
+                  y_test=jnp.array(y_test))
+
+      return data
+
+    def loss(beta, data, lmbd):
+        X, y = data
+        y_X_beta = y * X.dot(beta.flatten())
+        l2 = 0.5 * jnp.dot(beta, beta)
+        return jnp.log1p(jnp.exp(-y_X_beta)).sum() + lmbd * l2
+    
+    def _run_lbfgs_solver(X, y, lmbd, n_iter):
+      solver = LBFGS(fun=loss, maxiter=n_iter, tol=1e-15)
+      
+      beta_init = jnp.zeros(X.shape[1])
+      res = solver.run(beta_init, data=(X, y), lmbd=lmbd)
+      return res.params
+
+    data = get_data()
+    coef = _run_lbfgs_solver(data["X"], data["y"], 1.0, 2)
+    self.assertGreater(jnp.sum(coef**2), 0)
+    
 
 if __name__ == '__main__':
   absltest.main()

@@ -309,7 +309,7 @@ class ZoomLineSearch(base.IterativeLineSearch):
     new_stepsize_ = jnp.where(iter_num == 0, init_stepsize, larger_stepsize)
     new_stepsize = jnp.minimum(new_stepsize_, self.max_stepsize)
 
-    max_stepsize_reached = new_stepsize == self.max_stepsize
+    max_stepsize_reached = new_stepsize >= self.max_stepsize
     fail_check1 = jnp.where(
         (fail_code == 0) & max_stepsize_reached, 2, fail_code
     )
@@ -339,7 +339,7 @@ class ZoomLineSearch(base.IterativeLineSearch):
     # conditions described in Algorithm 3.5 of [1]
     set_high_to_new = (decrease_error > 0.0) | (
         (new_value_step >= prev_value_step) & (iter_num > 0)
-    )
+    ) | is_value_nan
     set_low_to_new = (new_slope_step >= 0.0) & (~set_high_to_new)
 
     # By default we set high to new and correct if we should have set
@@ -369,7 +369,7 @@ class ZoomLineSearch(base.IterativeLineSearch):
 
     # If high or low have been set or the point is good, the interval has been
     # found. Otherwise we'll keep on augmenting the stepsize.
-    interval_found = set_high_to_new | set_low_to_new | (new_error <= self.tol)
+    interval_found = set_high_to_new | set_low_to_new | (new_error <= self.tol) | is_value_nan
 
     # If new_error <= self.tol, the line search is done. In that case, we set
     # directly the new parameters, gradient, value and aux to the ones found.
@@ -386,7 +386,6 @@ class ZoomLineSearch(base.IterativeLineSearch):
     )
 
     done = new_error <= self.tol
-
     max_iter_reached = (iter_num + 1 >= self.maxiter) & (~done)
     new_fail_code = jnp.where(
         (fail_check2 == 0) & max_iter_reached, 3, fail_check2
@@ -399,7 +398,8 @@ class ZoomLineSearch(base.IterativeLineSearch):
         grad=next_grad,
         aux=next_aux,
         #
-        error=new_error,
+        # If error is nan, the linesearch would stop while one may try a smaller stepsize
+        error=jnp.where(jnp.isnan(new_error), jnp.inf, new_error),
         done=done,
         fail_code=new_fail_code,
         failed=jnp.asarray(new_fail_code > 0),
@@ -565,7 +565,7 @@ class ZoomLineSearch(base.IterativeLineSearch):
         grad=next_grad,
         aux=next_aux,
         #
-        error=new_error,
+        error=jnp.where(jnp.isnan(new_error), jnp.inf, new_error),
         done=done,
         fail_code=new_fail_code,
         failed=jnp.asarray(new_fail_code > 0),
