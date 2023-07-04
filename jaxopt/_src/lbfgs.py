@@ -35,37 +35,9 @@ from jaxopt.tree_util import tree_sum
 from jaxopt.tree_util import tree_vdot
 
 
-def inv_hessian_product_leaf(v: jnp.ndarray,
-                             s_history: jnp.ndarray,
-                             y_history: jnp.ndarray,
-                             rho_history: jnp.ndarray,
-                             gamma: float = 1.0,
-                             start: int = 0):
-
-  """Product between an approximate Hessian inverse and the leaf of a pytree."""
-  history_size = len(s_history)
-
-  indices = (start + jnp.arange(history_size)) % history_size
-
-  def body_right(r, i):
-    alpha = rho_history[i] * jnp.vdot(s_history[i], r)
-    r = r - alpha * y_history[i]
-    return r, alpha
-
-  r, alpha = jax.lax.scan(body_right, v, indices, reverse=True)
-
-  r = r * gamma
-
-  def body_left(r, args):
-    i, alpha = args
-    beta = rho_history[i] * jnp.vdot(y_history[i], r)
-    r = r + s_history[i] * (alpha - beta)
-    return r, beta
-
-  r, _ = jax.lax.scan(body_left, r, (indices, alpha))
-
-  return r
-
+def select_ith_tree(tree_history, i):
+  """Select tree corresponding to ith history entry."""
+  return tree_map(lambda a: a[i, ...], tree_history)
 
 def inv_hessian_product(pytree: Any,
                         s_history: Any,
@@ -75,18 +47,18 @@ def inv_hessian_product(pytree: Any,
                         start: int = 0):
   """Product between an approximate Hessian inverse and a pytree.
 
-  Histories are pytrees of the same structure as `pytree`.
-  Leaves are arrays of shape `(history_size, ...)`, where
+  Histories are pytrees of the same structure as `pytree` except 
+  that the leaves are arrays of shape `(history_size, ...)`, where
   `...` means the same shape as `pytree`'s leaves.
 
   The notation follows the reference below.
 
   Args:
     pytree: pytree to multiply with.
-    s_history: pytree with the same structure as `pytree`.
-      Leaves contain parameter residuals, i.e., `s[k] = x[k+1] - x[k]`.
-    y_history: pytree with the same structure as `pytree`.
-      Leaves contain gradient residuals, i.e., `y[k] = g[k+1] - g[k]`.
+    s_history: pytree whose leaves contain parameter residuals,
+      i.e., `s[k] = x[k+1] - x[k]`
+    y_history: pytree whose leaves contain gradient residuals,
+      i.e., `y[k] = g[k+1] - g[k]`.
     rho_history: array containing `rho[k] = 1. / vdot(s[k], y[k])`.
     gamma: scalar to use for the initial inverse Hessian approximation,
       i.e., `gamma * I`.
@@ -100,11 +72,29 @@ def inv_hessian_product(pytree: Any,
     Numerical Optimization, second edition.
     Algorithm 7.4 (page 178).
   """
-  fun = partial(inv_hessian_product_leaf,
-                rho_history=rho_history,
-                gamma=gamma,
-                start=start)
-  return tree_map(fun, pytree, s_history, y_history)
+
+  history_size = rho_history.shape[0]
+
+  indices = (start + jnp.arange(history_size)) % history_size
+
+  def body_right(r, i):
+    si, yi = select_ith_tree(s_history, i), select_ith_tree(y_history, i)
+    alpha = rho_history[i] * tree_vdot(si, r)
+    r = tree_add_scalar_mul(r, -alpha, yi)
+    return r, alpha
+  r, alpha = jax.lax.scan(body_right, pytree, indices, reverse=True)
+
+  r = tree_scalar_mul(gamma, r)
+
+  def body_left(r, args):
+    i, alpha = args
+    si, yi = select_ith_tree(s_history, i), select_ith_tree(y_history, i)
+    beta = rho_history[i] * tree_vdot(yi, r)
+    r = tree_add_scalar_mul(r, alpha - beta, si)
+    return r, beta
+  r, _ = jax.lax.scan(body_left, r, (indices, alpha))
+
+  return r
 
 
 def compute_gamma(s_history: Any, y_history: Any, last: int):

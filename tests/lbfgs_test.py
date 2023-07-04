@@ -16,12 +16,17 @@ from absl.testing import absltest
 from absl.testing import parameterized
 import jax
 import jax.numpy as jnp
+from jax import random
+from jax.tree_util import tree_map
+from jax.flatten_util import ravel_pytree
 from jaxopt import BacktrackingLineSearch
 from jaxopt import LBFGS
 from jaxopt import objective
 from jaxopt import OptStep
 from jaxopt._src import test_util
 from jaxopt._src.lbfgs import inv_hessian_product
+from jaxopt._src.lbfgs import select_ith_tree
+from jaxopt.tree_util import tree_sum
 import numpy as onp
 import scipy.optimize as opt
 from sklearn import datasets
@@ -29,7 +34,8 @@ from sklearn import datasets
 
 N_CALLS = 0
 
-def materialize_inv_hessian(s_history, y_history, rho_history, start):
+
+def _materialize_inv_hessian(s_history, y_history, rho_history, start):
   history_size, n_dim = s_history.shape
 
   s_history = jnp.roll(s_history, -start, axis=0)
@@ -139,7 +145,7 @@ class LbfgsTest(test_util.JaxoptTestCase):
 
     Hv1 = _inv_hessian_product(s_history, y_history, v)
 
-    H = materialize_inv_hessian(s_history, y_history, rho_history, 0)
+    H = _materialize_inv_hessian(s_history, y_history, rho_history, 0)
     Hv2 = H.dot(v)
 
     Hv3 = inv_hessian_product(v, s_history, y_history, rho_history, start=0)
@@ -155,36 +161,37 @@ class LbfgsTest(test_util.JaxoptTestCase):
     shape2 = (5,)
 
     s_history1 = jnp.array(rng.randn(history_size, *shape1))
-    y_history1 = jnp.array(rng.randn(history_size, *shape1))
-
     s_history2 = jnp.array(rng.randn(history_size, *shape2))
+    
+    y_history1 = jnp.array(rng.randn(history_size, *shape1))
     y_history2 = jnp.array(rng.randn(history_size, *shape2))
-    rho_history2 = jnp.array([1./ jnp.vdot(s_history2[i], y_history2[i])
-                              for i in range(history_size)])
 
     v1 = jnp.array(rng.randn(*shape1))
     v2 = jnp.array(rng.randn(*shape2))
-    pytree = (v1, v2)
 
     s_history = (s_history1, s_history2)
     y_history = (y_history1, y_history2)
+    pytree = (v1, v2)
 
-    inv_rho_history = [jnp.vdot(s_history1[i], y_history1[i]) +
-                       jnp.vdot(s_history2[i], y_history2[i])
+    v = ravel_pytree(pytree)[0]
+    s = [ravel_pytree(select_ith_tree(s_history, i))[0]
+          for i in range(history_size)]
+    y = [ravel_pytree(select_ith_tree(y_history, i))[0]
+          for i in range(history_size)]
+    s, y = jnp.stack(s), jnp.stack(y)
+
+    inv_rho_history = [jnp.vdot(s[i], y[i])
                        for i in range(history_size)]
     rho_history = 1./ jnp.array(inv_rho_history)
 
-    H1 = materialize_inv_hessian(s_history1.reshape(history_size, -1),
-                                 y_history1.reshape(history_size, -1),
-                                 rho_history, start)
-    H2 = materialize_inv_hessian(s_history2, y_history2, rho_history, start)
-    Hv1 = jnp.dot(H1, v1.reshape(-1)).reshape(shape1)
-    Hv2 = jnp.dot(H2, v2)
-
     Hv = inv_hessian_product(pytree, s_history, y_history, rho_history,
                              start=start)
-    self.assertArraysAllClose(Hv[0], Hv1, atol=1e-2)
-    self.assertArraysAllClose(Hv[1], Hv2, atol=1e-2)
+    Hv = ravel_pytree(Hv)[0]
+
+    H = _materialize_inv_hessian(s, y, rho_history, start)
+    Hv_mat = jnp.dot(H, v)
+
+    self.assertArraysAllClose(Hv, Hv_mat, atol=1e-5, rtol=1e-5)
 
   @parameterized.product(use_gamma=[True, False])
   def test_correctness(self, use_gamma):
@@ -370,7 +377,23 @@ class LbfgsTest(test_util.JaxoptTestCase):
                    linesearch="zoom", maxls=10, tol=1e-12)
     jaxopt_res = solver.run(beta_init, y, x)
     self.assertArraysAllClose(scipy_res.x, jaxopt_res.params)
+
+  def test_handling_pytrees(self):
+    def fun_(x):
+      return sum(100.0*(x[..., 1:] - x[...,:-1]**2.0)**2.0 + (1 - x[...,:-1])**2.0)
+
+    def fun(x):
+      return tree_sum(tree_map(fun_, x))
     
+    key = random.PRNGKey(0)
+    x_arr0 = random.normal(key, (2, 4))
+    x_tree0 = (x_arr0[0], x_arr0[1])
+
+    lbfgs = LBFGS(fun=fun, maxiter=5)
+    x_arr, _ = lbfgs.run(x_arr0)
+    x_tree, _ = lbfgs.run(x_tree0)
+    x_tree = jnp.stack((x_tree[0], x_tree[1]))
+    self.assertArraysAllClose(x_arr, x_tree)
 
 if __name__ == '__main__':
   absltest.main()
