@@ -248,6 +248,21 @@ class LbfgsbTest(test_util.JaxoptTestCase):
 
     self.assertEqual(N_CALLS, n_iter + 1)
 
+  def test_grad_with_bounds(self):
+    # Test that the gradient is correct when bounds are specified by keyword.
+    # Pertinent to issue #463.
+    def pipeline(x, init_pars, bounds, data):
+      def fit_objective(pars, data, x):
+        return -jax.scipy.stats.norm.logpdf(pars, loc=data*x, scale=1.0)
+      solver = LBFGSB(fun=fit_objective, implicit_diff=True, maxiter=500, tol=1e-6)
+      return solver.run(init_pars, bounds=bounds, data=data, x=x)[0]
+
+    grad_fn = jax.grad(pipeline)
+    data = jnp.array(1.5)
+    res = grad_fn(0.5, jnp.array(0.0), (jnp.array(0.0), jnp.array(10.0)), data)
+    self.assertEqual(res, data)
+      
+
 
 if __name__ == "__main__":
   absltest.main()
