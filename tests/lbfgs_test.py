@@ -14,20 +14,15 @@
 
 from absl.testing import absltest
 from absl.testing import parameterized
-
 import jax
 import jax.numpy as jnp
-
-import numpy as onp
-
-from jaxopt._src.lbfgs import inv_hessian_product
-
-from jaxopt import OptStep
+from jaxopt import BacktrackingLineSearch
 from jaxopt import LBFGS
 from jaxopt import objective
+from jaxopt import OptStep
 from jaxopt._src import test_util
-
-
+from jaxopt._src.lbfgs import inv_hessian_product
+import numpy as onp
 from sklearn import datasets
 
 
@@ -151,7 +146,6 @@ class LbfgsTest(test_util.JaxoptTestCase):
     self.assertArraysAllClose(Hv1, Hv2, atol=1e-2)
     self.assertArraysAllClose(Hv1, Hv3, atol=1e-2)
 
-
   @parameterized.product(start=[0, 1, 2, 3])
   def test_inv_hessian_product_pytree(self, start):
     rng = onp.random.RandomState(0)
@@ -206,18 +200,26 @@ class LbfgsTest(test_util.JaxoptTestCase):
 
     self.assertArraysAllClose(x1, x2, atol=1e-5)
 
-  @parameterized.product(use_gamma=[True, False],
-                         linesearch=["backtracking", "zoom", "hager-zhang"])
-  def test_binary_logreg(self, use_gamma, linesearch):
-    X, y = datasets.make_classification(n_samples=10, n_features=5,
-                                        n_classes=2, n_informative=3,
-                                        random_state=0)
+  @parameterized.product(
+      use_gamma=[True, False],
+      linesearch=[
+          "backtracking",
+          "zoom",
+          "hager-zhang",
+          BacktrackingLineSearch(objective.binary_logreg, decrease_factor=0.5),
+      ],
+      linesearch_init=["max", "current", "increase"]
+  )
+  def test_binary_logreg(self, use_gamma, linesearch, linesearch_init):
+    X, y = datasets.make_classification(
+        n_samples=10, n_features=5, n_classes=2, n_informative=3, random_state=0
+    )
     data = (X, y)
     fun = objective.binary_logreg
 
     w_init = jnp.zeros(X.shape[1])
     lbfgs = LBFGS(fun=fun, tol=1e-3, maxiter=500, use_gamma=use_gamma,
-                  linesearch=linesearch)
+                  linesearch=linesearch, linesearch_init=linesearch_init)
     # Test with keyword argument.
     w_fit, info = lbfgs.run(w_init, data=data)
 
@@ -229,23 +231,31 @@ class LbfgsTest(test_util.JaxoptTestCase):
                                  multiclass=False)
     self.assertArraysAllClose(w_fit, w_skl, atol=5e-2)
 
-  @parameterized.product(use_gamma=[True, False],
-                         linesearch=["backtracking", "zoom", "hager-zhang"])
+  @parameterized.product(
+      use_gamma=[True, False],
+      linesearch=[
+          "backtracking",
+          "zoom",
+          "hager-zhang",
+          BacktrackingLineSearch(
+              objective.multiclass_logreg_with_intercept, decrease_factor=0.5
+          ),
+      ],
+  )
   def test_multiclass_logreg(self, use_gamma, linesearch):
-    X, y = datasets.make_classification(n_samples=10, n_features=5,
-                                        n_classes=3, n_informative=3,
-                                        random_state=0)
-    data = (X, y)
+    data = datasets.make_classification(
+        n_samples=10, n_features=5, n_classes=3, n_informative=3, random_state=0
+    )
     fun = objective.multiclass_logreg_with_intercept
 
-    W_init = jnp.zeros((X.shape[1], 3))
+    w_init = jnp.zeros((data[0].shape[1], 3))
     b_init = jnp.zeros(3)
-    pytree_init = (W_init, b_init)
+    pytree_init = (w_init, b_init)
 
     lbfgs = LBFGS(fun=fun, tol=1e-3, maxiter=500, use_gamma=use_gamma,
                   linesearch=linesearch)
     # Test with positional argument.
-    pytree_fit, info = lbfgs.run(pytree_init, data)
+    _, info = lbfgs.run(pytree_init, data)
 
     # Check optimality conditions.
     self.assertLessEqual(info.error, 1e-2)
@@ -310,7 +320,45 @@ class LbfgsTest(test_util.JaxoptTestCase):
 
     self.assertEqual(N_CALLS, n_iter + 1)
 
+  def test_first_stepsize_inf(self):
+    """Test LBFGS when the first stepsize gives an inf.
+    
+    The issue was in the zoom linesearch that did not handle well initial stepsizes returning Nan values.
+    """
+    def get_data(n_samples=200, n_features=500, random_state=42):
+      rng = onp.random.RandomState(random_state)
+      beta = rng.randn(n_features)
 
+      X = rng.randn(n_samples, n_features)
+      y = onp.sign(X @ beta)
+
+      X_test = rng.randn(n_samples, n_features)
+      y_test = onp.sign(X_test @ beta)
+
+      data = dict(X=jnp.array(X),
+                  y=jnp.array(y),
+                  X_test=jnp.array(X_test),
+                  y_test=jnp.array(y_test))
+
+      return data
+
+    def loss(beta, data, lmbd):
+        X, y = data
+        y_X_beta = y * X.dot(beta.flatten())
+        l2 = 0.5 * jnp.dot(beta, beta)
+        return jnp.log1p(jnp.exp(-y_X_beta)).sum() + lmbd * l2
+    
+    def _run_lbfgs_solver(X, y, lmbd, n_iter):
+      solver = LBFGS(fun=loss, maxiter=n_iter, tol=1e-15)
+      
+      beta_init = jnp.zeros(X.shape[1])
+      res = solver.run(beta_init, data=(X, y), lmbd=lmbd)
+      return res.params
+
+    data = get_data()
+    coef = _run_lbfgs_solver(data["X"], data["y"], 1.0, 2)
+    self.assertGreater(jnp.sum(coef**2), 0)
+    
 
 if __name__ == '__main__':
   absltest.main()

@@ -21,6 +21,7 @@ import jax.numpy as jnp
 import numpy as onp
 
 from jaxopt import BFGS
+from jaxopt import BacktrackingLineSearch
 from jaxopt import objective
 from jaxopt._src import test_util
 
@@ -77,9 +78,9 @@ class BfgsTest(test_util.JaxoptTestCase):
 
   @parameterized.product(linesearch=["backtracking", "zoom"])
   def test_binary_logreg(self, linesearch):
-    X, y = datasets.make_classification(n_samples=10, n_features=5,
-                                        n_classes=2, n_informative=3,
-                                        random_state=0)
+    X, y = datasets.make_classification(
+        n_samples=10, n_features=5, n_classes=2, n_informative=3, random_state=0
+    )
     data = (X, y)
     fun = objective.binary_logreg
 
@@ -96,21 +97,33 @@ class BfgsTest(test_util.JaxoptTestCase):
                                  multiclass=False)
     self.assertArraysAllClose(w_fit, w_skl, atol=5e-2)
 
-  @parameterized.product(linesearch=["backtracking", "zoom"])
-  def test_multiclass_logreg(self, linesearch):
-    X, y = datasets.make_classification(n_samples=10, n_features=5,
-                                        n_classes=3, n_informative=3,
-                                        random_state=0)
-    data = (X, y)
+  @parameterized.product(
+      linesearch=[
+          "backtracking",
+          "zoom",
+          BacktrackingLineSearch(objective.multiclass_logreg_with_intercept),
+      ],
+      linesearch_init=["max", "current", "increase"]
+  )
+  def test_multiclass_logreg(self, linesearch, linesearch_init):
+    data = datasets.make_classification(
+        n_samples=10, n_features=5, n_classes=3, n_informative=3, random_state=0
+    )
     fun = objective.multiclass_logreg_with_intercept
 
-    W_init = jnp.zeros((X.shape[1], 3))
+    w_init = jnp.zeros((data[0].shape[1], 3))
     b_init = jnp.zeros(3)
-    pytree_init = (W_init, b_init)
+    pytree_init = (w_init, b_init)
 
-    bfgs = BFGS(fun=fun, tol=1e-3, maxiter=500, linesearch=linesearch)
+    bfgs = BFGS(
+        fun=fun,
+        tol=1e-3,
+        maxiter=500,
+        linesearch=linesearch,
+        linesearch_init=linesearch_init,
+    )
     # Test with positional argument.
-    pytree_fit, info = bfgs.run(pytree_init, data)
+    _, info = bfgs.run(pytree_init, data)
 
     # Check optimality conditions.
     self.assertLessEqual(info.error, 1e-2)

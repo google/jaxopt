@@ -92,14 +92,16 @@ class BacktrackingLineSearch(base.IterativeLineSearch):
   jit: base.AutoOrBoolean = "auto"
   unroll: base.AutoOrBoolean = "auto"
 
-  def init_state(self,
-                 init_stepsize: float,
-                 params: Any,
-                 value: Optional[float] = None,
-                 grad: Optional[Any] = None,
-                 descent_direction: Optional[Any] = None,
-                 *args,
-                 **kwargs) -> BacktrackingLineSearchState:
+  def init_state(
+      self,
+      init_stepsize: float,
+      params: Any,
+      value: Optional[float] = None,
+      grad: Optional[Any] = None,
+      descent_direction: Optional[Any] = None,
+      fun_args: list = [],
+      fun_kwargs: dict = {},
+  ) -> BacktrackingLineSearchState:
     """Initialize the line search state.
 
     Args:
@@ -108,8 +110,8 @@ class BacktrackingLineSearch(base.IterativeLineSearch):
       value: current function value (recomputed if None).
       grad: current gradient (recomputed if None).
       descent_direction: ignored.
-      *args: additional positional arguments to be passed to ``fun``.
-      **kwargs: additional keyword arguments to be passed to ``fun``.
+      fun_args: additional positional arguments to be passed to ``fun``.
+      fun_kwargs: additional keyword arguments to be passed to ``fun``.
     Returns:
       state
     """
@@ -119,16 +121,18 @@ class BacktrackingLineSearch(base.IterativeLineSearch):
     num_grad_eval = 0
     if value is None or grad is None:
       if self.has_aux:
-        (value, _), grad = self._value_and_grad_fun(params, *args, **kwargs)
+        (value, _), grad = self._value_and_grad_fun(
+            params, *fun_args, **fun_kwargs
+        )
       else:
-        value, grad = self._value_and_grad_fun(params, *args, **kwargs)
+        value, grad = self._value_and_grad_fun(params, *fun_args, **fun_kwargs)
       num_fun_eval += 1
       num_grad_eval += 1
 
     return BacktrackingLineSearchState(iter_num=jnp.asarray(0),
                                        value=value,
-                                       aux=None,  # we do not need to have aux in the
-                                       # initial state
+                                       aux=None,  # we do not need to have aux
+                                       # in the initial state
                                        error=jnp.asarray(jnp.inf),
                                        params=params,
                                        num_fun_eval=num_fun_eval,
@@ -137,15 +141,17 @@ class BacktrackingLineSearch(base.IterativeLineSearch):
                                        grad=grad,
                                        failed=jnp.asarray(False))
 
-  def update(self,
-             stepsize: float,
-             state: NamedTuple,
-             params: Any,
-             value: Optional[float] = None,
-             grad: Optional[Any] = None,
-             descent_direction: Optional[Any] = None,
-             *args,
-             **kwargs) -> base.LineSearchStep:
+  def update(
+      self,
+      stepsize: float,
+      state: NamedTuple,
+      params: Any,
+      value: Optional[float] = None,
+      grad: Optional[Any] = None,
+      descent_direction: Optional[Any] = None,
+      fun_args: list = [],
+      fun_kwargs: dict = {},
+  ) -> base.LineSearchStep:
     """Performs one iteration of backtracking line search.
 
     Args:
@@ -155,8 +161,8 @@ class BacktrackingLineSearch(base.IterativeLineSearch):
       value: current function value (recomputed if None).
       grad: current gradient (recomputed if None).
       descent_direction: descent direction (negative gradient if None).
-      *args: additional positional arguments to be passed to ``fun``.
-      **kwargs: additional keyword arguments to be passed to ``fun``.
+      fun_args: additional positional arguments to be passed to ``fun``.
+      fun_kwargs: additional keyword arguments to be passed to ``fun``.
     Returns:
       (params, state)
     """
@@ -167,9 +173,9 @@ class BacktrackingLineSearch(base.IterativeLineSearch):
 
     if value is None or grad is None:
       if self.has_aux:
-        (value, _), grad = self._value_and_grad_fun(params, *args, **kwargs)
+        (value, _), grad = self._value_and_grad_fun(params, *fun_args, **fun_kwargs)
       else:
-        value, grad = self._value_and_grad_fun(params, *args, **kwargs)
+        value, grad = self._value_and_grad_fun(params, *fun_args, **fun_kwargs)
       num_fun_eval += 1
       num_grad_eval += 1
 
@@ -181,9 +187,13 @@ class BacktrackingLineSearch(base.IterativeLineSearch):
     # from the basepoint. i.e. x_i  = x_0 + s_i * p
     new_params = tree_add_scalar_mul(params, stepsize, descent_direction)
     if self.has_aux:
-      (new_value, new_aux), new_grad = self._value_and_grad_fun(new_params, *args, **kwargs)
+      (new_value, new_aux), new_grad = self._value_and_grad_fun(
+          new_params, *fun_args, **fun_kwargs
+      )
     else:
-      new_value, new_grad = self._value_and_grad_fun(new_params, *args, **kwargs)
+      new_value, new_grad = self._value_and_grad_fun(
+          new_params, *fun_args, **fun_kwargs
+      )
       new_aux = None
     new_gd_vdot = tree_vdot(new_grad, descent_direction)
 
@@ -254,4 +264,6 @@ class BacktrackingLineSearch(base.IterativeLineSearch):
     if self.value_and_grad:
       self._value_and_grad_fun = self.fun
     else:
-      self._value_and_grad_fun = jax.value_and_grad(self.fun, has_aux=self.has_aux)
+      self._value_and_grad_fun = jax.value_and_grad(
+          self.fun, has_aux=self.has_aux
+      )

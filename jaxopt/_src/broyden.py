@@ -333,9 +333,10 @@ class Broyden(base.IterativeSolver):
         new_stepsize, ls_state = ls.run(init_stepsize,
                                         params, value, None,
                                         descent_direction,
-                                        *args, **kwargs)
+                                        fun_args=args, fun_kwargs=kwargs)
         new_value, new_aux = ls_state.aux
         new_params = ls_state.params
+        failed_linesearch = ls_state.failed
       else:
         raise ValueError("Invalid name in 'linesearch' option.")
     else:
@@ -344,6 +345,7 @@ class Broyden(base.IterativeSolver):
         new_stepsize = self.stepsize(state.iter_num)
       else:
         new_stepsize = self.stepsize
+      failed_linesearch = False
 
       new_params = tree_add_scalar_mul(params, new_stepsize, descent_direction)
       new_value, new_aux = self._value_with_aux(new_params, *args, **kwargs)
@@ -366,7 +368,7 @@ class Broyden(base.IterativeSolver):
                              c_history=c_history,
                              gamma=state.gamma,
                              aux=new_aux,
-                             failed_linesearch=jnp.asarray(False))
+                             failed_linesearch=failed_linesearch)
 
     return base.OptStep(params=new_params, state=new_state)
 

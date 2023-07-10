@@ -29,6 +29,8 @@ import jax.numpy as jnp
 from jaxopt.tree_util import tree_add_scalar_mul, tree_l2_norm
 from jaxopt.tree_util import tree_scalar_mul, tree_zeros_like
 from jaxopt.tree_util import tree_add, tree_sub
+from jaxopt._src.tree_util import tree_single_dtype
+
 from jaxopt._src import base
 from jaxopt._src import loop
 
@@ -133,7 +135,10 @@ class ArmijoState(NamedTuple):
 class ArmijoSGD(base.StochasticSolver):
   """SGD with Armijo line search.
 
-  This implementation assumes that the interpolation property holds.
+  This implementation assumes that the "interpolation property" holds, see for example Vaswani et al. 2019 (https://arxiv.org/abs/1905.09997):
+    the global optimum over D must also be a global optimum for any finite sample of D
+  This is typically achieved by overparametrized models (e.g neural networks)
+  in classification tasks with separable classes, or on regression tasks without noise.
   In practice this algorithm works well outside this setting.
 
   Attributes:
@@ -241,15 +246,22 @@ class ArmijoSGD(base.StochasticSolver):
       velocity = tree_zeros_like(init_params)
 
     if self.has_aux:
-      _, aux = self.fun(init_params, *args, **kwargs)
+      value, aux = self.fun(init_params, *args, **kwargs)
     else:
+      value = self.fun(init_params, *args, **kwargs)
       aux = None
 
+    params_dtype = tree_single_dtype(init_params)
+
     return ArmijoState(iter_num=jnp.asarray(0),
-                       error=jnp.asarray(jnp.inf),
-                       value=jnp.asarray(jnp.inf),
+                       # Error should be dtype-compatible with the parameters,
+                       # not with the value, since the error is derived from the
+                       # gradient, which lives in the same space as the params.
+                       error=jnp.asarray(jnp.inf, dtype=params_dtype),
+                       value=jnp.asarray(jnp.inf, value.dtype),
                        aux=aux,
-                       stepsize=jnp.asarray(self.max_stepsize),
+                       stepsize=jnp.asarray(self.max_stepsize,
+                                            dtype=params_dtype),
                        velocity=velocity)
 
   def reset_stepsize(self, stepsize):
@@ -272,6 +284,8 @@ class ArmijoSGD(base.StochasticSolver):
     Returns:
       (params, state)
     """
+    dtype = tree_single_dtype(params)
+
     if self.pre_update:
       params, state = self.pre_update(params, state, *args, **kwargs)
 
@@ -297,10 +311,10 @@ class ArmijoSGD(base.StochasticSolver):
     error = tree_l2_norm(grad, squared=False)
 
     next_state = ArmijoState(iter_num=state.iter_num+1,
-                             error=error,
-                             value=f_next,
+                             error=jnp.asarray(error, dtype=dtype),
+                             value=jnp.asarray(f_next),
                              aux=aux,
-                             stepsize=stepsize,
+                             stepsize=jnp.asarray(stepsize, dtype=dtype),
                              velocity=next_velocity)
 
     return base.OptStep(next_params, next_state)

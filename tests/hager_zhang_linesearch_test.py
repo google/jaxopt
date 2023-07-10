@@ -68,13 +68,17 @@ class HagerZhangLinesearchTest(test_util.JaxoptTestCase):
     # Manual loop.
     ls = HagerZhangLineSearch(fun=fun)
     stepsize = 1.0
-    state = ls.init_state(init_stepsize=1., params=w_init, data=data)
+    state = ls.init_state(
+        init_stepsize=1.0, params=w_init, fun_kwargs={"data": data}
+    )
     stepsize, state = ls.update(stepsize=stepsize, state=state, params=w_init,
-                                data=data)
+                                fun_kwargs={"data": data})
 
     # Call to run.
     ls = HagerZhangLineSearch(fun=fun, maxiter=20)
-    stepsize, state = ls.run(init_stepsize=1., params=w_init, data=data)
+    stepsize, state = ls.run(
+        init_stepsize=1.0, params=w_init, fun_kwargs={"data": data}
+    )
     self._check_conditions_satisfied(
         ls.c1, ls.c2, stepsize, initial_value, initial_grad, state)
 
@@ -82,13 +86,17 @@ class HagerZhangLinesearchTest(test_util.JaxoptTestCase):
     ls = HagerZhangLineSearch(fun=jax.value_and_grad(fun),
                               maxiter=20,
                               value_and_grad=True)
-    stepsize, state = ls.run(init_stepsize=1., params=w_init, data=data)
+    stepsize, state = ls.run(
+        init_stepsize=1.0, params=w_init, fun_kwargs={"data": data}
+    )
     self._check_conditions_satisfied(
         ls.c1, ls.c2, stepsize, initial_value, initial_grad, state)
 
     # Failed linesearch (high c1 ensures convergence condition is not met).
     ls = HagerZhangLineSearch(fun=fun, maxiter=20, c1=2.)
-    _, state = ls.run(init_stepsize=1., params=w_init, data=data)
+    _, state = ls.run(
+        init_stepsize=1.0, params=w_init, fun_kwargs={"data": data}
+    )
     self.assertTrue(jnp.all(state.failed))
     self.assertFalse(jnp.any(state.done))
 

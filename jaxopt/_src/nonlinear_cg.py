@@ -12,31 +12,24 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Nonlinear conjugate gradient algorithm"""
+"""Nonlinear conjugate gradient algorithm."""
 
-from typing import Any
-from typing import Callable
-from typing import NamedTuple
-from typing import Optional
-
+import warnings
 from dataclasses import dataclass
-
-import functools
+from typing import Any, Callable, NamedTuple, Optional
 
 import jax
 import jax.numpy as jnp
-
 from jaxopt._src import base
-from jaxopt._src.linesearch_util import _reset_stepsize
+from jaxopt._src.linesearch_util import _init_stepsize
 from jaxopt._src.linesearch_util import _setup_linesearch
-
-from jaxopt.tree_util import tree_vdot
-from jaxopt.tree_util import tree_scalar_mul
+from jaxopt._src.tree_util import tree_single_dtype
 from jaxopt.tree_util import tree_add_scalar_mul
-from jaxopt.tree_util import tree_sub
 from jaxopt.tree_util import tree_div
 from jaxopt.tree_util import tree_l2_norm
-from jaxopt._src.tree_util import tree_single_dtype
+from jaxopt.tree_util import tree_scalar_mul
+from jaxopt.tree_util import tree_sub
+from jaxopt.tree_util import tree_vdot
 
 
 class NonlinearCGState(NamedTuple):
@@ -74,10 +67,20 @@ class NonlinearCG(base.IterativeSolver):
       (default: "polak-ribiere")
 
     linesearch: the type of line search to use: "backtracking" for backtracking
-      line search or "zoom" for zoom line search.
+      line search, "zoom" for zoom line search or "hager-zhang" for Hager-Zhang
+      line search.
+    linesearch_init: strategy for line-search initialization. By default, it
+      will use "increase", which will increased the step-size by a factor of
+      `increase_factor` at each iteration if the step-size is larger than
+      `min_stepsize`, and set it to `max_stepsize` otherwise. Other choices are
+      "max", that initializes the step-size to `max_stepsize` at every
+      iteration, and "current", that uses the step-size from the previous
+      iteration.
+    condition: Deprecated. Condition used to select the stepsize when using
+      backtracking linesearch.
     maxls: maximum number of iterations to use in the line search.
-    decrease_factor: factor by which to decrease the stepsize during line search
-      (default: 0.8).
+    decrease_factor: Deprecated. Factor by which to decrease the stepsize during
+      line search when using backtracking linesearch (default: 0.8).
     increase_factor: factor by which to increase the stepsize during line search
       (default: 1.2).
     max_stepsize: upper bound on stepsize.
@@ -108,9 +111,10 @@ class NonlinearCG(base.IterativeSolver):
 
   method: str = "polak-ribiere"  # same as SciPy
   linesearch: str = "zoom"
-  condition: str = "strong-wolfe"
+  linesearch_init: str = "increase"
+  condition: Any = None  # deprecated in v0.8
   maxls: int = 15
-  decrease_factor: float = 0.8
+  decrease_factor: Any = None  # deprecated in v0.8
   increase_factor: float = 1.2
   max_stepsize: float = 1.0
   # FIXME: should depend on whether float32 or float64 is used.
@@ -142,9 +146,11 @@ class NonlinearCG(base.IterativeSolver):
                                                        *args,
                                                        **kwargs)
 
+    dtype = tree_single_dtype(init_params)
+
     return NonlinearCGState(iter_num=jnp.asarray(0),
-                            stepsize=jnp.asarray(self.max_stepsize),
-                            error=jnp.asarray(jnp.inf),
+                            stepsize=jnp.asarray(self.max_stepsize, dtype=dtype),
+                            error=jnp.asarray(jnp.inf, dtype=dtype),
                             value=value,
                             grad=grad,
                             descent_direction=tree_scalar_mul(-1.0, grad),
@@ -178,15 +184,23 @@ class NonlinearCG(base.IterativeSolver):
       ls_descent_direction = None
     else:
       ls_descent_direction = descent_direction
-    init_stepsize = self._reset_stepsize(state.stepsize)
+
+    init_stepsize = _init_stepsize(
+        self.linesearch_init,
+        self.max_stepsize,
+        self.min_stepsize,
+        self.increase_factor,
+        state.stepsize,
+    )
+
     new_stepsize, ls_state = self.run_ls(
         init_stepsize,
         params,
         value,
         grad,
         ls_descent_direction,
-        *args,
-        **kwargs,
+        args,
+        kwargs,
     )
     new_params = ls_state.params
     new_value = ls_state.value
@@ -217,9 +231,11 @@ class NonlinearCG(base.IterativeSolver):
     new_descent_direction = tree_add_scalar_mul(tree_scalar_mul(-1, new_grad),
                                                 new_beta,
                                                 descent_direction)
+    error = tree_l2_norm(grad)
+    dtype = tree_single_dtype(params)
     new_state = NonlinearCGState(iter_num=state.iter_num + 1,
-                                 stepsize=jnp.asarray(new_stepsize),
-                                 error=tree_l2_norm(grad),
+                                 stepsize=jnp.asarray(new_stepsize, dtype=dtype),
+                                 error=jnp.asarray(error, dtype=dtype),
                                  value=new_value,
                                  grad=new_grad,
                                  descent_direction=new_descent_direction,
@@ -239,10 +255,9 @@ class NonlinearCG(base.IterativeSolver):
     return self._value_and_grad_fun(params, *args, **kwargs)[1]
 
   def __post_init__(self):
-    _, _, self._value_and_grad_with_aux = \
-      base._make_funs_with_aux(fun=self.fun,
-                               value_and_grad=self.value_and_grad,
-                               has_aux=self.has_aux)
+    _, _, self._value_and_grad_with_aux = base._make_funs_with_aux(
+        fun=self.fun, value_and_grad=self.value_and_grad, has_aux=self.has_aux
+    )
 
     self.reference_signature = self.fun
 
@@ -257,21 +272,14 @@ class NonlinearCG(base.IterativeSolver):
         max_stepsize=self.max_stepsize,
         jit=jit,
         unroll=unroll,
-        verbose=self.verbose,
-        condition=self.condition,
-        decrease_factor=self.decrease_factor,
-        increase_factor=self.increase_factor,
-    )
-    
-    self._reset_stepsize = functools.partial(
-        _reset_stepsize,
-        self.linesearch,
-        self.max_stepsize,
-        self.min_stepsize,
-        self.increase_factor,
+        verbose=self.verbose
     )
 
-    if jit:
-      self.run_ls = jax.jit(linesearch_solver.run)
-    else:
-      self.run_ls = linesearch_solver.run
+    self.run_ls = linesearch_solver.run
+
+    if self.condition is not None:
+      warnings.warn("Argument condition is deprecated", DeprecationWarning)
+    if self.decrease_factor is not None:
+      warnings.warn(
+          "Argument decrease_factor is deprecated", DeprecationWarning
+      )

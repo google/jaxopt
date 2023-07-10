@@ -165,6 +165,19 @@ class AndersonAccelerationTest(test_util.JaxoptTestCase):
       return aa.run(x0, *args, **kwargs)[0]
     check_grads(solve_run, args=([M, b], {}), order=1, modes=['rev'], eps=1e-4)
 
+  def test_has_aux(self):
+    """Non regression test for issue #443."""
+    def fun_with_aux(x):
+      y = 0.5 * x + 0.5
+      aux = x*10
+      return y, aux
+    x0 = jnp.array([1.,-0.5])
+    aa = AndersonAcceleration(fun_with_aux, has_aux=True,
+                              history_size=5, maxiter=10*1000,
+                              ridge=1e-6, tol=1e-4)
+    sol, state = aa.run(x0)
+    self.assertLess(state.error, 1e-4)
+
   @parameterized.product(mixing_frequency=[1, 5, 10])
   def test_mixing_frequency(self, mixing_frequency):
     """Test mixing_frequency on affine contractive mapping."""

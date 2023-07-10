@@ -26,6 +26,7 @@ from jax import lax
 import jax.numpy as jnp
 from jaxopt._src import base
 from jaxopt._src.base import _make_funs_with_aux
+from jaxopt._src.cond import cond
 from jaxopt._src.tree_util import tree_single_dtype
 from jaxopt.tree_util import tree_add_scalar_mul
 from jaxopt.tree_util import tree_scalar_mul
@@ -308,7 +309,7 @@ class ZoomLineSearch(base.IterativeLineSearch):
     new_stepsize_ = jnp.where(iter_num == 0, init_stepsize, larger_stepsize)
     new_stepsize = jnp.minimum(new_stepsize_, self.max_stepsize)
 
-    max_stepsize_reached = new_stepsize == self.max_stepsize
+    max_stepsize_reached = new_stepsize >= self.max_stepsize
     fail_check1 = jnp.where(
         (fail_code == 0) & max_stepsize_reached, 2, fail_code
     )
@@ -338,7 +339,7 @@ class ZoomLineSearch(base.IterativeLineSearch):
     # conditions described in Algorithm 3.5 of [1]
     set_high_to_new = (decrease_error > 0.0) | (
         (new_value_step >= prev_value_step) & (iter_num > 0)
-    )
+    ) | is_value_nan
     set_low_to_new = (new_slope_step >= 0.0) & (~set_high_to_new)
 
     # By default we set high to new and correct if we should have set
@@ -368,7 +369,7 @@ class ZoomLineSearch(base.IterativeLineSearch):
 
     # If high or low have been set or the point is good, the interval has been
     # found. Otherwise we'll keep on augmenting the stepsize.
-    interval_found = set_high_to_new | set_low_to_new | (new_error <= self.tol)
+    interval_found = set_high_to_new | set_low_to_new | (new_error <= self.tol) | is_value_nan
 
     # If new_error <= self.tol, the line search is done. In that case, we set
     # directly the new parameters, gradient, value and aux to the ones found.
@@ -385,7 +386,6 @@ class ZoomLineSearch(base.IterativeLineSearch):
     )
 
     done = new_error <= self.tol
-
     max_iter_reached = (iter_num + 1 >= self.maxiter) & (~done)
     new_fail_code = jnp.where(
         (fail_check2 == 0) & max_iter_reached, 3, fail_check2
@@ -398,7 +398,8 @@ class ZoomLineSearch(base.IterativeLineSearch):
         grad=next_grad,
         aux=next_aux,
         #
-        error=new_error,
+        # If error is nan, the linesearch would stop while one may try a smaller stepsize
+        error=jnp.where(jnp.isnan(new_error), jnp.inf, new_error),
         done=done,
         fail_code=new_fail_code,
         failed=jnp.asarray(new_fail_code > 0),
@@ -564,7 +565,7 @@ class ZoomLineSearch(base.IterativeLineSearch):
         grad=next_grad,
         aux=next_aux,
         #
-        error=new_error,
+        error=jnp.where(jnp.isnan(new_error), jnp.inf, new_error),
         done=done,
         fail_code=new_fail_code,
         failed=jnp.asarray(new_fail_code > 0),
@@ -592,9 +593,9 @@ class ZoomLineSearch(base.IterativeLineSearch):
       value: Optional[float] = None,
       grad: Optional[Any] = None,
       descent_direction: Optional[Any] = None,
-      *args,
-      **kwargs,
-  ):
+      fun_args: list = [],
+      fun_kwargs: dict = {},
+  ) -> base.LineSearchStep:
     """Initialize the line search state by computing all relevant quantities and store it in the initial state.
 
     Args:
@@ -604,8 +605,8 @@ class ZoomLineSearch(base.IterativeLineSearch):
       value: current function value (recomputed if None).
       grad: current gradient (recomputed if None).
       descent_direction: descent direction (negative gradient if None).
-      *args: additional positional arguments to be passed to ``fun``.
-      **kwargs: additional keyword arguments to be passed to ``fun``.
+      fun_args: additional positional arguments to be passed to ``fun``.
+      fun_kwargs: additional keyword arguments to be passed to ``fun``.
 
     Returns:
       state
@@ -619,7 +620,7 @@ class ZoomLineSearch(base.IterativeLineSearch):
     aux = None
     if value is None or grad is None:
       (value, aux), grad = self._value_and_grad_fun_with_aux(
-          params, *args, **kwargs
+          params, *fun_args, **fun_kwargs
       )
       num_fun_eval = num_fun_eval + 1
       num_grad_eval = num_grad_eval + 1
@@ -630,7 +631,7 @@ class ZoomLineSearch(base.IterativeLineSearch):
     # base._make_funs_with_aux. This requires changing the signature of
     # base.IterativeLineSearch.
     if aux is None and self.has_aux:
-      _, aux = self._fun_with_aux(params, *args, **kwargs)
+      _, aux = self._fun_with_aux(params, *fun_args, **fun_kwargs)
 
     if descent_direction is None:
       descent_direction = tree_scalar_mul(-1.0, grad)
@@ -682,8 +683,8 @@ class ZoomLineSearch(base.IterativeLineSearch):
       value: Optional[float] = None,
       grad: Optional[Any] = None,
       descent_direction: Optional[Any] = None,
-      *args,
-      **kwargs,
+      fun_args: list = [],
+      fun_kwargs: dict = {},
   ) -> base.LineSearchStep:
     """Combines Algorithms 3.5 and 3.6 of [1].
 
@@ -698,8 +699,8 @@ class ZoomLineSearch(base.IterativeLineSearch):
       grad: current gradient (not used, recorded during init in state).
       descent_direction: descent direction (not used, recorded during init in
         state).
-      *args: additional positional arguments to be passed to ``fun``.
-      **kwargs: additional keyword arguments to be passed to ``fun``.
+      fun_args: additional positional arguments to be passed to ``fun``.
+      fun_kwargs: additional keyword arguments to be passed to ``fun``.
 
     Returns:
       (stepsize, state)
@@ -713,25 +714,29 @@ class ZoomLineSearch(base.IterativeLineSearch):
     del value
     del grad
     del descent_direction
+    
+    jit, _ = self._get_loop_options()
 
-    best_stepsize, new_state_ = lax.cond(
-        state.interval_found,
-        self._zoom_into_interval,
-        self._search_interval,
+    best_stepsize_, new_state_ = cond(
+        state.interval_found, 
+        self._zoom_into_interval, 
+        self._search_interval, 
         init_stepsize,
         state,
-        args,
-        kwargs,
+        fun_args,
+        fun_kwargs,
+        jit=jit
     )
 
-    best_stepsize, new_state = lax.cond(
-        (new_state_.failed) & (new_state_.iter_num == self.maxiter),
+    best_stepsize, new_state = cond(
+        (new_state_.failed) & (new_state_.iter_num == self.maxiter), 
         self._make_safe_step,
         self._keep_step,
-        best_stepsize,
+        best_stepsize_,
         new_state_,
-        args,
-        kwargs,
+        fun_args,
+        fun_kwargs,
+        jit=jit
     )
 
     if self.verbose:

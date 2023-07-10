@@ -180,7 +180,9 @@ class ZoomLinesearchTest(test_util.JaxoptTestCase):
 
     # Call to run.
     ls = ZoomLineSearch(fun=fun, maxiter=20)
-    stepsize, state = ls.run(init_stepsize=1.0, params=w_init, data=data)
+    stepsize, state = ls.run(
+        init_stepsize=1.0, params=w_init, fun_kwargs={"data": data}
+    )
 
     self._assert_line_conds(
         w_init, descent_dir, stepsize, fun_, jax.grad(fun_), c1=ls.c1, c2=ls.c2
@@ -193,7 +195,9 @@ class ZoomLinesearchTest(test_util.JaxoptTestCase):
     ls = ZoomLineSearch(
         fun=jax.value_and_grad(fun), maxiter=20, value_and_grad=True
     )
-    stepsize, state = ls.run(init_stepsize=1.0, params=w_init, data=data)
+    stepsize, state = ls.run(
+        init_stepsize=1.0, params=w_init, fun_kwargs={"data": data}
+    )
 
     self._assert_line_conds(
         w_init, descent_dir, stepsize, fun_, jax.grad(fun_), c1=ls.c1, c2=ls.c2
@@ -375,6 +379,18 @@ class ZoomLinesearchTest(test_util.JaxoptTestCase):
       ):
         self.assertEqual(getattr(state, name).dtype, out_dtype)
 
+  @parameterized.product(jit=[False, True])
+  def test_non_jittable(self, jit):
+    def fun(x):
+      return -onp.sin(10 * x), -10 * onp.cos(10 * x)
+    x = 1.
+    def run_ls():
+      ls = ZoomLineSearch(fun, value_and_grad=True, jit=jit)
+      ls.run(init_stepsize=1.0, params=x)
+    if jit:
+      self.assertRaises(jax.errors.TracerArrayConversionError, run_ls)
+    else:
+      run_ls()
 
 if __name__ == "__main__":
   # Uncomment the line below in order to run in float64.

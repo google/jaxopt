@@ -84,7 +84,7 @@ class BroydenTest(test_util.JaxoptTestCase):
       sols.append(x)
       y = state.aux
     self.assertLess(state.error, tol)
-    self.assertArraysAllClose(x, jnp.array([0.739085]), atol=1e2)
+    self.assertArraysAllClose(x, jnp.array([0.739085]), atol=1e-4)
 
   @parameterized.product(implicit_diff=[False, True])
   def test_simple_grads(self, implicit_diff):
@@ -140,7 +140,7 @@ class BroydenTest(test_util.JaxoptTestCase):
     self.assertLess(state.error, tol)
     def solve_run(args, kwargs):
       return fp.run(x0, *args, **kwargs)[0]
-    check_grads(solve_run, args=([M, b], {}), order=1, modes=['rev'], eps=1e-5, atol=1e-2)
+    check_grads(solve_run, args=([M, b], {}), order=1, modes=['rev'], eps=1e-5, atol=1e-3)
 
 
 if __name__ == '__main__':

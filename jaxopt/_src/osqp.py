@@ -21,6 +21,7 @@ from typing import Callable
 from typing import NamedTuple
 from typing import Optional
 from typing import Tuple
+from typing import Union
 
 import jax
 import jax.nn as nn
@@ -29,6 +30,7 @@ from jax.tree_util import tree_reduce
 
 from jaxopt._src import base
 from jaxopt._src import implicit_diff as idf
+from jaxopt._src.cond import cond
 from jaxopt.tree_util import tree_add, tree_sub, tree_mul
 from jaxopt.tree_util import tree_scalar_mul, tree_add_scalar_mul
 from jaxopt.tree_util import tree_map, tree_vdot
@@ -47,23 +49,59 @@ def projection_box(x: Any, hyperparams: Tuple) -> Any:
   return tree_map(_clip_safe, x, lower, upper)
 
 
-def _make_osqp_optimality_fun(matvec_Q, matvec_A):
+def extract_Qc_from_obj(x: Any,
+                        params_obj: Union[Tuple[Any, Any], Any],
+                        fun: Optional[Callable]):
+  """Returns (params_Q, c) parameters from params_obj.
+
+  Args:
+    x: pytree with same shape and same type as the input of fun; leaves can have any value.
+    params_obj: parameters of objective function.
+      Either a pair (params_Q, c) or an arbitrary pytree if fun is not None.
+    fun: objective function.
+  
+  When `fun` is `None` it retrieves the relevant informations from the tuple `params_obj`,
+  whereas when `fun` is not `None` it extracts it using AutoDiff.
+  """
+  if fun is None:
+    params_Q, c = params_obj
+    return params_Q, c
+  zeros = tree_zeros_like(x)
+  # f(x) := 0.5 * x^T Q x + c^T x + cste
+  value_and_grad_fun = jax.value_and_grad(fun, argnums=0)
+  # nabla_x f(x) = Q x + c
+  # f(0)         = cste
+  # Q is never extracted explicitly, only its action on vectors is needed
+  cste, c = value_and_grad_fun(zeros, params_obj)
+  return (params_obj, c, cste), c
+
+
+def _make_osqp_optimality_fun(matvec_Q, matvec_A, fun):
   """Makes the optimality function for BoxOSQP.
+
+  Args:
+    matvec_Q: function that computes Qx.
+    matvec_A: function that computes Ax.
+    fun: function that computes the quadratic objective.
 
   Returns:
     optimality_fun(params, params_obj, params_eq, params_ineq) where
       params = (primal_var, eq_dual_var, ineq_dual_var)
-      params_obj = (P, c)
+      params_obj = (params_Q, c) or an arbitrary pytree if fun is not None
       params_eq = A
       params_ineq = (l, u)
   """
-  def obj_fun(primal_var, params_obj):
-    x, _ = primal_var
-    params_Q, c = params_obj
-    Q = matvec_Q(params_Q)
-    # minimize 0.5 x^T Q x + c^T x
-    qp_obj = tree_add_scalar_mul(tree_vdot(c, x), 0.5, tree_vdot(x, Q(x)))
-    return qp_obj
+
+  if fun is None:
+    def obj_fun(primal_var, params_obj):
+      x, _ = primal_var
+      params_Q, c = extract_Qc_from_obj(x, params_obj, fun)
+      Q = matvec_Q(params_Q)
+      # minimize 0.5 x^T Q x + c^T x
+      qp_obj = tree_add_scalar_mul(tree_vdot(c, x), 0.5, tree_vdot(x, Q(x)))
+      return qp_obj
+  else:
+    obj_fun = fun
 
   def eq_fun(primal_var, params_eq):
     # constraint Ax=z associated to y^T(Ax-z)=0
@@ -256,19 +294,15 @@ class OSQPLUSolver:
     return sol, osqp_state.solver_state
 
 
-def ifelse_cond(cond, if_fun, else_fun, operand, jit):
-  if not jit:
-    with jax.disable_jit():
-      return jax.lax.cond(cond, if_fun, else_fun, operand)
-  return jax.lax.cond(cond, if_fun, else_fun, operand)
-
-
 @dataclass(eq=False)
 class BoxOSQP(base.IterativeSolver):
   """Operator Splitting Solver for Quadratic Programs.
 
   Jax implementation of the celebrated GPU-OSQP [1,3] based on ADMM.
-  Suppports jit, vmap, matvecs and pytrees.
+  Suppports jit, vmap, matvecs, pytrees and fun.
+
+  Refer to the doc of `init_state` method for the meaning of the parameters
+  in `run` and `update` methods.
 
   It solves convex problems of the form
 
@@ -306,6 +340,7 @@ class BoxOSQP(base.IterativeSolver):
   Attributes:
     matvec_Q: (optional) a Callable matvec_Q(params_Q, x).
       By default, matvec_Q(P, x) = tree_dot(P, x), where the pytree Q = params_Q matches x structure.
+      The shape of primal variables may be inferred from params_obj = (matvec_Q, c).
     matvec_A: (optional) a Callable matvec_A(params_A, x).
       By default, matvec_A(A, x) = tree_dot(A, x), where tree pytree A = params_A matches x structure.
     fun: (optional) a function with signature fun(params, params_obj) that is promised
@@ -315,6 +350,10 @@ class BoxOSQP(base.IterativeSolver):
       (Q, c) do not need to be explicited in params_obj by the user: c will be inferred by Jaxopt,
         and the operator x -> Qx will be computed upon request.
       ``fun`` incompatible with the specification of ``matvec_Q``.
+      Note that the shape of primal cannot be inferred from params_obj anymore,
+      so the user should provide it in init_params.
+      This API is provided for convenience, but note that since `fun` uses Jax's autodiff under the hood,
+      it can be slower than `matvec_Q`, especially when used in conjunction with implicit differentiation.
     check_primal_dual_infeasability: if True populates the ``status`` field of ``state``
       with one of ``BoxOSQP.PRIMAL_INFEASIBLE``, ``BoxOSQP.DUAL_INFEASIBLE``.
       If False it improves speed but does not check feasability.
@@ -392,10 +431,28 @@ class BoxOSQP(base.IterativeSolver):
   DUAL_INFEASIBLE   = 2  # infeasible dual (infeasible primal or unbounded primal).
   PRIMAL_INFEASIBLE = 3  # infeasible primal.
 
-  def init_state(self, init_params, params_obj, params_eq, params_ineq):
+  def init_state(self,
+                 init_params: base.KKTSolution,
+                 params_obj: Union[Tuple[Any, Any], Any],
+                 params_eq: Any,
+                 params_ineq: Tuple[Any, Any]):
+    """Initializes the solver state.
+
+    Args:
+      init_params: initial primal and dual variables (KKTSolution).
+      params_obj: parameters of the quadratic objective, can be:
+        a tuple (Q, c) with Q a pytree of matrices,
+        or a tuple (params_Q, c) if ``matvec_Q`` is provided,
+        or an arbitrary pytree if ``fun`` is provided.
+      params_eq: parameters of the equality constraints (see doc of run method).
+      params_ineq: parameters of the inequality constraints (see doc of run method).
+    
+    Returns:
+      A BoxOSQPState object.
+    """
     x, z = init_params.primal
     y    = init_params.dual_eq
-    Q_params, c = self._get_Q_c(x, params_obj)
+    Q_params, c = extract_Qc_from_obj(x, params_obj, self.fun)
     Q    = self.matvec_Q(Q_params)
     A    = self.matvec_A(params_eq)
 
@@ -411,9 +468,27 @@ class BoxOSQP(base.IterativeSolver):
                         rho_bar=self.rho_start,
                         solver_state=solver_state)
 
-  def init_params(self, init_x, params_obj, params_eq, params_ineq):
-    """Return default params for initialization."""
+  def init_params(self,
+                  init_x: Any,
+                  params_obj: Union[Tuple[Any, Any], Any],
+                  params_eq: Any,
+                  params_ineq: Tuple[Any, Any]):
+    """Return default KKTSolution for initialization of the solver state.
+    
+    Args:
+      init_x: initial primal variable.
+      params_obj: parameters of the objective function (see doc of init_state method).
+      params_eq: parameters of the equality constraints (see doc of init_state method).
+      params_ineq: parameters of the inequality constraints (see doc of init_state method).
+
+    Returns:
+      init_params: default parameters for initialization.
+    """
     if init_x is None:
+      # assume params_obj = (params_Q, c)
+      # generally incompatible with the use of ``fun``.
+      if self.fun is not None:
+        raise ValueError("init_x must be provided when fun is not None.")
       init_x = tree_zeros_like(params_obj[1])
     init_z = projection_box(self.matvec_A(params_eq)(init_x), params_ineq)
     init_y = tree_zeros_like(init_z)
@@ -583,7 +658,12 @@ class BoxOSQP(base.IterativeSolver):
 
     return (x_next, z_next), y_next, solver_state
 
-  def update(self, params, state, params_obj, params_eq, params_ineq):
+  def update(self,
+             params: base.KKTSolution,
+             state: BoxOSQPState,
+             params_obj: Union[Tuple[Any, Any], Any],
+             params_eq: Any,
+             params_ineq: Tuple[Any, Any]):
     """Perform BoxOSQP step."""
     # The original problem on variables (x,z) is split into TWO problems
     # with variables (x, z) and (x_bar, z_bar)
@@ -600,8 +680,8 @@ class BoxOSQP(base.IterativeSolver):
     # for equality constraint z = z_bar the associated dual variable is y
     jit, _ = self._get_loop_options()
 
-    Q_params, c = self._get_Q_c(params.primal[0], params_obj)
-    Q    = self.matvec_Q(Q_params)
+    params_Q, c = extract_Qc_from_obj(params.primal[0], params_obj, self.fun)
+    Q    = self.matvec_Q(params_Q)
     A    = self.matvec_A(params_eq)
     l, u = params_ineq
 
@@ -618,23 +698,27 @@ class BoxOSQP(base.IterativeSolver):
     if self.verbose >= 3:
       print(f"primal_residuals={primal_residuals}, dual_residuals={dual_residuals}")
 
-    # We need our own ifelse_cond because automatic jitting of jax.lax.cond branches
+    # We need our own ifelse cond because automatic jitting of jax.lax.cond branches
     # could pose problems with non jittable matvecs, or prevent printing when verbose > 0.
-    rho_bar, solver_state = ifelse_cond(
-      jnp.mod(state.iter_num, self.stepsize_updates_frequency) == 0,
-      lambda _: self._update_stepsize(rho_bar, solver_state, primal_residuals, dual_residuals, Q, c, A, x, y),
-      lambda _: (rho_bar, solver_state),
-      operand=None, jit=jit)
+    rho_bar, solver_state = cond(
+        jnp.mod(state.iter_num, self.stepsize_updates_frequency) == 0,
+        lambda _: self._update_stepsize(rho_bar, solver_state, primal_residuals, dual_residuals, Q, c, A, x, y),
+        lambda _: (rho_bar, solver_state),
+        None,
+        jit=jit
+    )
 
     sol = BoxOSQP._get_full_KKT_solution(primal=(x, z), y=y)
 
-    # Same remark as above for ifelse_cond.
-    error, status = ifelse_cond(
-      jnp.mod(state.iter_num, self.termination_check_frequency) == 0,
-      lambda _: self._check_termination_conditions(primal_residuals, dual_residuals,
-                                                   params, sol, Q, c, A, l, u),
-      lambda s: (state.error, s),
-      operand=(state.status), jit=jit)
+    # Same remark as above for ifelse cond.
+    error, status = cond(
+        jnp.mod(state.iter_num, self.termination_check_frequency) == 0,
+        lambda _: self._check_termination_conditions(primal_residuals, dual_residuals,
+                                                      params, sol, Q, c, A, l, u),
+        lambda s: (state.error, s),
+        state.status,
+        jit=jit
+    )
 
     if not jit:
       if status == BoxOSQP.PRIMAL_INFEASIBLE:
@@ -660,10 +744,16 @@ class BoxOSQP(base.IterativeSolver):
 
     Args:
       init_params: (optional) initial KKTSolution.
-      params_obj: pair (params_Q, c).
+        Must be provided if ``fun`` is not None.
+      params_obj: parameters of objective, can be:
+        a tuple (Q, c) with Q a pytree of matrices,
+        or a tuple (params_Q, c) if ``matvec_Q`` is provided,
+        or an arbitrary pytree if ``fun`` is provided.
       params_eq: (optional) params_A.
       params_ineq: pair (l, u).
     """
+    # Default to None for consistency of signatures
+    # Should be set by the user anyway.
     assert params_obj is not None
     assert params_ineq is not None
 
@@ -671,24 +761,6 @@ class BoxOSQP(base.IterativeSolver):
       init_params = self.init_params(None, params_obj, params_eq, params_ineq)
     
     return super().run(init_params, params_obj, params_eq, params_ineq)
-
-  def _get_Q_c(self, x, params_obj):
-    """Returns (Q, c) parameters from params_obj.
-
-    Args:
-      x: pytree with same shape and same type as the input of self.fun; leaves can have any value
-      params_obj: parameters of objective function
-    
-    When `fun` is `None` it retrieves the relevant informations from the tuple `params_obj`,
-    whereas when `fun` is not `None` it extracts it using AutoDiff.
-    """
-    if self.fun is None:
-      params_Q, c = params_obj
-      return params_Q, c
-    zeros = tree_zeros_like(x)
-    value_and_grad_fun = jax.value_and_grad(self.fun, argnums=0)
-    cste, c = value_and_grad_fun(zeros, params_obj)
-    return (params_obj, c, cste), c
 
   def l2_optimality_error(
       self,
@@ -707,6 +779,9 @@ class BoxOSQP(base.IterativeSolver):
     if self.fun is not None:
       def matvec_Q(params_obj, x):
         params_Q, c, _ = params_obj
+        # f(x) = 0.5 * x^T Q x + c^T x + cste
+        # nabla_x f(x) = Q x + c
+        # Qx = nabla_x f(x) - c
         def fun_minus_cx(xx):
           return self.fun(xx, params_Q) - jnp.sum(c*xx)
         Qx = jax.grad(fun_minus_cx)(x)
@@ -732,7 +807,7 @@ class BoxOSQP(base.IterativeSolver):
       jit, _ = self._get_loop_options()
       self.check_primal_dual_infeasability = not jit
 
-    self.optimality_fun = _make_osqp_optimality_fun(self.matvec_Q, self.matvec_A)
+    self.optimality_fun = _make_osqp_optimality_fun(self.matvec_Q, self.matvec_A, self.fun)
 
 
 class OSQP_to_BoxOSQP:
@@ -782,10 +857,9 @@ class OSQP_to_BoxOSQP:
     # when matvec_A is None and matvec_G is None we MUST concatenate rows of constraints to ensure
     # that pre-conditioning is still possible.
 
-    # TODO(lbethune): does it make sense to support QP without constraints ?
-    # should the user switch to another solver instead ? (e.g conjugate gradient... )
     if params_eq is None and params_ineq is None:
-      raise ValueError("At least one of params_eq or params_ineq must be not None.")
+      raise ValueError("At least one of params_eq or params_ineq must be not None." \
+                       "When there are no constraints we suggest direct solving of the QP with a conjugate gradient solver.")
 
     eq_size, ineq_neg_size = None, None
     A, G = None, None
@@ -863,6 +937,7 @@ class OSQP(base.Solver):
   """OSQP solver for general quadratic programming.
 
   Meant as drop-in replacement for CvxpyQP.
+  Depending on the format of your problem, BoxOSQP API may be more appropriate.
   Support for matvec and pytrees. Supports jit and vmap.
 
   CvxpyQP is more precise and should be preferred on CPU.
@@ -878,6 +953,8 @@ class OSQP(base.Solver):
   Attributes:
     matvec_Q: (optional) a Callable matvec_Q(params_Q, x).
       By default, matvec_Q(P, x) = tree_dot(P, x), where the pytree Q = params_Q matches x structure.
+      ``matvec_Q`` incompatible with the specification of ``fun``.
+      The shape of primal variables may be inferred from params_obj = (matvec_Q, c).
     matvec_A: (optional) a Callable matvec_A(params_A, x).
       By default, matvec_A(A, x) = tree_dot(A, x), where tree pytree A = params_A matches x structure.
     matvec_G: (optional) a Callable matvec_G(params_G, x).
@@ -889,6 +966,8 @@ class OSQP(base.Solver):
       (Q, c) do not need to be explicited in params_obj by the user: c will be inferred by Jaxopt,
         and the operator x -> Qx will be computed upon request.
       ``fun`` incompatible with the specification of ``matvec_Q``.
+      Note that the shape of primal cannot be inferred from params_obj anymore,
+      so the user should provide it in init_params.
     check_primal_dual_infeasability: if True populates the ``status`` field of ``state``
       with one of ``BoxOSQP.PRIMAL_INFEASIBLE``, ``BoxOSQP.DUAL_INFEASIBLE``. (default: True).
       If False it improves speed but does not check feasability.
@@ -931,13 +1010,25 @@ class OSQP(base.Solver):
     matvec_Q, matvec_A_box = OSQP_to_BoxOSQP.transform_matvec(matvec_Q, matvec_A, matvec_G)
     self.matvec_A_box = matvec_A_box
 
+    # meant as drop-in replacement for CvxpyQP for which no unrolling is available.
     self._box_osqp = BoxOSQP(matvec_Q=matvec_Q,
                              matvec_A=matvec_A_box,
                              fun=fun,
-                             implicit_diff=True, **kwargs)
+                             implicit_diff=True,
+                             **kwargs)
 
   def init_params(self, init_x, params_obj, params_eq, params_ineq):
-    """Return default params for initialization."""
+    """Return default params for initialization.
+    
+    Args:
+      init_x: initial primal solution. 
+      params_obj: see the doc of `run` method.
+      params_eq: see the doc of `run` method.
+      params_ineq: see the doc of `run` method.
+    
+    Returns:
+      init_params: a pytree KKTSolution of parameters for BoxOSQP.
+    """
     _, hyper_params, eq_ineq_size = OSQP_to_BoxOSQP.transform(self.matvec_A_box,
                                                               None, params_obj,
                                                               params_eq, params_ineq)
@@ -946,16 +1037,20 @@ class OSQP(base.Solver):
 
   def run(self,
           init_params: Any = None,
-          params_obj: Tuple[Optional[Any], Any] = None,
+          params_obj: Union[Tuple[Any, Any], Any] = None,
           params_eq: Optional[Tuple[Any,Any]] = None,
           params_ineq: Optional[Tuple[Any,Any]] = None) -> base.OptStep:
-    """Runs the quadratic programming solver in Cvxpy.
+    """Runs the quadratic programming solver in BoxOSQP.
 
     The returned params contains both the primal and dual solutions.
 
     Args:
-      init_params: (optional) init_params for warm_start.
-      params_obj: (Q, c).
+      init_params: init_params: (optional) initial KKTSolution for warm-start.
+        Must be provided if ``fun`` is not None.
+      params_obj: parameters of the quadratic objective, can be:
+        a tuple (Q, c) with Q a pytree of matrices,
+        or a tuple (params_Q, c) if ``matvec_Q`` is provided,
+        or an arbitrary pytree if ``fun`` is provided.
       params_eq: (A, b) or None if no equality constraints.
       params_ineq: (G, h) or None if no inequality constraints.
     Returns:
@@ -978,10 +1073,13 @@ class OSQP(base.Solver):
 
   def l2_optimality_error(self,
     params: jnp.array,
-    params_obj: base.ArrayPair,
+    params_obj: Union[base.ArrayPair, Any],
     params_eq: Optional[base.ArrayPair],
     params_ineq: Optional[base.ArrayPair]):
-    """Computes the L2 norm of the KKT residuals."""
+    """Computes the L2 norm of the KKT residuals.
+    
+    Note that this function is exposed for consistency of the API, but the differentiation is actually
+    performed in the BoxOSQP class."""
     params, hyper_params, _ = OSQP_to_BoxOSQP.transform(self.matvec_A_box,
                                                         params, params_obj,
                                                         params_eq, params_ineq)

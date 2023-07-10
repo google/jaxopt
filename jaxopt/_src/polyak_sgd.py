@@ -54,7 +54,10 @@ class PolyakSGD(base.StochasticSolver):
   take over-confident steps. This is why ``max_stepsize`` is the most important
   hyper-parameter.
 
-  This implementation assumes that the interpolation property holds.
+  This implementation assumes that the interpolation property holds:
+    the global optimum over D must also be a global optimum for any finite sample of D
+  This is typically achieved by overparametrized models (e.g neural networks)
+  in classification tasks with separable classes, or on regression tasks without noise.
 
   Attributes:
     fun: a function of the form ``fun(params, *args, **kwargs)``, where
@@ -137,8 +140,9 @@ class PolyakSGD(base.StochasticSolver):
       state
     """
     if self.has_aux:
-      _, aux = self.fun(init_params, *args, **kwargs)
+      value, aux = self.fun(init_params, *args, **kwargs)
     else:
+      value = self.fun(init_params, *args, **kwargs)
       aux = None
 
     if self.momentum == 0:
@@ -146,12 +150,12 @@ class PolyakSGD(base.StochasticSolver):
     else:
       velocity = tree_zeros_like(init_params)
 
-    param_dtype = tree_single_dtype(init_params)
+    params_dtype = tree_single_dtype(init_params)
 
     return PolyakSGDState(iter_num=jnp.asarray(0),
-                          error=jnp.asarray(jnp.inf),
-                          value=jnp.asarray(jnp.inf),
-                          stepsize=jnp.asarray(1.0, dtype=param_dtype),
+                          error=jnp.asarray(jnp.inf, dtype=params_dtype),
+                          value=jnp.asarray(jnp.inf, dtype=value.dtype),
+                          stepsize=jnp.asarray(1.0, dtype=params_dtype),
                           aux=aux,
                           velocity=velocity)
 
@@ -170,6 +174,8 @@ class PolyakSGD(base.StochasticSolver):
     Returns:
       (params, state)
     """
+    dtype = tree_single_dtype(params)
+
     if self.pre_update:
       params, state = self.pre_update(params, state, *args, **kwargs)
 
@@ -190,11 +196,12 @@ class PolyakSGD(base.StochasticSolver):
                               tree_scalar_mul(stepsize, grad))
       new_params = tree_add(params, new_velocity)
 
+    error = jnp.sqrt(grad_sqnorm)
     new_state = PolyakSGDState(iter_num=state.iter_num + 1,
-                               error=jnp.sqrt(grad_sqnorm),
+                               error=jnp.asarray(error, dtype=dtype),
                                velocity=new_velocity,
-                               value=value,
-                               stepsize=stepsize,
+                               value=jnp.asarray(value),
+                               stepsize=jnp.asarray(stepsize, dtype=dtype),
                                aux=aux)
     return base.OptStep(params=new_params, state=new_state)
 

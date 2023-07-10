@@ -99,12 +99,14 @@ class AndersonState(NamedTuple):
       fixed_point_fun(params_history) - params_history
     residual_gram: Gram matrix: G.T @ G with G the matrix of residuals
       each column of G is a flattened pytree of residuals_history
+    aux: auxiliary data returned by fixed_point_fun
   """
   iter_num: int
   error: float
   params_history: Any
   residuals_history: Any
   residual_gram: jnp.array
+  aux: Any
 
 
 @dataclass(eq=False)
@@ -128,6 +130,8 @@ class AndersonAcceleration(base.IterativeSolver):
     ridge: ridge regularization in solver.
       Consider increasing this value if the solver returns ``NaN``.
     has_aux: wether fixed_point_fun returns additional data. (default: False)
+      This additional data is not taken into account by the fixed point.
+      The solver returns the `aux` associated to the last iterate (i.e the fixed point).
     verbose: whether to print error on every iteration or not.
       Warning: verbose=True will automatically disable jit.
     implicit_diff: whether to enable implicit diff or autodiff of unrolled
@@ -148,6 +152,7 @@ class AndersonAcceleration(base.IterativeSolver):
   maxiter: int = 100
   tol: float = 1e-5
   ridge: float = 1e-5
+  has_aux: bool = False
   verbose: bool = False
   implicit_diff: bool = True
   implicit_diff_solve: Optional[Callable] = None
@@ -173,11 +178,14 @@ class AndersonAcceleration(base.IterativeSolver):
     residuals_history = tree_map(jnp.zeros_like, params_history)
     residual_gram = jnp.zeros((m,m))
 
+    _, aux = self._value_with_aux(init_params, *args, **kwargs)
+
     return AndersonState(iter_num=jnp.asarray(0),
                          error=jnp.asarray(jnp.inf),
                          params_history=params_history,
                          residuals_history=residuals_history,
-                         residual_gram=residual_gram)
+                         residual_gram=residual_gram,
+                         aux=aux)
 
   def update(self,
              params: Any,
@@ -221,7 +229,7 @@ class AndersonAcceleration(base.IterativeSolver):
     residual_gram = state.residual_gram
     pos = jnp.mod(state.iter_num, self.history_size)
 
-    next_params = self.fixed_point_fun(extrapolated, *args, **kwargs)
+    next_params, aux = self._value_with_aux(extrapolated, *args, **kwargs)
 
     residual = tree_sub(next_params, extrapolated)
     ret = update_history(pos, params_history, residuals_history,
@@ -232,17 +240,25 @@ class AndersonAcceleration(base.IterativeSolver):
                                error=error,
                                params_history=params_history,
                                residuals_history=residuals_history,
-                               residual_gram=residual_gram)
+                               residual_gram=residual_gram,
+                               aux=aux)
 
     return base.OptStep(params=next_params, state=next_state)
 
   def optimality_fun(self, params, *args, **kwargs):
     """Optimality function mapping compatible with ``@custom_root``."""
-    next_params = self.fixed_point_fun(params, *args, **kwargs)
+    next_params, _ = self._value_with_aux(params, *args, **kwargs)
     return tree_sub(next_params, params)
 
   def __post_init__(self):
     if self.history_size < 2:
       raise ValueError("history_size should be greater or equal to 2.")
+    
+    if self.has_aux:
+      fun_ = self.fixed_point_fun
+    else:
+      fun_ = lambda p, *a, **kw: (self.fixed_point_fun(p, *a, **kw), None)
+
+    self._value_with_aux = fun_
 
     self.reference_signature = self.fixed_point_fun

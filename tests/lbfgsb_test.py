@@ -20,6 +20,7 @@ from absl.testing import parameterized
 import jax
 import jax.numpy as jnp
 from jaxopt import LBFGSB
+from jaxopt import BacktrackingLineSearch
 from jaxopt import objective
 from jaxopt import OptStep
 from jaxopt import ScipyBoundedMinimize
@@ -154,7 +155,12 @@ class LbfgsbTest(test_util.JaxoptTestCase):
 
   @parameterized.product(
       use_gamma=[True, False],
-      linesearch=["backtracking", "zoom", "hager-zhang"],
+      linesearch=[
+          "backtracking",
+          "zoom",
+          "hager-zhang",
+          BacktrackingLineSearch(objective.multiclass_logreg_with_intercept),
+      ],
   )
   def test_multiclass_logreg(self, use_gamma, linesearch):
     x, y = datasets.make_classification(
@@ -241,6 +247,21 @@ class LbfgsbTest(test_util.JaxoptTestCase):
     lbfgsb.run(x0, bounds=None)
 
     self.assertEqual(N_CALLS, n_iter + 1)
+
+  def test_grad_with_bounds(self):
+    # Test that the gradient is correct when bounds are specified by keyword.
+    # Pertinent to issue #463.
+    def pipeline(x, init_pars, bounds, data):
+      def fit_objective(pars, data, x):
+        return -jax.scipy.stats.norm.logpdf(pars, loc=data*x, scale=1.0)
+      solver = LBFGSB(fun=fit_objective, implicit_diff=True, maxiter=500, tol=1e-6)
+      return solver.run(init_pars, bounds=bounds, data=data, x=x)[0]
+
+    grad_fn = jax.grad(pipeline)
+    data = jnp.array(1.5)
+    res = grad_fn(0.5, jnp.array(0.0), (jnp.array(0.0), jnp.array(10.0)), data)
+    self.assertEqual(res, data)
+      
 
 
 if __name__ == "__main__":

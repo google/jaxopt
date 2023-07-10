@@ -148,10 +148,10 @@ class HagerZhangLineSearch(base.IterativeLineSearch):
 
   def _update(
       self, x, low, high, middle, approx_wolfe_threshold_value,
-      descent_direction, *args, **kwargs):
+      descent_direction, fun_args, fun_kwargs):
 
     value_middle, grad_middle = self._value_and_grad_on_line(
-        x, middle, descent_direction, *args, **kwargs)
+        x, middle, descent_direction, *fun_args, **fun_kwargs)
 
     # Corresponds to the `update` subroutine in the paper.
     # This tries to create a smaller interval contained in `[low, high]`
@@ -184,7 +184,7 @@ class HagerZhangLineSearch(base.IterativeLineSearch):
       new_middle = jnp.where(~done, (low + high) / 2., middle)
 
       new_value_middle, new_grad_middle = self._value_and_grad_on_line(
-          x, new_middle, descent_direction, *args, **kwargs)
+          x, new_middle, descent_direction, *fun_args, **fun_kwargs)
       new_value_middle = jnp.where(~done, new_value_middle, value_middle)
       new_grad_middle = jnp.where(~done, new_grad_middle, grad_middle)
       failed = failed | _failed_nan(new_value_middle, new_grad_middle)
@@ -225,7 +225,7 @@ class HagerZhangLineSearch(base.IterativeLineSearch):
     c = self._secant(x, low, high, descent_direction, *args, **kwargs)
     failed, new_low, new_high = self._update(
         x, low, high, c, approx_wolfe_threshold_value,
-        descent_direction, *args, **kwargs)
+        descent_direction, args, kwargs)
     on_left_boundary = jnp.equal(c, new_low)
     on_right_boundary = jnp.equal(c, new_high)
     c = jnp.where(on_right_boundary, self._secant(
@@ -236,7 +236,7 @@ class HagerZhangLineSearch(base.IterativeLineSearch):
     def _reupdate():
       return self._update(
           x, new_low, new_high, c, approx_wolfe_threshold_value,
-          descent_direction, *args, **kwargs)
+          descent_direction, args, kwargs)
 
     failed, new_low, new_high = jax.lax.cond(
         on_left_boundary | on_right_boundary,
@@ -278,7 +278,7 @@ class HagerZhangLineSearch(base.IterativeLineSearch):
             middle,
             middle / 2.,
             approx_wolfe_threshold_value,
-            descent_direction, *args, **kwargs)
+            descent_direction, args, kwargs)
 
       new_failed, new_low, new_high = jax.lax.cond(
           reupdate, _update_interval, lambda: (failed, new_low, new_high))
@@ -330,14 +330,16 @@ class HagerZhangLineSearch(base.IterativeLineSearch):
          jnp.array(0.)))
     return failed, final_low, final_high
 
-  def init_state(self,  # pylint:disable=keyword-arg-before-vararg
-                 init_stepsize: float,
-                 params: Any,
-                 value: Optional[float] = None,
-                 grad: Optional[Any] = None,
-                 descent_direction: Optional[Any] = None,
-                 *args,
-                 **kwargs) -> HagerZhangLineSearchState:
+  def init_state(
+      self,
+      init_stepsize: float,
+      params: Any,
+      value: Optional[float] = None,
+      grad: Optional[Any] = None,
+      descent_direction: Optional[Any] = None,
+      fun_args: list = [],
+      fun_kwargs: dict = {},
+  ) -> HagerZhangLineSearchState:
     """Initialize the line search state.
 
     Args:
@@ -346,8 +348,8 @@ class HagerZhangLineSearch(base.IterativeLineSearch):
       value: current function value (recomputed if None).
       grad: current gradient (recomputed if None).
       descent_direction: ignored.
-      *args: additional positional arguments to be passed to ``fun``.
-      **kwargs: additional keyword arguments to be passed to ``fun``.
+      fun_args: additional positional arguments to be passed to ``fun``.
+      fun_kwargs: additional keyword arguments to be passed to ``fun``.
     Returns:
       state
     """
@@ -355,10 +357,11 @@ class HagerZhangLineSearch(base.IterativeLineSearch):
 
     if value is None or grad is None:
       if self.has_aux:
-        (value, _), grad = self._value_and_grad_fun(params, *args, **kwargs)
+        (value, _), grad = self._value_and_grad_fun(
+            params, *fun_args, **fun_kwargs
+        )
       else:
-        value, grad = self._value_and_grad_fun(params, *args, **kwargs)
-
+        value, grad = self._value_and_grad_fun(params, *fun_args, **fun_kwargs)
 
     if descent_direction is None:
       descent_direction = tree_scalar_mul(-1, grad)
@@ -368,14 +371,19 @@ class HagerZhangLineSearch(base.IterativeLineSearch):
 
     # Create initial interval.
     failed, low, high = self._bracket(
-        params, jnp.ones_like(value),
-        approx_wolfe_threshold_value, descent_direction, *args, **kwargs)
+        params,
+        jnp.ones_like(value),
+        approx_wolfe_threshold_value,
+        descent_direction,
+        *fun_args,
+        **fun_kwargs
+    )
 
     value_low, grad_low = self._value_and_grad_on_line(
-        params, low, descent_direction, *args, **kwargs)
+        params, low, descent_direction, *fun_args, **fun_kwargs)
 
     value_high, grad_high = self._value_and_grad_on_line(
-        params, high, descent_direction, *args, **kwargs)
+        params, high, descent_direction, *fun_args, **fun_kwargs)
 
     best_point = jnp.where(value_low < value_high, low, high)
     gd_vdot_best_point = jnp.where(value_low < value_high, grad_low, grad_high)
@@ -403,15 +411,17 @@ class HagerZhangLineSearch(base.IterativeLineSearch):
         grad=grad,
         failed=failed)
 
-  def update(self,  # pylint:disable=keyword-arg-before-vararg
-             stepsize: float,
-             state: NamedTuple,
-             params: Any,
-             value: Optional[float] = None,
-             grad: Optional[Any] = None,
-             descent_direction: Optional[Any] = None,
-             *args,
-             **kwargs) -> base.LineSearchStep:
+  def update(
+      self,
+      stepsize: float,
+      state: NamedTuple,
+      params: Any,
+      value: Optional[float] = None,
+      grad: Optional[Any] = None,
+      descent_direction: Optional[Any] = None,
+      fun_args: list = [],
+      fun_kwargs: dict = {},
+  ) -> base.LineSearchStep:
     """Performs one iteration of Hager-Zhang line search.
 
     Args:
@@ -421,17 +431,19 @@ class HagerZhangLineSearch(base.IterativeLineSearch):
       value: current function value (recomputed if None).
       grad: current gradient (recomputed if None).
       descent_direction: descent direction (negative gradient if None).
-      *args: additional positional arguments to be passed to ``fun``.
-      **kwargs: additional keyword arguments to be passed to ``fun``.
+      fun_args: additional positional arguments to be passed to ``fun``.
+      fun_kwargs: additional keyword arguments to be passed to ``fun``.
     Returns:
       (params, state)
     """
 
     if value is None or grad is None:
       if self.has_aux:
-        (value, _), grad = self._value_and_grad_fun(params, *args, **kwargs)
+        (value, _), grad = self._value_and_grad_fun(
+            params, *fun_args, **fun_kwargs
+        )
       else:
-        value, grad = self._value_and_grad_fun(params, *args, **kwargs)
+        value, grad = self._value_and_grad_fun(params, *fun_args, **fun_kwargs)
 
     if descent_direction is None:
       descent_direction = tree_scalar_mul(-1, grad)
@@ -445,7 +457,7 @@ class HagerZhangLineSearch(base.IterativeLineSearch):
         state.high,
         approx_wolfe_threshold_value,
         descent_direction,
-        *args, **kwargs)
+        *fun_args, **fun_kwargs)
 
     failed = state.failed | failed
 
@@ -456,7 +468,7 @@ class HagerZhangLineSearch(base.IterativeLineSearch):
       c = (new_low + new_high) / 2.
       return self._update(
           params, new_low, new_high, c, approx_wolfe_threshold_value,
-          descent_direction, *args, **kwargs)
+          descent_direction, fun_args, fun_kwargs)
 
     failed, new_low, new_high = jax.lax.cond(
         ~state.done & ((new_high - new_low) >
@@ -466,9 +478,9 @@ class HagerZhangLineSearch(base.IterativeLineSearch):
     # Check wolfe and approximate wolfe conditions and update them.
 
     value_low, grad_low = self._value_and_grad_on_line(
-        params, new_low, descent_direction, *args, **kwargs)
+        params, new_low, descent_direction, *fun_args, **fun_kwargs)
     value_high, grad_high = self._value_and_grad_on_line(
-        params, new_high, descent_direction, *args, **kwargs)
+        params, new_high, descent_direction, *fun_args, **fun_kwargs)
 
     best_point = jnp.where(value_low < value_high, new_low, new_high)
     gd_vdot_best_point = jnp.where(value_low < value_high, grad_low, grad_high)
@@ -479,10 +491,10 @@ class HagerZhangLineSearch(base.IterativeLineSearch):
     new_params = tree_add_scalar_mul(params, best_point, descent_direction)
     if self.has_aux:
       (new_value, new_aux), new_grad = self._value_and_grad_fun(
-          new_params, *args, **kwargs)
+          new_params, *fun_args, **fun_kwargs)
     else:
       new_value, new_grad = self._value_and_grad_fun(
-          new_params, *args, **kwargs)
+          new_params, *fun_args, **fun_kwargs)
       new_aux = None
 
     error = jnp.where(state.done, state.error,
@@ -515,4 +527,6 @@ class HagerZhangLineSearch(base.IterativeLineSearch):
     if self.value_and_grad:
       self._value_and_grad_fun = self.fun
     else:
-      self._value_and_grad_fun = jax.value_and_grad(self.fun, has_aux=self.has_aux)
+      self._value_and_grad_fun = jax.value_and_grad(
+          self.fun, has_aux=self.has_aux
+      )

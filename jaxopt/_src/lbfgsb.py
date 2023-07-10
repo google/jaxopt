@@ -21,7 +21,8 @@
 # [2] J. Nocedal and S. Wright.  Numerical Optimization, second edition.
 
 import dataclasses
-import functools
+import inspect
+import warnings
 from typing import Any, Callable, NamedTuple, Optional, Union
 
 import jax
@@ -31,7 +32,7 @@ from jaxopt._src import base
 from jaxopt._src import projection
 from jaxopt._src.lbfgs import init_history
 from jaxopt._src.lbfgs import update_history
-from jaxopt._src.linesearch_util import _reset_stepsize
+from jaxopt._src.linesearch_util import _init_stepsize
 from jaxopt._src.linesearch_util import _setup_linesearch
 
 from jaxopt._src.tree_util import tree_single_dtype
@@ -228,49 +229,45 @@ class LBFGSB(base.IterativeSolver):
     fun: a smooth function of the form ``fun(x, *args, **kwargs)``.
     value_and_grad: whether ``fun`` just returns the value (False) or both the
       value and gradient (True). See base.make_funs_with_aux for details.
-    has_aux: whether ``fun`` outputs auxiliary data or not. 
-      If ``has_aux`` is False, ``fun`` is expected to be  scalar-valued.
-      If ``has_aux`` is True, then we have one of the following two cases.
-      If ``value_and_grad`` is False, the output should be
-      ``value, aux = fun(...)``.
-      If ``value_and_grad == True``, the output should be
-      ``(value, aux), grad = fun(...)``.
-      At each iteration of the algorithm, the auxiliary outputs are stored
-        in ``state.aux``.
-
+    has_aux: whether ``fun`` outputs auxiliary data or not. If ``has_aux`` is
+      False, ``fun`` is expected to be  scalar-valued. If ``has_aux`` is True,
+      then we have one of the following two cases. If ``value_and_grad`` is
+      False, the output should be ``value, aux = fun(...)``. If ``value_and_grad
+      == True``, the output should be ``(value, aux), grad = fun(...)``. At each
+      iteration of the algorithm, the auxiliary outputs are stored in
+      ``state.aux``.
     maxiter: maximum number of proximal gradient descent iterations.
     tol: tolerance of the stopping criterion.
-
     stepsize: a stepsize to use (if <= 0, use backtracking line search), or a
       callable specifying the **positive** stepsize to use at each iteration.
-    linesearch: the type of line search to use: "backtracking" for backtracking
-      line search or "zoom" for zoom line search or "hager-zhang" for
-      Hager-Zhang line search.
+    linesearch_init: strategy for line-search initialization. By default, it
+      will use "increase", which will increased the step-size by a factor of
+      `increase_factor` at each iteration if the step-size is larger than
+      `min_stepsize`, and set it to `max_stepsize` otherwise. Other choices are
+      "max", that initializes the step-size to `max_stepsize` at every
+      iteration, and "current", that uses the step-size from the previous
+      iteration.
     stop_if_linesearch_fails: whether to stop iterations if the line search
       fails. When True, this matches the behavior of core JAX.
-    condition: condition used to select the stepsize when using backtracking
-      linesearch
+    condition: Deprecated. Condition used to select the stepsize when using
+      backtracking linesearch
     maxls: maximum number of iterations to use in the line search.
-    decrease_factor: factor by which to decrease the stepsize during line search
-      (default: 0.8).
+    decrease_factor: Deprecated. factor by which to decrease the stepsize during
+      backtracking line search (default: 0.8).
     increase_factor: factor by which to increase the stepsize during line search
       (default: 1.5).
     max_stepsize: upper bound on stepsize.
     min_stepsize: lower bound on stepsize.
-
     history_size: size of the memory to use.
     use_gamma: whether to initialize the Hessian approximation with gamma *
       theta, where gamma is chosen following equation (7.20) of 'Numerical
       Optimization' [2]. If use_gamma is set to False, theta is used as
       initialization.
-
     implicit_diff: whether to enable implicit diff or autodiff of unrolled
       iterations.
     implicit_diff_solve: the linear system solver to use.
-
     jit: whether to JIT-compile the optimization loop (default: "auto").
     unroll: whether to unroll the optimization loop (default: "auto").
-
     verbose: whether to print error on every iteration or not.
       Warning: verbose=True will automatically disable jit.
   """
@@ -284,10 +281,11 @@ class LBFGSB(base.IterativeSolver):
 
   stepsize: Union[float, Callable[[Any], float]] = 0.0
   linesearch: str = "zoom"
+  linesearch_init: str = "increase"
   stop_if_linesearch_fails: bool = False
-  condition: str = "strong-wolfe"
+  condition: Any = None  # deprecated in v0.8
   maxls: int = 20
-  decrease_factor: float = 0.8
+  decrease_factor: Any = None  # deprecated in v0.8
   increase_factor: float = 1.5
   max_stepsize: float = 1.0
   # FIXME: should depend on whether float32 or float64 is used.
@@ -463,15 +461,21 @@ class LBFGSB(base.IterativeSolver):
     use_linesearch = (not isinstance(self.stepsize, Callable) and
                       self.stepsize <= 0.)
     if use_linesearch:
-      init_stepsize = self._reset_stepsize(state.stepsize)
+      init_stepsize = _init_stepsize(
+          self.linesearch_init,
+          self.max_stepsize,
+          self.min_stepsize,
+          self.increase_factor,
+          state.stepsize,
+      )
       new_stepsize, ls_state = self.run_ls(
           init_stepsize,
           params,
-          state.value,
-          state.grad,
-          descent_direction,
-          *args,
-          **kwargs,
+          value=state.value,
+          grad=state.grad,
+          descent_direction=descent_direction,
+          fun_args=args,
+          fun_kwargs=kwargs,
       )
       new_params = ls_state.params
       new_value = ls_state.value
@@ -555,6 +559,9 @@ class LBFGSB(base.IterativeSolver):
       params = params.params
     (value, _), grad = self._value_and_grad_with_aux(params, *args, **kwargs)
     return value, grad
+  
+  def _grad_fun(self, params, *args, **kwargs):
+    return self._value_and_grad_fun(params, *args, **kwargs)[1]
 
   def __post_init__(self):
     _, _, self._value_and_grad_with_aux = base._make_funs_with_aux(
@@ -562,8 +569,16 @@ class LBFGSB(base.IterativeSolver):
         value_and_grad=self.value_and_grad,
         has_aux=self.has_aux,
     )
+    
+    # Sets up reference signature.
+    fun = getattr(self.fun, "subfun", self.fun)
+    signature = inspect.signature(fun)
+    parameters = list(signature.parameters.values())
+    new_param = inspect.Parameter(name="bounds",
+                                  kind=inspect.Parameter.POSITIONAL_OR_KEYWORD)
+    parameters.insert(1, new_param)
+    self.reference_signature = inspect.Signature(parameters)
 
-    self.reference_signature = self.fun
 
     jit, unroll = self._get_loop_options()
     linesearch_solver = _setup_linesearch(
@@ -576,20 +591,13 @@ class LBFGSB(base.IterativeSolver):
         jit=jit,
         unroll=unroll,
         verbose=self.verbose,
-        condition=self.condition,
-        decrease_factor=self.decrease_factor,
-        increase_factor=self.increase_factor,
     )
 
-    self._reset_stepsize = functools.partial(
-        _reset_stepsize,
-        self.linesearch,
-        self.max_stepsize,
-        self.min_stepsize,
-        self.increase_factor,
-    )
+    self.run_ls = linesearch_solver.run
 
-    if jit:
-      self.run_ls = jax.jit(linesearch_solver.run)
-    else:
-      self.run_ls = linesearch_solver.run
+    if self.condition is not None:
+      warnings.warn("Argument condition is deprecated", DeprecationWarning)
+    if self.decrease_factor is not None:
+      warnings.warn(
+          "Argument decrease_factor is deprecated", DeprecationWarning
+      )
