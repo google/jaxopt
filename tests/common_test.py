@@ -70,6 +70,7 @@ class CommonTest(test_util.JaxoptTestCase):
                    jaxopt.PolyakSGD(fun=fun),
                    jaxopt.OptaxSolver(opt=optax.adam(1e-3), fun=fun),
                    fpi,
+                   jaxopt.Broyden(fun=root_fun),
                    jaxopt.AndersonAcceleration(fixed_point_fun=fixed_point_fun),
                    jaxopt.AndersonWrapper(fpi),
                    jaxopt.ArmijoSGD(fun=fun),
