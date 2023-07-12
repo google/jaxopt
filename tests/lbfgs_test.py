@@ -23,6 +23,7 @@ from jaxopt import OptStep
 from jaxopt._src import test_util
 from jaxopt._src.lbfgs import inv_hessian_product
 import numpy as onp
+import scipy.optimize as opt
 from sklearn import datasets
 
 
@@ -320,44 +321,55 @@ class LbfgsTest(test_util.JaxoptTestCase):
 
     self.assertEqual(N_CALLS, n_iter + 1)
 
-  def test_first_stepsize_inf(self):
-    """Test LBFGS when the first stepsize gives an inf.
-    
-    The issue was in the zoom linesearch that did not handle well initial stepsizes returning Nan values.
-    """
-    def get_data(n_samples=200, n_features=500, random_state=42):
-      rng = onp.random.RandomState(random_state)
-      beta = rng.randn(n_features)
+  def test_binary_logit_log_likelihood(self):
+    # See issue #409
+    rng = jax.random.PRNGKey(42)
+    N = 1000
+    beta = jnp.array([[0.5,0.5]]).T
+    income = jax.random.normal(rng, shape=(N,1))
+    x = jnp.hstack([jnp.ones((N,1)), income])
 
-      X = rng.randn(n_samples, n_features)
-      y = onp.sign(X @ beta)
+    def simulate_binary_logit(x, beta):
+      beta = beta.reshape(-1,1)
+      N = x.shape[0]
+      J = beta.shape[0]
 
-      X_test = rng.randn(n_samples, n_features)
-      y_test = onp.sign(X_test @ beta)
+      epsilon = jax.random.gumbel(rng,shape =(N,J))
+      Beta_augmented = jnp.hstack([beta, jnp.zeros_like(beta)])
+      utility = x @ Beta_augmented + epsilon
 
-      data = dict(X=jnp.array(X),
-                  y=jnp.array(y),
-                  X_test=jnp.array(X_test),
-                  y_test=jnp.array(y_test))
+      choice_idx = onp.argmax(utility, axis=1)
+      return (choice_idx).reshape(-1,1)
 
-      return data
+    y = simulate_binary_logit(x, beta)
+    y = jnp.ravel(y)
 
-    def loss(beta, data, lmbd):
-        X, y = data
-        y_X_beta = y * X.dot(beta.flatten())
-        l2 = 0.5 * jnp.dot(beta, beta)
-        return jnp.log1p(jnp.exp(-y_X_beta)).sum() + lmbd * l2
-    
-    def _run_lbfgs_solver(X, y, lmbd, n_iter):
-      solver = LBFGS(fun=loss, maxiter=n_iter, tol=1e-15)
-      
-      beta_init = jnp.zeros(X.shape[1])
-      res = solver.run(beta_init, data=(X, y), lmbd=lmbd)
-      return res.params
+    # numpy version
+    def binary_logit_log_likelihood(beta, y,x):
+      lambda_xb = onp.exp(x@beta) / (1 + onp.exp(x@beta))
+      ll_i = y * onp.log(lambda_xb) + (1-y) * onp.log(1-lambda_xb)
+      ll = -onp.sum(ll_i)
+      return ll
 
-    data = get_data()
-    coef = _run_lbfgs_solver(data["X"], data["y"], 1.0, 2)
-    self.assertGreater(jnp.sum(coef**2), 0)
+    # jax version
+    def binary_logit_log_likelihood_jax(beta, y, x):
+      lambda_xb = jnp.exp(x@beta) / (1 + jnp.exp(x@beta))
+      ll_i = y * jnp.log(lambda_xb) + (1-y) * jnp.log(1-lambda_xb)
+      ll = -jnp.sum(ll_i)
+      return ll
+
+    beta_init = jnp.array([0.01,0.01])
+
+    # using scipy
+    scipy_res = opt.minimize(fun=binary_logit_log_likelihood, 
+                             args=(onp.asarray(y),onp.asarray(x)), 
+                             x0 = (onp.asarray(beta_init)), method='BFGS')
+
+    #jaxopt
+    solver = LBFGS(fun=binary_logit_log_likelihood_jax, maxiter=100,
+                   linesearch="zoom", maxls=10, tol=1e-12)
+    jaxopt_res = solver.run(beta_init, y, x)
+    self.assertArraysAllClose(scipy_res.x, jaxopt_res.params)
     
 
 if __name__ == '__main__':
