@@ -108,6 +108,8 @@ class AndersonState(NamedTuple):
   residual_gram: jnp.array
   aux: Any
 
+  num_fun_eval: jnp.array = jnp.array(0, base.NUM_EVAL_DTYPE)
+
 
 @dataclass(eq=False)
 class AndersonAcceleration(base.IterativeSolver):
@@ -185,7 +187,8 @@ class AndersonAcceleration(base.IterativeSolver):
                          params_history=params_history,
                          residuals_history=residuals_history,
                          residual_gram=residual_gram,
-                         aux=aux)
+                         aux=aux,
+                         num_fun_eval=jnp.array(1, base.NUM_EVAL_DTYPE))
 
   def update(self,
              params: Any,
@@ -241,7 +244,8 @@ class AndersonAcceleration(base.IterativeSolver):
                                params_history=params_history,
                                residuals_history=residuals_history,
                                residual_gram=residual_gram,
-                               aux=aux)
+                               aux=aux,
+                               num_fun_eval=state.num_fun_eval+1)
 
     return base.OptStep(params=next_params, state=next_state)
 
@@ -253,7 +257,7 @@ class AndersonAcceleration(base.IterativeSolver):
   def __post_init__(self):
     if self.history_size < 2:
       raise ValueError("history_size should be greater or equal to 2.")
-    
+
     if self.has_aux:
       fun_ = self.fixed_point_fun
     else:

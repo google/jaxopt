@@ -217,6 +217,10 @@ class LbfgsbState(NamedTuple):
   aux: Optional[Any] = None
   failed_linesearch: bool = False
 
+  num_fun_eval: jnp.array = jnp.array(0, base.NUM_EVAL_DTYPE)
+  num_grad_eval: jnp.array = jnp.array(0, base.NUM_EVAL_DTYPE)
+  num_linesearch_iter: jnp.array = jnp.array(0, base.NUM_EVAL_DTYPE)
+
 
 @dataclasses.dataclass(eq=False)
 class LBFGSB(base.IterativeSolver):
@@ -366,7 +370,9 @@ class LBFGSB(base.IterativeSolver):
         error=init_error,
         **state_kwargs,
         aux=aux,
-        failed_linesearch=jnp.asarray(False)
+        failed_linesearch=jnp.asarray(False),
+        num_fun_eval=jnp.array(1, base.NUM_EVAL_DTYPE),
+        num_grad_eval=jnp.array(1, base.NUM_EVAL_DTYPE),
     )
 
   def update(
@@ -482,6 +488,9 @@ class LBFGSB(base.IterativeSolver):
       new_grad = ls_state.grad
       new_aux = ls_state.aux
       failed_linesearch = ls_state.failed
+      new_num_linesearch_iter = state.num_linesearch_iter + ls_state.iter_num
+      new_num_grad_eval = state.num_grad_eval + ls_state.num_grad_eval
+      new_num_fun_eval = state.num_fun_eval + ls_state.num_fun_eval
     else:
       if isinstance(self.stepsize, Callable):
         new_stepsize = self.stepsize(state.iter_num)
@@ -494,6 +503,9 @@ class LBFGSB(base.IterativeSolver):
       (new_value, new_aux), new_grad = self._value_and_grad_with_aux(
           new_params, *args, **kwargs
       )
+      new_num_grad_eval = state.num_grad_eval + 1
+      new_num_fun_eval = state.num_fun_eval + 1
+      new_num_linesearch_iter = state.num_linesearch_iter
       failed_linesearch = jnp.asarray(False)
 
     s = tree_sub(new_params, params)
@@ -539,6 +551,9 @@ class LBFGSB(base.IterativeSolver):
         theta=new_theta,
         aux=new_aux,
         failed_linesearch=failed_linesearch,
+        num_grad_eval=new_num_grad_eval,
+        num_fun_eval=new_num_fun_eval,
+        num_linesearch_iter=new_num_linesearch_iter,
     )
 
     return base.OptStep(new_params, new_state)
@@ -559,7 +574,7 @@ class LBFGSB(base.IterativeSolver):
       params = params.params
     (value, _), grad = self._value_and_grad_with_aux(params, *args, **kwargs)
     return value, grad
-  
+
   def _grad_fun(self, params, *args, **kwargs):
     return self._value_and_grad_fun(params, *args, **kwargs)[1]
 
@@ -569,7 +584,7 @@ class LBFGSB(base.IterativeSolver):
         value_and_grad=self.value_and_grad,
         has_aux=self.has_aux,
     )
-    
+
     # Sets up reference signature.
     fun = getattr(self.fun, "subfun", self.fun)
     signature = inspect.signature(fun)

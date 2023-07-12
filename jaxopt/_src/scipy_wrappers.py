@@ -51,15 +51,15 @@ from scipy.optimize import LbfgsInvHessProduct
 class LbfgsInvHessProductPyTree(LbfgsInvHessProduct):
   """
   Registers the LbfgsInvHessProduct object as a PyTree.
-  This object is typically returned by the L-BFSG-B optimizer to efficiently 
-  store the inverse of the Hessian matrix evaluated at the best-fit parameters. 
+  This object is typically returned by the L-BFSG-B optimizer to efficiently
+  store the inverse of the Hessian matrix evaluated at the best-fit parameters.
   """
 
   def __init__(self, sk, yk):
     """
     Construct the operator.
     This is the same constructor as the original LbfgsInvHessProduct class,
-    except that numpy has been replaced by jax.numpy and no call to the 
+    except that numpy has been replaced by jax.numpy and no call to the
     numpy.ndarray constuctor is performed.
     """
     if sk.shape != yk.shape or sk.ndim != 2:
@@ -93,6 +93,9 @@ class ScipyMinimizeInfo(NamedTuple):
   status: int
   iter_num: int
   hess_inv: Optional[Union[jnp.ndarray, LbfgsInvHessProductPyTree]]
+  num_fun_eval: jnp.array = jnp.array(0, base.NUM_EVAL_DTYPE)
+  num_jac_eval: jnp.array = jnp.array(0, base.NUM_EVAL_DTYPE)
+  num_hess_eval: jnp.array = jnp.array(0, base.NUM_EVAL_DTYPE)
 
 
 class ScipyRootInfo(NamedTuple):
@@ -100,6 +103,9 @@ class ScipyRootInfo(NamedTuple):
   fun_val: float
   success: bool
   status: int
+  iter_num: int
+
+  num_fun_eval: jnp.array = jnp.array(0, base.NUM_EVAL_DTYPE)
 
 
 class ScipyLeastSquaresInfo(NamedTuple):
@@ -108,8 +114,8 @@ class ScipyLeastSquaresInfo(NamedTuple):
   fun_val: jnp.ndarray
   success: bool
   status: int
-  nfev: int
-  njev: Optional[int]
+  num_fun_eval: int
+  num_jac_eval: Optional[int]
   error: float
 
 
@@ -353,11 +359,19 @@ class ScipyMinimize(ScipyWrapper):
     else:
       hess_inv = None
 
+    try:
+      num_hess_eval = jnp.asarray(res.nhev)
+    except AttributeError:
+      num_hess_eval = jnp.array(0)
+
     info = ScipyMinimizeInfo(fun_val=jnp.asarray(res.fun),
                              success=res.success,
                              status=res.status,
                              iter_num=res.nit,
-                             hess_inv=hess_inv)
+                             hess_inv=hess_inv,
+                             num_fun_eval=jnp.asarray(res.nfev, base.NUM_EVAL_DTYPE),
+                             num_jac_eval=jnp.asarray(res.njev, base.NUM_EVAL_DTYPE),
+                             num_hess_eval=num_hess_eval)
     return base.OptStep(params, info)
 
   def run(self,
@@ -516,16 +530,33 @@ class ScipyRootFinding(ScipyWrapper):
     # correctly in Scipy for optimizers that don't use the Jacobian (such as Broyden).
     # See the related issue: https://github.com/google/jaxopt/issues/290
     res = osp.optimize.root(scipy_fun, jnp_to_onp(init_params, self.dtype),
-                            args=(None,),  
+                            args=(None,),
                             jac=True,
                             tol=self.tol,
                             method=self.method,
                             options=self.options)
 
     params = tree_util.tree_map(jnp.asarray, onp_to_jnp(res.x))
+
+    # NOTE: maybe there is a better way to do the following (zramzi)
+    if isinstance(res, osp.optimize.RootResults):
+      iter_num = jnp.array(res.iterations)
+      num_fun_eval = jnp.array(res.function_calls, base.NUM_EVAL_DTYPE)
+    else:
+      try:
+        iter_num = jnp.array(res.nit)
+      except AttributeError:
+        iter_num = None
+      try:
+        num_fun_eval = jnp.array(res.nfev, base.NUM_EVAL_DTYPE)
+      except AttributeError:
+        num_fun_eval = None
+
     info = ScipyRootInfo(fun_val=jnp.asarray(res.fun),
                          success=res.success,
-                         status=res.status)
+                         status=res.status,
+                         iter_num=iter_num,
+                         num_fun_eval=num_fun_eval)
     return base.OptStep(params, info)
 
   def __post_init__(self):
@@ -647,8 +678,8 @@ class ScipyLeastSquares(ScipyWrapper):
                                  fun_val=jnp.asarray(res.fun),
                                  success=res.success,
                                  status=res.status,
-                                 nfev=res.nfev,
-                                 njev=res.njev,
+                                 num_fun_eval=res.nfev,
+                                 num_jac_eval=res.njev,
                                  error=jnp.asarray(res.optimality))
     return base.OptStep(params, info)
 

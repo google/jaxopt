@@ -56,6 +56,8 @@ class KKTSolution(NamedTuple):
   dual_ineq: Optional[Any] = None
 
 
+NUM_EVAL_DTYPE = jnp.int32
+
 # pylint: disable=g-bare-generic
 def _add_aux_to_value_and_grad(value_and_grad: Callable) -> Callable:
   def value_and_grad_with_aux(*a, **kw):

@@ -23,12 +23,18 @@ import jaxopt
 from jaxopt import objective
 from jaxopt import projection
 from jaxopt import prox
+from jaxopt import tree_util as tu
 from jaxopt._src import test_util
+from jaxopt._src.base import LinearOperator
+from jaxopt._src.objective import LeastSquares, MulticlassLinearSvmDual
 
 import optax
 
 from sklearn import datasets
+from sklearn import preprocessing
 
+
+N_CALLS = 0
 
 def check_states_have_same_types(state1, state2):
   if len(state1._fields) != len(state2._fields):
@@ -114,6 +120,130 @@ class CommonTest(test_util.JaxoptTestCase):
     state0 = bisec.init_state()
     params, state = update(params=None, state=state0)
     check_states_have_same_types(state0, state)
+
+  def test_n_calls(self):
+    global N_CALLS
+
+    class LeastSquaresNCalls(LeastSquares):
+      def __init__(self, with_custom_linop=False):
+        super().__init__()
+        self.with_custom_linop = with_custom_linop
+
+      def __call__(self, W, data):
+        global N_CALLS
+        N_CALLS += 1
+        return super().__call__(W, data)
+
+      def make_linop(self, data):
+        """Creates linear operator."""
+        if self.with_custom_linop:
+          return LinopNCall(data[0])
+        else:
+          return super().make_linop(data)
+
+    class LinopNCall(LinearOperator):
+      def matvec(self, x):
+        """Computes dot(A, x)."""
+        global N_CALLS
+        N_CALLS += 1
+        return jnp.dot(self.A, x)
+
+      def rmatvec_element(self, x, idx):
+        """Computes dot(A.T, x)[idx]."""
+        global N_CALLS
+        N_CALLS += 1
+        return jnp.dot(self.A[:, idx], x)
+
+    fun = LeastSquaresNCalls()
+    root_fun = jax.grad(fun)
+
+    def fixed_point_fun(params, *args, **kwargs):
+      return root_fun(params, *args, **kwargs) - params
+
+
+    X, y = datasets.make_classification(n_samples=10, n_features=5, n_classes=3,
+                                        n_informative=3, random_state=0)
+    data = (X, y)
+    params0 = jnp.zeros(X.shape[1])
+    common_kwargs = dict(jit=False, maxiter=30)
+    fpi = jaxopt.FixedPointIteration(fixed_point_fun=fixed_point_fun, **common_kwargs)
+
+    # Gradient solvers and fixed point
+    for solver in (jaxopt.PolyakSGD(fun=fun, **common_kwargs),
+                   fpi,
+                   jaxopt.Broyden(fun=root_fun, **common_kwargs),
+                   jaxopt.AndersonAcceleration(fixed_point_fun=fixed_point_fun, **common_kwargs),
+                   jaxopt.NonlinearCG(fun, **common_kwargs),
+                   jaxopt.BFGS(fun, **common_kwargs),
+                   jaxopt.LBFGS(fun=fun, **common_kwargs)):
+
+      _, state = solver.run(params0, data=data)
+      self.assertEqual(state.num_fun_eval, N_CALLS)
+      N_CALLS = 0
+
+    # # Proximal gradient solvers.
+    # FIXME: currently the following test does not work because
+    # of a fori_loop issue in block cd (does not allow non-jitted functions). (zramzi)
+    # fun = LeastSquaresNCalls(with_custom_linop=True)
+    # for solver in (jaxopt.BlockCoordinateDescent(fun=fun,
+    #                                              block_prox=prox.prox_lasso,
+    #                                              **common_kwargs),):
+
+    #   _, state = solver.run(params0, hyperparams_prox=1.0, data=data)
+    #   self.assertEqual(state.num_fun_eval, N_CALLS)
+    #   N_CALLS = 0
+
+    # Mirror Descent
+    Y = preprocessing.LabelBinarizer().fit_transform(y)
+    Y = jnp.asarray(Y)
+    n_samples, n_classes = Y.shape
+
+    class MulticlassLinearSvmDualNCall(MulticlassLinearSvmDual):
+      def __call__(self, params, *args, **kwargs):
+        global N_CALLS
+        N_CALLS += 1
+        return super().__call__(params, *args, **kwargs)
+
+    fun = MulticlassLinearSvmDualNCall()
+    lam = 10.0
+    data = (X, Y)
+
+    beta_init = jnp.ones((n_samples, n_classes)) / n_classes
+    def kl_projection(x, hyperparams_proj):
+      del hyperparams_proj
+      return tu.tree_map(lambda t: jax.nn.softmax(t, -1), x)
+    # Generating function of the Bregman divergence.
+    kl_generating_fun = lambda x: -jnp.sum(jax.scipy.special.entr(x) + x)
+    # Row-wise mirror map.
+    kl_mapping_fun = jax.vmap(jax.grad(kl_generating_fun))
+    projection_grad = jaxopt.MirrorDescent.make_projection_grad(
+          kl_projection, kl_mapping_fun)
+    md = jaxopt.MirrorDescent(
+        fun=fun,
+        projection_grad=projection_grad,
+        stepsize=1e-3,
+        **common_kwargs)
+    _, state = md.run(beta_init, None, lam, data)
+    self.assertEqual(state.num_fun_eval, N_CALLS)
+    N_CALLS = 0
+
+    # Bisection
+    def opt_fun(x):
+      global N_CALLS
+      N_CALLS += 1
+      return x ** 3 - x - 2
+
+    bisec = jaxopt.Bisection(
+      optimality_fun=opt_fun,
+      lower=1,
+      upper=2,
+      **common_kwargs,
+    )
+
+    _, state = bisec.run()
+    self.assertEqual(state.num_fun_eval, N_CALLS)
+    N_CALLS = 0
+
 
   def test_aux_consistency(self):
     def fun(w, X, y):

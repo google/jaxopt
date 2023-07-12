@@ -354,8 +354,10 @@ class ZoomLinesearchTest(test_util.JaxoptTestCase):
       _, state = ls.run(init_stepsize=1.0, params=xk, descent_direction=pk)
       for name in ("done", "interval_found", "failed"):
         self.assertEqual(getattr(state, name).dtype, jnp.bool_)
-      for name in ("iter_num", "num_fun_eval", "num_grad_eval", "fail_code"):
+      for name in ("iter_num", "fail_code"):
         self.assertEqual(getattr(state, name).dtype, jnp.int64)
+      for name in ("num_fun_eval", "num_grad_eval"):
+        self.assertEqual(getattr(state, name).dtype, jnp.int32)
       for name in (
           "params",
           "grad",

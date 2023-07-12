@@ -41,6 +41,10 @@ class BlockCDState(NamedTuple):
   predictions: jnp.ndarray
   subfun_g: jnp.ndarray
 
+  num_fun_eval: jnp.array = jnp.array(0, base.NUM_EVAL_DTYPE)
+  num_prox_eval: jnp.array = jnp.array(0, base.NUM_EVAL_DTYPE)
+  num_grad_eval: jnp.array = jnp.array(0, base.NUM_EVAL_DTYPE)
+
 
 @dataclass(eq=False)
 class BlockCoordinateDescent(base.IterativeSolver):
@@ -99,7 +103,9 @@ class BlockCoordinateDescent(base.IterativeSolver):
     return BlockCDState(iter_num=jnp.asarray(0),
                         predictions=predictions,
                         subfun_g=subfun_g,
-                        error=jnp.asarray(jnp.inf))
+                        error=jnp.asarray(jnp.inf),
+                        num_fun_eval=jnp.array(1, base.NUM_EVAL_DTYPE),
+                        num_grad_eval=jnp.array(1, base.NUM_EVAL_DTYPE))
 
   def update(self,
              params: Any,
@@ -142,12 +148,21 @@ class BlockCoordinateDescent(base.IterativeSolver):
       return x, subfun_g, predictions, sqerror_sum
 
     init = (params, state.subfun_g, state.predictions, 0)
+    n_for = params.shape[0]
+    # FIXME: use a function similar to cond in order to have
+    # a for loop that can be potentially non-jitted.
+    # this will allow to unit test the number of function eval.
+    # (zramzi)
     params, subfun_g, predictions, sqerror_sum = jax.lax.fori_loop(
-        lower=0, upper=params.shape[0], body_fun=body_fun, init_val=init)
+        lower=0, upper=n_for, body_fun=body_fun, init_val=init)
     state = BlockCDState(iter_num=state.iter_num + 1,
                          predictions=predictions,
                          subfun_g=subfun_g,
-                         error=jnp.sqrt(sqerror_sum))
+                         error=jnp.sqrt(sqerror_sum),
+                         num_fun_eval=state.num_fun_eval + n_for,
+                         num_grad_eval=state.num_grad_eval + n_for,
+                         num_prox_eval=state.num_prox_eval + n_for)
+
     return base.OptStep(params=params, state=state)
 
   def _fixed_point_fun(self, params, hyperparams_prox, *args, **kwargs):

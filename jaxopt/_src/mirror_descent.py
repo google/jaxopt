@@ -39,6 +39,10 @@ class MirrorDescentState(NamedTuple):
   error: float
   aux: Optional[Any] = None
 
+  num_fun_eval: jnp.array = jnp.array(0, base.NUM_EVAL_DTYPE)
+  num_grad_eval: jnp.array = jnp.array(0, base.NUM_EVAL_DTYPE)
+  num_proj_eval: jnp.array = jnp.array(0, base.NUM_EVAL_DTYPE)
+
 
 @dataclass(eq=False)
 class MirrorDescent(base.IterativeSolver):
@@ -127,12 +131,15 @@ class MirrorDescent(base.IterativeSolver):
 
     if self.has_aux:
       _, aux = self.fun(init_params, *args, **kwargs)
+      num_fun_eval = jnp.array(1, base.NUM_EVAL_DTYPE)
     else:
       aux = None
+      num_fun_eval = jnp.array(0, base.NUM_EVAL_DTYPE)
 
     return MirrorDescentState(iter_num=jnp.asarray(0),
                               error=jnp.asarray(jnp.inf),
-                              aux=aux)
+                              aux=aux,
+                              num_fun_eval=num_fun_eval)
 
   def _error(self, x, next_x, stepsize):
     diff_x = tree_sub(next_x, x)
@@ -150,7 +157,13 @@ class MirrorDescent(base.IterativeSolver):
     x_fun_grad, aux = self._grad_with_aux(x, *args, **kwargs)
     next_x = self.projection_grad(x, x_fun_grad, stepsize, hyperparams_proj)
     error = self._error(x, next_x, stepsize)
-    next_state = MirrorDescentState(iter_num=iter_num + 1, error=error, aux=aux)
+    next_state = MirrorDescentState(
+      iter_num=iter_num + 1,
+      error=error,
+      aux=aux,
+      num_fun_eval=state.num_fun_eval + 1,
+      num_grad_eval=state.num_grad_eval + 1,
+      num_proj_eval=state.num_proj_eval + 1,)
     return base.OptStep(params=next_x, state=next_state)
 
   def update(self,
