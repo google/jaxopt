@@ -37,9 +37,8 @@ class FixedPointState(NamedTuple):
   """
   iter_num: int
   error: float
-  aux: Any
-
-  num_fun_eval: jnp.array = jnp.array(0, base.NUM_EVAL_DTYPE)
+  aux: Optional[Any] = None
+  num_fun_eval: int = 0
 
 
 @dataclass(eq=False)
@@ -90,7 +89,9 @@ class FixedPointIteration(base.IterativeSolver):
     """
     return FixedPointState(iter_num=jnp.asarray(0),
                            error=jnp.asarray(jnp.inf),
-                           aux=None)
+                           aux=None, 
+                           num_fun_eval=jnp.asarray(0, base.NUM_EVAL_DTYPE)
+                           )
 
   def update(self,
              params: Any,

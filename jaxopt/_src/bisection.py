@@ -38,7 +38,7 @@ class BisectionState(NamedTuple):
   sign: int
   aux: Optional[Any] = None
 
-  num_fun_eval: jnp.array = jnp.array(0, base.NUM_EVAL_DTYPE)
+  num_fun_eval: int = 0
 
 
 @dataclass(eq=False)

@@ -39,9 +39,9 @@ class MirrorDescentState(NamedTuple):
   error: float
   aux: Optional[Any] = None
 
-  num_fun_eval: jnp.array = jnp.array(0, base.NUM_EVAL_DTYPE)
-  num_grad_eval: jnp.array = jnp.array(0, base.NUM_EVAL_DTYPE)
-  num_proj_eval: jnp.array = jnp.array(0, base.NUM_EVAL_DTYPE)
+  num_fun_eval: int = 0
+  num_grad_eval: int = 0
+  num_proj_eval: int = 0
 
 
 @dataclass(eq=False)
@@ -139,7 +139,9 @@ class MirrorDescent(base.IterativeSolver):
     return MirrorDescentState(iter_num=jnp.asarray(0),
                               error=jnp.asarray(jnp.inf),
                               aux=aux,
-                              num_fun_eval=num_fun_eval)
+                              num_fun_eval=num_fun_eval,
+                              num_grad_eval=jnp.array(0, base.NUM_EVAL_DTYPE),
+                              num_proj_eval=jnp.array(0, base.NUM_EVAL_DTYPE))
 
   def _error(self, x, next_x, stepsize):
     diff_x = tree_sub(next_x, x)

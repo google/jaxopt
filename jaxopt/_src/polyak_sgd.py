@@ -43,8 +43,8 @@ class PolyakSGDState(NamedTuple):
   stepsize: float
   velocity: Optional[Any]
 
-  num_fun_eval: jnp.array = jnp.array(0, base.NUM_EVAL_DTYPE)
-  num_grad_eval: jnp.array = jnp.array(0, base.NUM_EVAL_DTYPE)
+  num_fun_eval: int = 0
+  num_grad_eval: int = 0
 
 
 @dataclasses.dataclass(eq=False)
@@ -161,7 +161,8 @@ class PolyakSGD(base.StochasticSolver):
                           stepsize=jnp.asarray(1.0, dtype=params_dtype),
                           aux=aux,
                           velocity=velocity,
-                          num_fun_eval=jnp.array(1, base.NUM_EVAL_DTYPE))
+                          num_fun_eval=jnp.array(1, base.NUM_EVAL_DTYPE),
+                          num_grad_eval=jnp.array(0, base.NUM_EVAL_DTYPE))
 
   def update(self,
              params: Any,

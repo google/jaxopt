@@ -56,8 +56,8 @@ class HagerZhangLineSearchState(NamedTuple):
   failed: bool
   aux: Optional[Any] = None
 
-  num_fun_eval: jnp.array = jnp.array(0, base.NUM_EVAL_DTYPE)
-  num_grad_eval: jnp.array = jnp.array(0, base.NUM_EVAL_DTYPE)
+  num_fun_eval: int = 0
+  num_grad_eval: int = 0
 
 
 @dataclass(eq=False)

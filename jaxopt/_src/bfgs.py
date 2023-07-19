@@ -56,9 +56,9 @@ class BfgsState(NamedTuple):
   H: jnp.ndarray
   aux: Optional[Any] = None
 
-  num_fun_eval: jnp.array = jnp.array(0, base.NUM_EVAL_DTYPE)
-  num_grad_eval: jnp.array = jnp.array(0, base.NUM_EVAL_DTYPE)
-  num_linesearch_iter: jnp.array = jnp.array(0, base.NUM_EVAL_DTYPE)
+  num_fun_eval: int = 0
+  num_grad_eval: int = 0
+  num_linesearch_iter: int = 0
 
 
 @dataclass(eq=False)
@@ -169,7 +169,9 @@ class BFGS(base.IterativeSolver):
                      H=jnp.eye(len(flat_init_params), dtype=dtype),
                      aux=aux,
                      num_fun_eval=jnp.array(1, base.NUM_EVAL_DTYPE),
-                     num_grad_eval=jnp.array(1, base.NUM_EVAL_DTYPE))
+                     num_grad_eval=jnp.array(1, base.NUM_EVAL_DTYPE),
+                     num_linesearch_iter=jnp.asarray(0, base.NUM_EVAL_DTYPE)
+                     )
 
   def update(self,
              params: Any,

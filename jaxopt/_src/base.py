@@ -44,6 +44,7 @@ from jaxopt import tree_util
 AutoOrBoolean = Union[str, bool]
 ArrayPair = Tuple[jnp.ndarray, jnp.ndarray]
 
+NUM_EVAL_DTYPE = 'int32'
 
 class OptStep(NamedTuple):
   params: Any
@@ -55,8 +56,6 @@ class KKTSolution(NamedTuple):
   dual_eq: Optional[Any] = None
   dual_ineq: Optional[Any] = None
 
-
-NUM_EVAL_DTYPE = jnp.int32
 
 # pylint: disable=g-bare-generic
 def _add_aux_to_value_and_grad(value_and_grad: Callable) -> Callable:

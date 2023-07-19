@@ -41,9 +41,9 @@ class BlockCDState(NamedTuple):
   predictions: jnp.ndarray
   subfun_g: jnp.ndarray
 
-  num_fun_eval: jnp.array = jnp.array(0, base.NUM_EVAL_DTYPE)
-  num_prox_eval: jnp.array = jnp.array(0, base.NUM_EVAL_DTYPE)
-  num_grad_eval: jnp.array = jnp.array(0, base.NUM_EVAL_DTYPE)
+  num_fun_eval: int = 0
+  num_prox_eval: int = 0
+  num_grad_eval: int = 0
 
 
 @dataclass(eq=False)
@@ -105,7 +105,9 @@ class BlockCoordinateDescent(base.IterativeSolver):
                         subfun_g=subfun_g,
                         error=jnp.asarray(jnp.inf),
                         num_fun_eval=jnp.array(1, base.NUM_EVAL_DTYPE),
-                        num_grad_eval=jnp.array(1, base.NUM_EVAL_DTYPE))
+                        num_grad_eval=jnp.array(1, base.NUM_EVAL_DTYPE), 
+                        num_prox_eval=jnp.array(0, base.NUM_EVAL_DTYPE)
+                        )
 
   def update(self,
              params: Any,

@@ -136,9 +136,9 @@ class LbfgsState(NamedTuple):
   gamma: jnp.ndarray
   aux: Optional[Any] = None
   failed_linesearch: bool = False
-  num_fun_eval: jnp.array = jnp.array(0, base.NUM_EVAL_DTYPE)
-  num_grad_eval: jnp.array = jnp.array(0, base.NUM_EVAL_DTYPE)
-  num_linesearch_iter: jnp.array = jnp.array(0, base.NUM_EVAL_DTYPE)
+  num_fun_eval: int = 0
+  num_grad_eval: int = 0
+  num_linesearch_iter: int = 0
 
 
 @dataclass(eq=False)
@@ -282,7 +282,8 @@ class LBFGS(base.IterativeSolver):
                       aux=aux,
                       failed_linesearch=jnp.asarray(False),
                       num_grad_eval=jnp.array(1, base.NUM_EVAL_DTYPE),
-                      num_fun_eval=jnp.array(1, base.NUM_EVAL_DTYPE))
+                      num_fun_eval=jnp.array(1, base.NUM_EVAL_DTYPE),
+                      num_linesearch_iter=jnp.array(0, base.NUM_EVAL_DTYPE))
 
   def update(self,
              params: Any,

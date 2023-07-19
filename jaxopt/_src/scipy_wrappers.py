@@ -93,9 +93,9 @@ class ScipyMinimizeInfo(NamedTuple):
   status: int
   iter_num: int
   hess_inv: Optional[Union[jnp.ndarray, LbfgsInvHessProductPyTree]]
-  num_fun_eval: jnp.array = jnp.array(0, base.NUM_EVAL_DTYPE)
-  num_jac_eval: jnp.array = jnp.array(0, base.NUM_EVAL_DTYPE)
-  num_hess_eval: jnp.array = jnp.array(0, base.NUM_EVAL_DTYPE)
+  num_fun_eval: int = 0
+  num_jac_eval: int = 0
+  num_hess_eval: int = 0
 
 
 class ScipyRootInfo(NamedTuple):
@@ -105,7 +105,7 @@ class ScipyRootInfo(NamedTuple):
   status: int
   iter_num: int
 
-  num_fun_eval: jnp.array = jnp.array(0, base.NUM_EVAL_DTYPE)
+  num_fun_eval: int = 0
 
 
 class ScipyLeastSquaresInfo(NamedTuple):
@@ -360,9 +360,9 @@ class ScipyMinimize(ScipyWrapper):
       hess_inv = None
 
     try:
-      num_hess_eval = jnp.asarray(res.nhev)
+      num_hess_eval = jnp.asarray(res.nhev, base.NUM_EVAL_DTYPE)
     except AttributeError:
-      num_hess_eval = jnp.array(0)
+      num_hess_eval = jnp.array(0, base.NUM_EVAL_DTYPE)
 
     info = ScipyMinimizeInfo(fun_val=jnp.asarray(res.fun),
                              success=res.success,
@@ -678,8 +678,8 @@ class ScipyLeastSquares(ScipyWrapper):
                                  fun_val=jnp.asarray(res.fun),
                                  success=res.success,
                                  status=res.status,
-                                 num_fun_eval=res.nfev,
-                                 num_jac_eval=res.njev,
+                                 num_fun_eval=jnp.asarray(res.nfev, base.NUM_EVAL_DTYPE),
+                                 num_jac_eval=jnp.asarray(res.njev, base.NUM_EVAL_DTYPE),
                                  error=jnp.asarray(res.optimality))
     return base.OptStep(params, info)
 
