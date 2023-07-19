@@ -15,13 +15,13 @@
 
 from typing import Any
 from typing import Callable
+from typing import Literal
 from typing import NamedTuple
 from typing import Optional
 from typing import Union
 
 from dataclasses import dataclass
 
-from typing_extensions import Literal
 import jax
 import jax.numpy as jnp
 

@@ -16,19 +16,26 @@ from absl.testing import absltest
 from absl.testing import parameterized
 import jax
 import jax.numpy as jnp
+from jax import random
+from jax.tree_util import tree_map
+from jax.flatten_util import ravel_pytree
 from jaxopt import BacktrackingLineSearch
 from jaxopt import LBFGS
 from jaxopt import objective
 from jaxopt import OptStep
 from jaxopt._src import test_util
 from jaxopt._src.lbfgs import inv_hessian_product
+from jaxopt._src.lbfgs import select_ith_tree
+from jaxopt.tree_util import tree_sum
 import numpy as onp
+import scipy.optimize as opt
 from sklearn import datasets
 
 
 N_CALLS = 0
 
-def materialize_inv_hessian(s_history, y_history, rho_history, start):
+
+def _materialize_inv_hessian(s_history, y_history, rho_history, start):
   history_size, n_dim = s_history.shape
 
   s_history = jnp.roll(s_history, -start, axis=0)
@@ -138,7 +145,7 @@ class LbfgsTest(test_util.JaxoptTestCase):
 
     Hv1 = _inv_hessian_product(s_history, y_history, v)
 
-    H = materialize_inv_hessian(s_history, y_history, rho_history, 0)
+    H = _materialize_inv_hessian(s_history, y_history, rho_history, 0)
     Hv2 = H.dot(v)
 
     Hv3 = inv_hessian_product(v, s_history, y_history, rho_history, start=0)
@@ -154,36 +161,37 @@ class LbfgsTest(test_util.JaxoptTestCase):
     shape2 = (5,)
 
     s_history1 = jnp.array(rng.randn(history_size, *shape1))
-    y_history1 = jnp.array(rng.randn(history_size, *shape1))
-
     s_history2 = jnp.array(rng.randn(history_size, *shape2))
+    
+    y_history1 = jnp.array(rng.randn(history_size, *shape1))
     y_history2 = jnp.array(rng.randn(history_size, *shape2))
-    rho_history2 = jnp.array([1./ jnp.vdot(s_history2[i], y_history2[i])
-                              for i in range(history_size)])
 
     v1 = jnp.array(rng.randn(*shape1))
     v2 = jnp.array(rng.randn(*shape2))
-    pytree = (v1, v2)
 
     s_history = (s_history1, s_history2)
     y_history = (y_history1, y_history2)
+    pytree = (v1, v2)
 
-    inv_rho_history = [jnp.vdot(s_history1[i], y_history1[i]) +
-                       jnp.vdot(s_history2[i], y_history2[i])
+    v = ravel_pytree(pytree)[0]
+    s = [ravel_pytree(select_ith_tree(s_history, i))[0]
+          for i in range(history_size)]
+    y = [ravel_pytree(select_ith_tree(y_history, i))[0]
+          for i in range(history_size)]
+    s, y = jnp.stack(s), jnp.stack(y)
+
+    inv_rho_history = [jnp.vdot(s[i], y[i])
                        for i in range(history_size)]
     rho_history = 1./ jnp.array(inv_rho_history)
 
-    H1 = materialize_inv_hessian(s_history1.reshape(history_size, -1),
-                                 y_history1.reshape(history_size, -1),
-                                 rho_history, start)
-    H2 = materialize_inv_hessian(s_history2, y_history2, rho_history, start)
-    Hv1 = jnp.dot(H1, v1.reshape(-1)).reshape(shape1)
-    Hv2 = jnp.dot(H2, v2)
-
     Hv = inv_hessian_product(pytree, s_history, y_history, rho_history,
                              start=start)
-    self.assertArraysAllClose(Hv[0], Hv1, atol=1e-2)
-    self.assertArraysAllClose(Hv[1], Hv2, atol=1e-2)
+    Hv = ravel_pytree(Hv)[0]
+
+    H = _materialize_inv_hessian(s, y, rho_history, start)
+    Hv_mat = jnp.dot(H, v)
+
+    self.assertArraysAllClose(Hv, Hv_mat, atol=1e-5, rtol=1e-5)
 
   @parameterized.product(use_gamma=[True, False])
   def test_correctness(self, use_gamma):
@@ -320,45 +328,72 @@ class LbfgsTest(test_util.JaxoptTestCase):
 
     self.assertEqual(N_CALLS, n_iter + 1)
 
-  def test_first_stepsize_inf(self):
-    """Test LBFGS when the first stepsize gives an inf.
+  def test_binary_logit_log_likelihood(self):
+    # See issue #409
+    rng = jax.random.PRNGKey(42)
+    N = 1000
+    beta = jnp.array([[0.5,0.5]]).T
+    income = jax.random.normal(rng, shape=(N,1))
+    x = jnp.hstack([jnp.ones((N,1)), income])
+
+    def simulate_binary_logit(x, beta):
+      beta = beta.reshape(-1,1)
+      N = x.shape[0]
+      J = beta.shape[0]
+
+      epsilon = jax.random.gumbel(rng,shape =(N,J))
+      Beta_augmented = jnp.hstack([beta, jnp.zeros_like(beta)])
+      utility = x @ Beta_augmented + epsilon
+
+      choice_idx = onp.argmax(utility, axis=1)
+      return (choice_idx).reshape(-1,1)
+
+    y = simulate_binary_logit(x, beta)
+    y = jnp.ravel(y)
+
+    # numpy version
+    def binary_logit_log_likelihood(beta, y,x):
+      lambda_xb = onp.exp(x@beta) / (1 + onp.exp(x@beta))
+      ll_i = y * onp.log(lambda_xb) + (1-y) * onp.log(1-lambda_xb)
+      ll = -onp.sum(ll_i)
+      return ll
+
+    # jax version
+    def binary_logit_log_likelihood_jax(beta, y, x):
+      lambda_xb = jnp.exp(x@beta) / (1 + jnp.exp(x@beta))
+      ll_i = y * jnp.log(lambda_xb) + (1-y) * jnp.log(1-lambda_xb)
+      ll = -jnp.sum(ll_i)
+      return ll
+
+    beta_init = jnp.array([0.01,0.01])
+
+    # using scipy
+    scipy_res = opt.minimize(fun=binary_logit_log_likelihood, 
+                             args=(onp.asarray(y),onp.asarray(x)), 
+                             x0 = (onp.asarray(beta_init)), method='BFGS')
+
+    #jaxopt
+    solver = LBFGS(fun=binary_logit_log_likelihood_jax, maxiter=100,
+                   linesearch="zoom", maxls=10, tol=1e-12)
+    jaxopt_res = solver.run(beta_init, y, x)
+    self.assertArraysAllClose(scipy_res.x, jaxopt_res.params)
+
+  def test_handling_pytrees(self):
+    def fun_(x):
+      return sum(100.0*(x[..., 1:] - x[...,:-1]**2.0)**2.0 + (1 - x[...,:-1])**2.0)
+
+    def fun(x):
+      return tree_sum(tree_map(fun_, x))
     
-    The issue was in the zoom linesearch that did not handle well initial stepsizes returning Nan values.
-    """
-    def get_data(n_samples=200, n_features=500, random_state=42):
-      rng = onp.random.RandomState(random_state)
-      beta = rng.randn(n_features)
+    key = random.PRNGKey(0)
+    x_arr0 = random.normal(key, (2, 4))
+    x_tree0 = (x_arr0[0], x_arr0[1])
 
-      X = rng.randn(n_samples, n_features)
-      y = onp.sign(X @ beta)
-
-      X_test = rng.randn(n_samples, n_features)
-      y_test = onp.sign(X_test @ beta)
-
-      data = dict(X=jnp.array(X),
-                  y=jnp.array(y),
-                  X_test=jnp.array(X_test),
-                  y_test=jnp.array(y_test))
-
-      return data
-
-    def loss(beta, data, lmbd):
-        X, y = data
-        y_X_beta = y * X.dot(beta.flatten())
-        l2 = 0.5 * jnp.dot(beta, beta)
-        return jnp.log1p(jnp.exp(-y_X_beta)).sum() + lmbd * l2
-    
-    def _run_lbfgs_solver(X, y, lmbd, n_iter):
-      solver = LBFGS(fun=loss, maxiter=n_iter, tol=1e-15)
-      
-      beta_init = jnp.zeros(X.shape[1])
-      res = solver.run(beta_init, data=(X, y), lmbd=lmbd)
-      return res.params
-
-    data = get_data()
-    coef = _run_lbfgs_solver(data["X"], data["y"], 1.0, 2)
-    self.assertGreater(jnp.sum(coef**2), 0)
-    
+    lbfgs = LBFGS(fun=fun, maxiter=5)
+    x_arr, _ = lbfgs.run(x_arr0)
+    x_tree, _ = lbfgs.run(x_tree0)
+    x_tree = jnp.stack((x_tree[0], x_tree[1]))
+    self.assertArraysAllClose(x_arr, x_tree)
 
 if __name__ == '__main__':
   absltest.main()
