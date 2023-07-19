@@ -38,6 +38,8 @@ class BisectionState(NamedTuple):
   sign: int
   aux: Optional[Any] = None
 
+  num_fun_eval: int = 0
+
 
 @dataclass(eq=False)
 class Bisection(base.IterativeSolver):
@@ -111,7 +113,8 @@ class Bisection(base.IterativeSolver):
                           value=jnp.asarray(jnp.inf),
                           error=jnp.asarray(jnp.inf),
                           low=lower, high=upper,
-                          sign=jnp.asarray(sign))
+                          sign=jnp.asarray(sign),
+                          num_fun_eval=jnp.array(2, base.NUM_EVAL_DTYPE))
 
   def update(self,
              params,
@@ -146,7 +149,8 @@ class Bisection(base.IterativeSolver):
                            low=low,
                            high=high,
                            sign=state.sign,
-                           aux=aux)
+                           aux=aux,
+                           num_fun_eval=state.num_fun_eval + 1)
 
     return base.OptStep(params=params, state=state)
 

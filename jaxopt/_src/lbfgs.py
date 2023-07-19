@@ -136,6 +136,9 @@ class LbfgsState(NamedTuple):
   gamma: jnp.ndarray
   aux: Optional[Any] = None
   failed_linesearch: bool = False
+  num_fun_eval: int = 0
+  num_grad_eval: int = 0
+  num_linesearch_iter: int = 0
 
 
 @dataclass(eq=False)
@@ -277,7 +280,10 @@ class LBFGS(base.IterativeSolver):
                       error=jnp.asarray(jnp.inf, dtype=dtype),
                       **state_kwargs,
                       aux=aux,
-                      failed_linesearch=jnp.asarray(False))
+                      failed_linesearch=jnp.asarray(False),
+                      num_grad_eval=jnp.array(1, base.NUM_EVAL_DTYPE),
+                      num_fun_eval=jnp.array(1, base.NUM_EVAL_DTYPE),
+                      num_linesearch_iter=jnp.array(0, base.NUM_EVAL_DTYPE))
 
   def update(self,
              params: Any,
@@ -335,6 +341,9 @@ class LBFGS(base.IterativeSolver):
       new_grad = ls_state.grad
       new_aux = ls_state.aux
       failed_linesearch = ls_state.failed
+      new_num_linesearch_iter = state.num_linesearch_iter + ls_state.iter_num
+      new_num_grad_eval = state.num_grad_eval + ls_state.num_grad_eval
+      new_num_fun_eval = state.num_fun_eval + ls_state.num_fun_eval
 
     else:
       if isinstance(self.stepsize, Callable):
@@ -346,6 +355,9 @@ class LBFGS(base.IterativeSolver):
       (new_value, new_aux), new_grad = self._value_and_grad_with_aux(
           new_params, *args, **kwargs
       )
+      new_num_grad_eval = state.num_grad_eval + 1
+      new_num_fun_eval = state.num_fun_eval + 1
+      new_num_linesearch_iter = state.num_linesearch_iter
       failed_linesearch = jnp.asarray(False)
     s = tree_sub(new_params, params)
     y = tree_sub(new_grad, grad)
@@ -374,7 +386,10 @@ class LBFGS(base.IterativeSolver):
                            rho_history=rho_history,
                            gamma=gamma,
                            aux=new_aux,
-                           failed_linesearch=failed_linesearch)
+                           failed_linesearch=failed_linesearch,
+                           num_grad_eval=new_num_grad_eval,
+                           num_fun_eval=new_num_fun_eval,
+                           num_linesearch_iter=new_num_linesearch_iter)
 
     return base.OptStep(params=new_params, state=new_state)
 

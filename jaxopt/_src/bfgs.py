@@ -56,6 +56,10 @@ class BfgsState(NamedTuple):
   H: jnp.ndarray
   aux: Optional[Any] = None
 
+  num_fun_eval: int = 0
+  num_grad_eval: int = 0
+  num_linesearch_iter: int = 0
+
 
 @dataclass(eq=False)
 class BFGS(base.IterativeSolver):
@@ -163,7 +167,11 @@ class BFGS(base.IterativeSolver):
                      stepsize=jnp.asarray(self.max_stepsize, dtype=dtype),
                      error=jnp.asarray(jnp.inf, dtype=dtype),
                      H=jnp.eye(len(flat_init_params), dtype=dtype),
-                     aux=aux)
+                     aux=aux,
+                     num_fun_eval=jnp.array(1, base.NUM_EVAL_DTYPE),
+                     num_grad_eval=jnp.array(1, base.NUM_EVAL_DTYPE),
+                     num_linesearch_iter=jnp.asarray(0, base.NUM_EVAL_DTYPE)
+                     )
 
   def update(self,
              params: Any,
@@ -212,6 +220,9 @@ class BFGS(base.IterativeSolver):
       new_value = ls_state.value
       new_grad = ls_state.grad
       new_aux = ls_state.aux
+      new_num_linesearch_iter = state.num_linesearch_iter + ls_state.iter_num
+      new_num_grad_eval = state.num_grad_eval + ls_state.num_grad_eval
+      new_num_fun_eval = state.num_fun_eval + ls_state.num_fun_eval
     else:
       if isinstance(self.stepsize, Callable):
         new_stepsize = self.stepsize(state.iter_num)
@@ -220,6 +231,9 @@ class BFGS(base.IterativeSolver):
 
       new_params = tree_add_scalar_mul(params, new_stepsize, descent_direction)
       (new_value, new_aux), new_grad = self._value_and_grad_with_aux(new_params, *args, **kwargs)
+      new_num_grad_eval = state.num_grad_eval + 1
+      new_num_fun_eval = state.num_fun_eval + 1
+      new_num_linesearch_iter = state.num_linesearch_iter
 
     s = tree_sub(new_params, params)
     y = tree_sub(new_grad, grad)
@@ -240,7 +254,10 @@ class BFGS(base.IterativeSolver):
                           stepsize=jnp.asarray(new_stepsize),
                           error=jnp.asarray(error, dtype=dtype),
                           H=new_H,
-                          aux=new_aux)
+                          aux=new_aux,
+                          num_grad_eval=new_num_grad_eval,
+                          num_fun_eval=new_num_fun_eval,
+                          num_linesearch_iter=new_num_linesearch_iter)
 
     return base.OptStep(params=new_params, state=new_state)
 

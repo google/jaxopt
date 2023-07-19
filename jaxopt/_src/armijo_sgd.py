@@ -72,6 +72,9 @@ def armijo_line_search(fun_with_aux, unroll, jit,
     next_params: params after gradient step
     f_next: loss after gradient step
   """
+  # FIXME: (zramzi) this should return the number of iterations,
+  # the number of function and gradient calls to have
+  # these values available down the line.
   next_params = tree_add_scalar_mul(params, -stepsize, grad)
   f_next, _ = fun_with_aux(next_params, *args, **kwargs)
   grad_sqnorm = tree_l2_norm(grad, squared=True)

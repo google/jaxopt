@@ -37,7 +37,8 @@ class FixedPointState(NamedTuple):
   """
   iter_num: int
   error: float
-  aux: Any
+  aux: Optional[Any] = None
+  num_fun_eval: int = 0
 
 
 @dataclass(eq=False)
@@ -88,7 +89,9 @@ class FixedPointIteration(base.IterativeSolver):
     """
     return FixedPointState(iter_num=jnp.asarray(0),
                            error=jnp.asarray(jnp.inf),
-                           aux=None)
+                           aux=None, 
+                           num_fun_eval=jnp.asarray(0, base.NUM_EVAL_DTYPE)
+                           )
 
   def update(self,
              params: Any,
@@ -110,7 +113,8 @@ class FixedPointIteration(base.IterativeSolver):
     error = tree_l2_norm(tree_sub(next_params, params))
     next_state = FixedPointState(iter_num=state.iter_num + 1,
                                  error=error,
-                                 aux=aux)
+                                 aux=aux,
+                                 num_fun_eval=state.num_fun_eval + 1)
     return base.OptStep(params=next_params, state=next_state)
 
   def optimality_fun(self, params, *args, **kwargs):

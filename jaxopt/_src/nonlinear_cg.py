@@ -43,6 +43,10 @@ class NonlinearCGState(NamedTuple):
   descent_direction: Any
   aux: Optional[Any] = None
 
+  num_fun_eval: int = 0
+  num_grad_eval: int = 0
+  num_linesearch_iter: int = 0
+
 
 @dataclass(eq=False)
 class NonlinearCG(base.IterativeSolver):
@@ -154,7 +158,11 @@ class NonlinearCG(base.IterativeSolver):
                             value=value,
                             grad=grad,
                             descent_direction=tree_scalar_mul(-1.0, grad),
-                            aux=aux)
+                            aux=aux,
+                            num_fun_eval=jnp.asarray(1, base.NUM_EVAL_DTYPE),
+                            num_grad_eval=jnp.asarray(1, base.NUM_EVAL_DTYPE),
+                            num_linesearch_iter=jnp.array(0, base.NUM_EVAL_DTYPE)
+                            )
 
   def update(self,
              params: Any,
@@ -206,6 +214,9 @@ class NonlinearCG(base.IterativeSolver):
     new_value = ls_state.value
     new_grad = ls_state.grad
     new_aux = ls_state.aux
+    new_num_fun_eval = state.num_fun_eval + ls_state.num_fun_eval
+    new_num_grad_eval = state.num_grad_eval + ls_state.num_grad_eval
+    new_num_linesearch_iter = state.num_linesearch_iter + ls_state.iter_num
 
     if self.method == "polak-ribiere":
       # See Numerical Optimization, second edition, equation (5.44).
@@ -239,7 +250,10 @@ class NonlinearCG(base.IterativeSolver):
                                  value=new_value,
                                  grad=new_grad,
                                  descent_direction=new_descent_direction,
-                                 aux=new_aux)
+                                 aux=new_aux,
+                                 num_fun_eval=new_num_fun_eval,
+                                 num_grad_eval=new_num_grad_eval,
+                                 num_linesearch_iter=new_num_linesearch_iter)
 
     return base.OptStep(params=new_params, state=new_state)
 

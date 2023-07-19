@@ -461,9 +461,6 @@ class ZoomLineSearch(base.IterativeLineSearch):
         value_cubic_ref=value_low,
         #
         safe_stepsize=new_safe_stepsize,
-        #
-        num_fun_eval=state.num_fun_eval + 1,
-        num_grad_eval=state.num_grad_eval + 1,
     )
     return base.LineSearchStep(stepsize=best_stepsize, state=new_state)
 
@@ -643,9 +640,6 @@ class ZoomLineSearch(base.IterativeLineSearch):
         value_cubic_ref=new_value_cubic_ref,
         #
         safe_stepsize=new_safe_stepsize,
-        #
-        num_fun_eval=state.num_fun_eval + 1,
-        num_grad_eval=state.num_grad_eval + 1,
     )
     return base.LineSearchStep(stepsize=best_stepsize, state=new_state)
 
@@ -677,8 +671,8 @@ class ZoomLineSearch(base.IterativeLineSearch):
     # FIXME: Signature issue in base.IterativeLineSearch: Keyword argument
     # before variable positional arguments.
     dtype = tree_single_dtype(params)
-    num_fun_eval = jnp.asarray(0)
-    num_grad_eval = jnp.asarray(0)
+    num_fun_eval = jnp.asarray(0, base.NUM_EVAL_DTYPE)
+    num_grad_eval = jnp.asarray(0, base.NUM_EVAL_DTYPE)
     del init_stepsize
     aux = None
     if value is None or grad is None:
@@ -695,6 +689,8 @@ class ZoomLineSearch(base.IterativeLineSearch):
     # base.IterativeLineSearch.
     if aux is None and self.has_aux:
       _, aux = self._fun_with_aux(params, *fun_args, **fun_kwargs)
+      num_fun_eval += 1
+      num_grad_eval += 1
 
     if descent_direction is None:
       descent_direction = tree_scalar_mul(-1.0, grad)
@@ -799,7 +795,14 @@ class ZoomLineSearch(base.IterativeLineSearch):
         fun_kwargs,
         jit=jit,
     )
+    new_state_ = new_state_._replace(
+        num_fun_eval=new_state_.num_fun_eval + 1,
+        num_grad_eval=new_state_.num_grad_eval + 1,
+    )
 
+    anticipated_num_func_grad_calls = jnp.array(
+      (new_state_.failed) & (new_state_.iter_num == self.maxiter)
+    ).astype(base.NUM_EVAL_DTYPE)
     best_stepsize, new_state = cond(
         (new_state_.failed) & (new_state_.iter_num == self.maxiter),
         self._make_safe_step,
@@ -809,6 +812,10 @@ class ZoomLineSearch(base.IterativeLineSearch):
         fun_args,
         fun_kwargs,
         jit=jit,
+    )
+    new_state = new_state._replace(
+        num_fun_eval=new_state_.num_fun_eval + anticipated_num_func_grad_calls,
+        num_grad_eval=new_state_.num_grad_eval + anticipated_num_func_grad_calls,
     )
 
     if self.verbose:

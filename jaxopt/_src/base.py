@@ -44,6 +44,7 @@ from jaxopt import tree_util
 AutoOrBoolean = Union[str, bool]
 ArrayPair = Tuple[jnp.ndarray, jnp.ndarray]
 
+NUM_EVAL_DTYPE = 'int32'
 
 class OptStep(NamedTuple):
   params: Any

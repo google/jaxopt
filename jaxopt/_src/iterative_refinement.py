@@ -57,6 +57,10 @@ class IterativeRefinementState(NamedTuple):
   # TODO(lbethune): in the future return the state of the internal
   # solver (iter_num, error) as part of the current state.
 
+  num_matvec_eval: int = 0
+  num_matvec_bar_eval: int = 0
+  num_solve_eval: int = 0
+
 
 @dataclass(eq=False)
 class IterativeRefinement(base.IterativeSolver):
@@ -128,7 +132,11 @@ class IterativeRefinement(base.IterativeSolver):
       iter_num=jnp.asarray(0),
       error=jnp.asarray(jnp.inf),
       target_residuals=b,
-      init=init_params)
+      init=init_params, 
+      num_matvec_eval=jnp.asarray(0, base.NUM_EVAL_DTYPE),
+      num_matvec_bar_eval=jnp.asarray(0, base.NUM_EVAL_DTYPE),
+      num_solve_eval=jnp.asarray(0, base.NUM_EVAL_DTYPE)
+)
 
   def init_params(self,
                   A: Any,
@@ -162,7 +170,10 @@ class IterativeRefinement(base.IterativeSolver):
       iter_num=state.iter_num+1,
       error=error,
       target_residuals=target_residuals,
-      init=self.init_params(A, b, A_bar))
+      init=self.init_params(A, b, A_bar),
+      num_matvec_eval=state.num_matvec_eval + 1,
+      num_matvec_bar_eval=state.num_matvec_bar_eval + 1,
+      num_solve_eval=state.num_solve_eval + 1)
 
     return base.OptStep(params, state)
 

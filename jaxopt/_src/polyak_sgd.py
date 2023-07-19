@@ -43,6 +43,9 @@ class PolyakSGDState(NamedTuple):
   stepsize: float
   velocity: Optional[Any]
 
+  num_fun_eval: int = 0
+  num_grad_eval: int = 0
+
 
 @dataclasses.dataclass(eq=False)
 class PolyakSGD(base.StochasticSolver):
@@ -157,7 +160,9 @@ class PolyakSGD(base.StochasticSolver):
                           value=jnp.asarray(jnp.inf, dtype=value.dtype),
                           stepsize=jnp.asarray(1.0, dtype=params_dtype),
                           aux=aux,
-                          velocity=velocity)
+                          velocity=velocity,
+                          num_fun_eval=jnp.array(1, base.NUM_EVAL_DTYPE),
+                          num_grad_eval=jnp.array(0, base.NUM_EVAL_DTYPE))
 
   def update(self,
              params: Any,
@@ -202,7 +207,9 @@ class PolyakSGD(base.StochasticSolver):
                                velocity=new_velocity,
                                value=jnp.asarray(value),
                                stepsize=jnp.asarray(stepsize, dtype=dtype),
-                               aux=aux)
+                               aux=aux,
+                               num_fun_eval=state.num_fun_eval + 1,
+                               num_grad_eval=state.num_grad_eval + 1)
     return base.OptStep(params=new_params, state=new_state)
 
   def optimality_fun(self, params, *args, **kwargs):
