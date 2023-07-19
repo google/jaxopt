@@ -300,16 +300,20 @@ class LBFGS(base.IterativeSolver):
 
     start = state.iter_num % self.history_size
     value, grad = (state.value, state.grad)
+    descent_direction = tree_scalar_mul(-1.0, grad)
+    s_history = state.s_history
+    y_history = state.y_history
+    rho_history = state.rho_history
 
-    product = inv_hessian_product(
-        pytree=grad,
-        s_history=state.s_history,
-        y_history=state.y_history,
-        rho_history=state.rho_history,
-        gamma=state.gamma,
-        start=start,
-    )
-    descent_direction = tree_scalar_mul(-1.0, product)
+    if self.history_size:
+      descent_direction = inv_hessian_product(
+          pytree=descent_direction,
+          s_history=s_history,
+          y_history=y_history,
+          rho_history=rho_history,
+          gamma=state.gamma,
+          start=start,
+      )
 
     use_linesearch = (
         not isinstance(self.stepsize, Callable) and self.stepsize <= 0
@@ -352,13 +356,13 @@ class LBFGS(base.IterativeSolver):
     vdot_sy = tree_vdot(s, y)
     rho = jnp.where(vdot_sy == 0, 0, 1. / vdot_sy)
 
-    last = (start + self.history_size) % self.history_size
-    s_history = update_history(state.s_history, s, last)
-    y_history = update_history(state.y_history, y, last)
-    rho_history = update_history(state.rho_history, rho, last)
+    if self.history_size:
+      s_history = update_history(s_history, s, start)
+      y_history = update_history(y_history, y, start)
+      rho_history = update_history(rho_history, rho, start)
 
-    if self.use_gamma:
-      gamma = compute_gamma(s_history, y_history, last)
+    if self.history_size and self.use_gamma:
+      gamma = compute_gamma(s_history, y_history, start)
     else:
       gamma = jnp.array(1.0)
 

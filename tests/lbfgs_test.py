@@ -21,6 +21,7 @@ from jax.tree_util import tree_map
 from jax.flatten_util import ravel_pytree
 from jaxopt import BacktrackingLineSearch
 from jaxopt import LBFGS
+from jaxopt import GradientDescent
 from jaxopt import objective
 from jaxopt import OptStep
 from jaxopt._src import test_util
@@ -394,6 +395,18 @@ class LbfgsTest(test_util.JaxoptTestCase):
     x_tree, _ = lbfgs.run(x_tree0)
     x_tree = jnp.stack((x_tree[0], x_tree[1]))
     self.assertArraysAllClose(x_arr, x_tree)
+
+  def test_zero_history(self):
+    # Should match a gradient descent if history_size = 0
+    def fun(x):
+      return sum(100.0*(x[1:] - x[:-1]**2.0)**2.0 + (1 - x[:-1])**2.0)
+    
+    x0 = jnp.zeros(2)
+    lbfgs = LBFGS(fun=fun, tol=1e-3, maxiter=20, history_size=0, stepsize=0.01)
+    x_lbfgs = lbfgs.run(x0).params
+    gd = GradientDescent(fun=fun, tol=1e-3, maxiter=20, stepsize=0.01, acceleration=False)
+    x_gd = gd.run(x0).params
+    self.assertArraysAllClose(x_lbfgs, x_gd)
 
 if __name__ == '__main__':
   absltest.main()
