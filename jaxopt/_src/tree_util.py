@@ -104,6 +104,23 @@ def tree_vdot(tree_x, tree_y):
   return tree_reduce(operator.add, vdots)
 
 
+def _vdot_real(x, y):
+  """Vector dot-product guaranteed to have a real valued result despite
+     possibly complex input. Thus neglects the real-imaginary cross-terms.
+     The result is a real float.
+  """
+  #result = _vdot(x.real, y.real)
+  #if jnp.iscomplexobj(x) and jnp.iscomplexobj(y):
+  #  result += _vdot(x.imag, y.imag)
+  result = _vdot(x, y).real  # NOTE: without jit this is faster than variant above, no difference with jit
+  return result
+
+
+def tree_vdot_real(tree_x, tree_y):
+  """Compute the real part of the inner product <tree_x, tree_y>."""
+  return sum(tree_leaves(tree_map(_vdot_real, tree_x, tree_y)))
+
+
 def tree_dot(tree_x, tree_y):
   """Compute leaves-wise dot product between pytree of arrays.
 
@@ -120,7 +137,7 @@ def tree_sum(tree_x):
 
 def tree_l2_norm(tree_x, squared=False):
   """Compute the l2 norm ||tree_x||."""
-  squared_tree = tree_map(jnp.square, tree_x)
+  squared_tree = tree_map(lambda leaf: jnp.square(leaf.real) + jnp.square(leaf.imag), tree_x)
   sqnorm = tree_sum(squared_tree)
   if squared:
     return sqnorm
@@ -209,12 +226,62 @@ def tree_mean(tree):
   return tree_sum(leaves_avg) / len(tree_leaves(leaves_avg))
 
 
-def tree_single_dtype(tree):
-  """The dtype for all values in e tree."""
-  dtypes = set(p.dtype for p in jax.tree_util.tree_leaves(tree)
-               if isinstance(p, jnp.ndarray))
+def tree_single_dtype(tree, convert_in_jax_dtype=True):
+  """The dtype for all values in a tree, provided that all leaves share the same type.
+
+      If the leaves have different type, raise a ValueError.
+
+      Args:
+        tree: tree to get the dtype of
+        convert_in_jax_type: whether to convert the types in JAX precision.
+          Namely, a numpy int64 type is converted in a jax.numpy int32 type
+          by default unless one enables double precision using
+          jax.config.update("jax_enable_x64", True)
+      Return:
+        dtype shared by all leaves of the tree
+      """
+  if convert_in_jax_dtype:
+    dtypes = set(
+      jnp.asarray(p).dtype
+      for p in tu.tree_leaves(tree)
+      if isinstance(
+        p, (bool, int, float, complex, onp.ndarray, jnp.ndarray)
+      )
+    )
+  else:
+    dtypes = set(
+      onp.asarray(p).dtype
+      for p in tu.tree_leaves(tree)
+      if isinstance(
+        p, (bool, int, float, complex, onp.ndarray, jnp.ndarray)
+      )
+    )
   if not dtypes:
     return None
   if len(dtypes) == 1:
-    return dtypes.pop()
-  raise ValueError('Found more than one dtype in the tree.')
+    dtype = dtypes.pop()
+    return dtype
+  raise ValueError("Found more than one dtype in the tree.")
+
+def get_real_dtype(dtype):
+  """Dtype corresponding of real part of a complex dtype."""
+  if dtype not in [f'complex{i}' for i in [4, 8, 16, 32, 64, 128]]:
+    return dtype
+  else:
+    return dtype.type(0).real.dtype
+
+
+def tree_conj(tree):
+  """Complex conjugate of a tree."""
+  return tree_map(jnp.conj, tree)
+
+
+def tree_real(tree):
+  """Real part of a tree"""
+  return tree_map(jnp.real, tree)
+
+
+def tree_imag(tree):
+  """Imaginary part of a tree"""
+  return tree_map(jnp.imag, tree)
+

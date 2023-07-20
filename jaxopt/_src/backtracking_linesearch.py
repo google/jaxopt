@@ -27,8 +27,8 @@ import jax.numpy as jnp
 from jaxopt._src import base
 from jaxopt.tree_util import tree_add_scalar_mul
 from jaxopt.tree_util import tree_scalar_mul
-from jaxopt.tree_util import tree_vdot
-
+from jaxopt.tree_util import tree_vdot_real
+from jaxopt.tree_util import tree_conj
 
 class BacktrackingLineSearchState(NamedTuple):
   """Named tuple containing state information."""
@@ -47,6 +47,8 @@ class BacktrackingLineSearchState(NamedTuple):
 @dataclass(eq=False)
 class BacktrackingLineSearch(base.IterativeLineSearch):
   """Backtracking line search.
+
+  Supports complex variables.
 
   Attributes:
     fun: a function of the form ``fun(params, *args, **kwargs)``, where
@@ -180,9 +182,9 @@ class BacktrackingLineSearch(base.IterativeLineSearch):
       num_grad_eval += 1
 
     if descent_direction is None:
-      descent_direction = tree_scalar_mul(-1, grad)
+      descent_direction = tree_scalar_mul(-1, tree_conj(grad))
 
-    gd_vdot = tree_vdot(grad, descent_direction)
+    gd_vdot = tree_vdot_real(tree_conj(grad), descent_direction)
     # For backtracking linesearches, we want to compute the next point
     # from the basepoint. i.e. x_i  = x_0 + s_i * p
     new_params = tree_add_scalar_mul(params, stepsize, descent_direction)
@@ -195,7 +197,7 @@ class BacktrackingLineSearch(base.IterativeLineSearch):
           new_params, *fun_args, **fun_kwargs
       )
       new_aux = None
-    new_gd_vdot = tree_vdot(new_grad, descent_direction)
+    new_gd_vdot = tree_vdot_real(tree_conj(new_grad), descent_direction)
 
     # Every condition requires the new function value, but not every one
     # requires the new gradient value (we'll assume that this code is called

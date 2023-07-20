@@ -163,7 +163,7 @@ class LbfgsTest(test_util.JaxoptTestCase):
 
     s_history1 = jnp.array(rng.randn(history_size, *shape1))
     s_history2 = jnp.array(rng.randn(history_size, *shape2))
-    
+
     y_history1 = jnp.array(rng.randn(history_size, *shape1))
     y_history2 = jnp.array(rng.randn(history_size, *shape2))
 
@@ -379,13 +379,49 @@ class LbfgsTest(test_util.JaxoptTestCase):
     jaxopt_res = solver.run(beta_init, y, x)
     self.assertArraysAllClose(scipy_res.x, jaxopt_res.params)
 
+  @parameterized.product(linesearch=['zoom', 'backtracking', 'hager-zhang'])
+  def test_complex(self, linesearch):
+    """Test that optimization over complex variable z = x + jy matches equivalent real case"""
+
+    W = jnp.array(
+      [[1, - 2],
+       [3, 4],
+       [-4 + 2j, 5 - 3j],
+       [-2 - 2j, 6]]
+    )
+
+    def C2R(z):
+      return jnp.stack((z.real, z.imag))
+
+    def R2C(x):
+      return x[..., 0, :] + 1j * x[..., 1, :]  # if len(x)>0 else jnp.zeros_like(x)
+
+    def f(z):
+      return W @ z
+
+    def loss_complex(z):
+      return jnp.sum(jnp.abs(f(z)) ** 1.5)
+
+    def loss_real(zR):
+      return loss_complex(R2C(zR))
+
+    z0 = jnp.array([1 - 1j, 0 + 1j])
+
+    solver_C = LBFGS(fun=loss_complex, maxiter=5, history_size=3, stepsize=-1, linesearch=linesearch, min_stepsize=0.1, max_stepsize=2)
+    solver_R = LBFGS(fun=loss_real,    maxiter=5, history_size=3, stepsize=-1, linesearch=linesearch, min_stepsize=0.1, max_stepsize=2)
+    sol_C, state_C = solver_C.run(z0)
+    sol_R, state_R = solver_R.run(C2R(z0))
+
+    self.assertArraysAllClose(sol_C, R2C(sol_R))
+    self.assertArraysAllClose(state_C.s_history, R2C(state_R.s_history))
+
   def test_handling_pytrees(self):
     def fun_(x):
-      return sum(100.0*(x[..., 1:] - x[...,:-1]**2.0)**2.0 + (1 - x[...,:-1])**2.0)
+      return sum(100.0 * (x[..., 1:] - x[..., :-1] ** 2.0) ** 2.0 + (1 - x[..., :-1]) ** 2.0)
 
     def fun(x):
       return tree_sum(tree_map(fun_, x))
-    
+
     key = random.PRNGKey(0)
     x_arr0 = random.normal(key, (2, 4))
     x_tree0 = (x_arr0[0], x_arr0[1])

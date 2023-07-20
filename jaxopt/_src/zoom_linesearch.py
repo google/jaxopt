@@ -28,9 +28,12 @@ from jaxopt._src import base
 from jaxopt._src.base import _make_funs_with_aux
 from jaxopt._src.cond import cond
 from jaxopt._src.tree_util import tree_single_dtype
+from jaxopt._src.tree_util import get_real_dtype
 from jaxopt.tree_util import tree_add_scalar_mul
 from jaxopt.tree_util import tree_scalar_mul
-from jaxopt.tree_util import tree_vdot
+from jaxopt.tree_util import tree_vdot_real
+from jaxopt.tree_util import tree_conj
+
 # pylint: disable=g-bare-generic
 # pylint: disable=invalid-name
 
@@ -186,9 +189,13 @@ class ZoomLineSearch(base.IterativeLineSearch):
   minimum, in that case, we switch to an approximate sufficient decrease
   condition (approximate Wolfe) taken from [2].
 
+  Supports complex variables, see [3].
+
   [1] J. Nocedal and S. Wright, 'Numerical Optimization', 2nd edition, 2006.
   [2] W. Hager, H. Zhang, Algorithm 851: CG_DESCENT, a Conjugate Gradient Method
     with Guaranteed Descent.
+  [3] L. Sorber, M. van Barel, and L. de Lathauwer, 'Unconstrained Optimization
+   of Real Functions in Complex Variables', SIAM J. Optim., Vol. 22, No. 3, pp. 879-898
 
   Attributes:
     fun: a function of the form ``fun(params, *args, **kwargs)``, where
@@ -249,7 +256,7 @@ class ZoomLineSearch(base.IterativeLineSearch):
     (value_step, aux_step), grad_step = self._value_and_grad_fun_with_aux(
         step, *args, **kwargs
     )
-    slope_step = tree_vdot(grad_step, descent_direction)
+    slope_step = tree_vdot_real(tree_conj(grad_step), descent_direction)
     return value_step, slope_step, step, grad_step, aux_step
 
   def _decrease_error(
@@ -670,7 +677,7 @@ class ZoomLineSearch(base.IterativeLineSearch):
     """
     # FIXME: Signature issue in base.IterativeLineSearch: Keyword argument
     # before variable positional arguments.
-    dtype = tree_single_dtype(params)
+    realdtype = get_real_dtype(tree_single_dtype(params))
     num_fun_eval = jnp.asarray(0, base.NUM_EVAL_DTYPE)
     num_grad_eval = jnp.asarray(0, base.NUM_EVAL_DTYPE)
     del init_stepsize
@@ -693,9 +700,9 @@ class ZoomLineSearch(base.IterativeLineSearch):
       num_grad_eval += 1
 
     if descent_direction is None:
-      descent_direction = tree_scalar_mul(-1.0, grad)
+      descent_direction = tree_scalar_mul(-1.0, tree_conj(grad))
 
-    slope = tree_vdot(grad, descent_direction)
+    slope = tree_vdot_real(tree_conj(grad), descent_direction)
 
     fail_code = jnp.where(slope > 0, _FLAG_NOT_DESCENT_DIRECTION, 0)
 
@@ -716,20 +723,20 @@ class ZoomLineSearch(base.IterativeLineSearch):
         failed=jnp.asarray(False),
         interval_found=jnp.asarray(False),
         #
-        prev_stepsize=jnp.asarray(0.0).astype(dtype),
+        prev_stepsize=jnp.asarray(0.0).astype(realdtype),
         prev_value_step=value,
         prev_slope_step=slope,
         #
-        low=jnp.asarray(0.0).astype(dtype),
+        low=jnp.asarray(0.0).astype(realdtype),
         value_low=value,
         slope_low=slope,
-        high=jnp.asarray(0.0).astype(dtype),
+        high=jnp.asarray(0.0).astype(realdtype),
         value_high=value,
         slope_high=slope,
-        cubic_ref=jnp.asarray(0.0).astype(dtype),
+        cubic_ref=jnp.asarray(0.0).astype(realdtype),
         value_cubic_ref=value,
         #
-        safe_stepsize=jnp.asarray(0.0).astype(dtype),
+        safe_stepsize=jnp.asarray(0.0).astype(realdtype),
         num_fun_eval=num_fun_eval,
         num_grad_eval=num_grad_eval,
     )
@@ -776,8 +783,8 @@ class ZoomLineSearch(base.IterativeLineSearch):
     # FIXME: Signature issue in base.IterativeLineSearch: Keyword argument
     # before variable positional arguments.
     # Params, value, grad, descent direction recorded in state at initialization
-    dtype = tree_single_dtype(params)
-    init_stepsize = jnp.asarray(stepsize).astype(dtype)
+    realdtype = get_real_dtype(tree_single_dtype(params))
+    init_stepsize = jnp.asarray(stepsize).astype(realdtype)
     del params
     del value
     del grad
