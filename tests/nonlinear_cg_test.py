@@ -39,7 +39,8 @@ def get_random_pytree():
             return rn(key)
         elif curr_depth <= 1 or r <= 0.7:  # list
             return [
-                _get_random_pytree(curr_depth=curr_depth + 1, max_depth=max_depth)
+                _get_random_pytree(curr_depth=curr_depth +
+                                   1, max_depth=max_depth)
                 for _ in range(2)
             ]
         else:  # dict
@@ -109,6 +110,47 @@ class NonlinearCGTest(test_util.JaxoptTestCase):
     w_skl = test_util.logreg_skl(X, y, 1e-6, fit_intercept=False,
                                  multiclass=False)
     self.assertArraysAllClose(w_fit, w_skl, atol=5e-2)
+
+  @parameterized.product(
+        linesearch=['zoom', 'backtracking', 'hager-zhang'],
+        method=['hestenes-stiefel', 'polak-ribiere', 'fletcher-reeves']
+  )
+  def test_complex(self, method, linesearch):
+    """Test that optimization over complex variable z = x + jy matches equivalent real case"""
+
+    W = jnp.array(
+      [[1, - 2],
+       [3, 4],
+       [-4 + 2j, 5 - 3j],
+       [-2 - 2j, 6]]
+    )
+
+    def C2R(z):
+      return jnp.stack((z.real, z.imag))
+
+    def R2C(x):
+      return x[..., 0, :] + 1j * x[..., 1, :]
+
+    def f(z):
+      return W @ z
+
+    def loss_complex(z):
+      return jnp.sum(jnp.abs(f(z)) ** 1.5)
+
+    def loss_real(zR):
+      return loss_complex(R2C(zR))
+
+    z0 = jnp.array([1 - 1j, 0 + 1j])
+    xy0 = jnp.stack((z0.real, z0.imag))
+
+    solver_C = NonlinearCG(fun=loss_complex, maxiter=5,
+                           maxls=3, method=method, linesearch=linesearch)
+    solver_R = NonlinearCG(fun=loss_real, maxiter=5,
+                           maxls=3, method=method, linesearch=linesearch)
+    sol_C, _ = solver_C.run(z0)
+    sol_R, _ = solver_R.run(C2R(z0))
+
+    self.assertArraysAllClose(sol_C, R2C(sol_R))
 
 
 if __name__ == '__main__':
