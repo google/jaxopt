@@ -163,6 +163,7 @@ def _find_cauchy_point(
 
   i, df, ddf, mask_sorted, c, p = jax.lax.while_loop(_cond, _body, init_state)
   dt_min = jnp.maximum(-df / ddf, jnp.zeros([], dtype=m.dtype))
+  dt_min = jnp.where(jnp.isnan(dt_min), jnp.zeros([], dtype=m.dtype), dt_min)
   t_old = (
       jax.lax.cond(
           i > 0, lambda: t_sorted[i - 1], lambda: jnp.zeros([], dtype=m.dtype)
