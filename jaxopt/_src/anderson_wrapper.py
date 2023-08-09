@@ -49,7 +49,7 @@ class AndersonWrapperState(NamedTuple):
   error: float
   params_history: Any
   residuals_history: Any
-  residual_gram: jnp.array
+  residual_gram: jnp.ndarray
 
 
 @dataclass(eq=False)

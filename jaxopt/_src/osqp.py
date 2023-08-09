@@ -1005,8 +1005,8 @@ class OSQP(base.Solver):
     fun: Optional[Callable] = None,
     **kwargs):
     if fun is not None and matvec_Q is not None:
-        raise ValueError(f"Specification of parameter 'fun' is incompatible with 'matvec_Q' in method __init__ of {type(self)}")
-    
+      raise ValueError(f"Specification of parameter 'fun' is incompatible with 'matvec_Q' in method __init__ of {type(self)}")
+
     matvec_Q, matvec_A_box = OSQP_to_BoxOSQP.transform_matvec(matvec_Q, matvec_A, matvec_G)
     self.matvec_A_box = matvec_A_box
 
@@ -1071,11 +1071,13 @@ class OSQP(base.Solver):
     )
     return base.OptStep(params=sol, state=state)
 
-  def l2_optimality_error(self,
-    params: jnp.array,
-    params_obj: Union[base.ArrayPair, Any],
-    params_eq: Optional[base.ArrayPair],
-    params_ineq: Optional[base.ArrayPair]):
+  def l2_optimality_error(
+      self,
+      params: jnp.ndarray,
+      params_obj: Union[base.ArrayPair, Any],
+      params_eq: Optional[base.ArrayPair],
+      params_ineq: Optional[base.ArrayPair],
+  ):
     """Computes the L2 norm of the KKT residuals.
     
     Note that this function is exposed for consistency of the API, but the differentiation is actually

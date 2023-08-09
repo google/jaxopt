@@ -105,7 +105,7 @@ class AndersonState(NamedTuple):
   error: float
   params_history: Any
   residuals_history: Any
-  residual_gram: jnp.array
+  residual_gram: jnp.ndarray
   aux: Optional[Any] = None
 
   num_fun_eval: int = 0
