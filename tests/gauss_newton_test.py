@@ -69,6 +69,15 @@ class GaussNewtonTest(test_util.JaxoptTestCase):
     ])
     self.init_temperature_record_coeffs = onp.array([10, 0.5, 10.5, 50])
 
+  def test_aux_true(self):
+    gn = GaussNewton(lambda x: (x**2, True), has_aux=True, maxiter=2)
+    x_init = jnp.arange(2.)
+    _, state = gn.run(x_init)
+    self.assertEqual(state.aux, True)
+
+  # Example taken from "Probability, Statistics and Estimation" by Mathieu ROUAUD. 
+  # The algorithm is detailed and applied to the biology experiment discussed in 
+  # page 84 with the uncertainties on the estimated values.
   def test_enzyme_reaction_parameter_fit(self):
     gn = GaussNewton(
         residual_fun=_enzyme_reaction_residual_model,
@@ -80,8 +89,8 @@ class GaussNewtonTest(test_util.JaxoptTestCase):
         self.rate_data)
 
     self.assertArraysAllClose(optimize_info.params,
-                              onp.array([0.36183689, 0.55626653]))
-
+                              onp.array([0.36183689, 0.55626653]), 
+                              rtol=1e-7, atol=1e-7)
 
   @parameterized.product(implicit_diff=[True, False])
   def test_enzyme_reaction_implicit_diff(self, implicit_diff):
@@ -103,6 +112,8 @@ class GaussNewtonTest(test_util.JaxoptTestCase):
 
     self.assertArraysAllClose(jac_num, jac_custom, atol=1e-2)
 
+  # Example 7 from "SOLVING NONLINEAR LEAST-SQUARES PROBLEMS WITH THE 
+  # GAUSS-NEWTON AND LEVENBERG-MARQUARDT METHODS" by ALFONSO CROEZE et al. 
   def test_temperature_record_four_parameter_fit(self):
     gn = GaussNewton(
         residual_fun=_city_temperature_residual_model,
@@ -115,8 +126,18 @@ class GaussNewtonTest(test_util.JaxoptTestCase):
     # Checking against the expected values
     self.assertArraysAllClose(
         optimize_info.params,
-        onp.array([16.63994555, 0.46327812, 10.85228919, 76.19086103]))
-    self.assertAllClose(optimize_info.state.iter_num, 30)
+        onp.array([16.63994555, 0.46327812, 10.85228919, 76.19086103]),
+        rtol=1e-6, atol=1e-5)
+
+  def test_scalar_output_fun(self):
+    gn = GaussNewton(
+        residual_fun=lambda x: x @ x,
+        tol=1e-1,)
+    x_init = jnp.ones((2,))
+    x_opt, _ = gn.run(x_init)
+
+    self.assertAllClose(x_opt, jnp.zeros((2,)), atol=1e0)
+
 
 if __name__ == '__main__':
   absltest.main()

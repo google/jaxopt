@@ -33,6 +33,7 @@ class GaussNewtonState(NamedTuple):
   """Named tuple containing state information."""
   iter_num: int
   residual: Any
+  value: Any
   delta: Any
   error: float
   gradient: Any
@@ -55,6 +56,7 @@ class GaussNewton(base.IterativeSolver):
     implicit_diff: whether to enable implicit diff or autodiff of unrolled
       iterations.
     implicit_diff_solve: the linear system solver to use.
+    has_aux: whether ``residual_fun`` outputs auxiliary data or not.
     verbose: whether to print error on every iteration or not.
     jit: whether to JIT-compile the bisection loop (default: "auto").
     unroll: whether to unroll the bisection loop (default: "auto").
@@ -62,10 +64,10 @@ class GaussNewton(base.IterativeSolver):
   residual_fun: Callable
   maxiter: int = 30
   tol: float = 1e-5
-  verbose: bool = False
   implicit_diff: bool = True
   implicit_diff_solve: Optional[Callable] = None
   has_aux: bool = False
+  verbose: bool = False
   jit: base.AutoOrBoolean = "auto"
   unroll: base.AutoOrBoolean = "auto"
 
@@ -90,6 +92,7 @@ class GaussNewton(base.IterativeSolver):
     return GaussNewtonState(iter_num=jnp.asarray(0),
                             error=jnp.asarray(jnp.inf),
                             residual=residual,
+                            value=0.5 * jnp.sum(jnp.square(residual)),
                             delta=init_params,
                             gradient=gradient,
                             aux=aux)
@@ -108,7 +111,6 @@ class GaussNewton(base.IterativeSolver):
       (params, state)
     """
     residual, aux = self._fun_with_aux(params, *args, **kwargs)
-
     matvec = lambda v: self._jtj_op(params, v, *args, **kwargs)
     gradient = self._jt_op(params, residual, *args, **kwargs)
 
@@ -118,6 +120,7 @@ class GaussNewton(base.IterativeSolver):
     state = GaussNewtonState(iter_num=state.iter_num + 1,
                              error=tree_l2_norm(delta_params),
                              residual=residual,
+                             value=0.5 * jnp.sum(jnp.square(residual)),
                              delta=delta_params,
                              gradient=gradient,
                              aux=aux)
@@ -126,8 +129,8 @@ class GaussNewton(base.IterativeSolver):
 
   def __post_init__(self):
     if self.has_aux:
-      self._fun = lambda *a, **kw: self.residual_fun(*a, **kw)[0]
-      self._fun_with_aux = self.fun
+      self._fun_with_aux = self.residual_fun
+      self._fun = lambda *a, **kw: self._fun_with_aux(*a, **kw)[0]
     else:
       self._fun = self.residual_fun
       self._fun_with_aux = lambda *a, **kw: (self.residual_fun(*a, **kw),
