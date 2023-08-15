@@ -82,7 +82,7 @@ Broyden's method is an iterative algorithm suitable for nonlinear root equations
 It is a quasi-Newton method (like L-BFGS), meaning that it uses an approximation of the Jacobian matrix
 at each iteration.
 The approximation is updated at each iteration with a rank-one update.
-This makes the approximation easy to invert using the Sherman-Morrison formula, given it does not use too many
+This makes the approximation easy to invert using the Sherman-Morrison formula, provided that it does not use too many
 updates.
 One can control the number of updates with the ``history_size`` argument.
 Furthermore, Broyden's method uses a line search to ensure the rank-one updates are stable.
