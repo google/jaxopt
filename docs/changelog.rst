@@ -1,6 +1,43 @@
 Changelog
 =========
 
+Version 0.8
+-----------
+
+New features
+~~~~~~~~~~~~
+
+- Added Broyden algorithm to solve non linear root equations, by Zaccharie Ramzi.
+
+Bug fixes and enhancements
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- Fixed "LBFGSB produces NaN for certain conditions", by Vincent Roulet.
+- Better layout for notebook gallery, by Fabian Pedregosa.
+- Added support for complex numbers in nonlinear conjugate gradient, by Gregor Thalhammer.
+- Added support for complex numbers in LBFGS and zoom line search, by Gregor Thalhammer.
+- Various LBFGS improvements, by Vincent Roulet.
+- Completely revamped zoom linesearch, by Vincent Roulet.
+- Added continuous integration for python 3.11, fixed typing extension issue, by Vincent Roulet.
+- Added number of function/grad/prox/etc... evaluation for various solvers, by Zaccharie Ramzi.
+- Fixed implicit differentiation in LBFGSB, by Nathan Simpson.
+- Ensure weak-type consistency, by Mathieu Blondel.
+- Extend convenience API for QP + doc, by Louis Bethune.
+- Add interpolation explanations for Polyak/Armijo API doc, by Louis Bethune.
+- Support has_aux in AndersonAcceleration, by Louis Bethune.
+- Drop Python 3.7 support, by Mathieu Blondel.
+- Fixed typos in perturbation docs, by Guillaume Dalle.
+- Fixed pytree support in tree_inf_norm, by Emily Fertig.
+- Fixed NaN handling in LBFGSB, by Srinivas Vasudevan.
+- Use jnp.ndarray instead of jnp.array, by Peter Hawkins.
+
+Contributors
+~~~~~~~~~~~~
+
+Louis Bethune, Emily Fertig, Fabian Pedregosa, Gregor Thalhammer-Thurner,
+Guillaume Dalle, Mathieu Blondel, Nathan Simpson, Peter Hawkins,
+Srinivas Vasudevan, Vincent Roulet, Zaccharie Ramzi.
+
 Version 0.7
 -----------
 
