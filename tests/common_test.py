@@ -15,6 +15,8 @@
 """Common tests."""
 
 from absl.testing import absltest
+from absl.testing import parameterized
+
 
 import jax
 import jax.numpy as jnp
@@ -244,25 +246,34 @@ class CommonTest(test_util.JaxoptTestCase):
     self.assertEqual(state.num_fun_eval, N_CALLS)
     N_CALLS = 0
 
-
-  def test_aux_consistency(self):
-    def fun(w, X, y):
+  @parameterized.product(value_and_grad=[True, False])
+  def test_aux_consistency(self, value_and_grad):
+    def fun_(w, X, y):
       residuals = jnp.dot(X, w) - y
       return jnp.sum(residuals ** 2), residuals
 
+    if value_and_grad:
+      fun = jax.value_and_grad(fun_, has_aux=True)
+    else:
+      fun = fun_
     X, y = datasets.make_classification(n_samples=10, n_features=5, n_classes=3,
                                         n_informative=3, random_state=0)
 
-
-    for solver in (jaxopt.OptaxSolver(opt=optax.adam(1e-3), fun=fun,
-                                      has_aux=True),
-                   jaxopt.BFGS(fun=fun, has_aux=True),
-                   jaxopt.LBFGS(fun=fun, has_aux=True),
-                   jaxopt.NonlinearCG(fun=fun, has_aux=True),
-                   jaxopt.GradientDescent(fun=fun, has_aux=True),
-                   jaxopt.ArmijoSGD(fun=fun, has_aux=True),
-                   jaxopt.PolyakSGD(fun=fun, has_aux=True),
-                   ):
+    for solver in (jaxopt.OptaxSolver(opt=optax.adam(1e-3), fun=fun, has_aux=True,
+                                      value_and_grad=value_and_grad),
+                   jaxopt.BFGS(fun=fun, has_aux=True,
+                               value_and_grad=value_and_grad),
+                   jaxopt.LBFGS(fun=fun, has_aux=True,
+                                value_and_grad=value_and_grad),
+                   jaxopt.NonlinearCG(fun=fun, has_aux=True,
+                                      value_and_grad=value_and_grad),
+                   jaxopt.GradientDescent(fun=fun, has_aux=True,
+                                          value_and_grad=value_and_grad),
+                   jaxopt.ArmijoSGD(fun=fun, has_aux=True,
+                                    value_and_grad=value_and_grad),
+                   jaxopt.PolyakSGD(fun=fun, has_aux=True,
+                                    value_and_grad=value_and_grad),
+    ):
 
       params = jnp.zeros(X.shape[1])
       state1 = solver.init_state(params, X, y)

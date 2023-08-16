@@ -105,11 +105,7 @@ class OptaxSolver(base.StochasticSolver):
     """
     opt_state = self.opt.init(init_params)
 
-    if self.has_aux:
-      value, aux = self.fun(init_params, *args, **kwargs)
-    else:
-      value = self.fun(init_params, *args, **kwargs)
-      aux = None
+    value, aux = self._fun(init_params, *args, **kwargs)
 
     params_dtype = tree_util.tree_single_dtype(init_params)
 
@@ -161,7 +157,7 @@ class OptaxSolver(base.StochasticSolver):
     return self._grad_fun(params, *args, **kwargs)[0]
 
   def __post_init__(self):
-    _, self._grad_fun, self._value_and_grad_fun = \
+    self._fun, self._grad_fun, self._value_and_grad_fun = \
       base._make_funs_with_aux(fun=self.fun,
                                value_and_grad=self.value_and_grad,
                                has_aux=self.has_aux)
