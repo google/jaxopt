@@ -53,7 +53,6 @@ class LevenbergMarquardtState(NamedTuple):
   hess_res: Any
   aux: Optional[Any] = None
 
-
 @dataclass(eq=False)
 class LevenbergMarquardt(base.IterativeSolver):
   """Levenberg-Marquardt (LM) nonlinear least-squares solver.
@@ -123,7 +122,6 @@ class LevenbergMarquardt(base.IterativeSolver):
       ratio. We update the parameters in the algorithm only if the ratio is
       smaller than this threshold value.
     verbose: bool, whether to print error on every iteration or not.
-      Warning: verbose=True will automatically disable jit.
     jac_fun: Callable, a function to calculate the Jacobian. If not None, this
       function is used instead of directly calculating it using ``jax.jacfwd``.
     materialize_jac: bool, whether to materialize Jacobian. If this option is
@@ -219,16 +217,13 @@ class LevenbergMarquardt(base.IterativeSolver):
 
     delta_params = jnp.zeros_like(init_params)
 
-    if self.verbose:
-      print_header()
-
     return LevenbergMarquardtState(
         iter_num=jnp.asarray(0),
         damping_factor=damping_factor,
         increase_factor=2,
         error=tree_l2_norm(gradient),
         residual=residual,
-        loss=0.5 * (residual @ residual),
+        loss=0.5 * jnp.sum(jnp.square(residual)),
         delta=delta_params,
         gradient=gradient,
         jac=jac,
@@ -334,7 +329,7 @@ class LevenbergMarquardt(base.IterativeSolver):
         damping_factor * delta_params - gradient)
 
     # Current value of loss function F=0.5*||f||^2.
-    loss_next = 0.5 * (residual_next @ residual_next)
+    loss_next = 0.5 * jnp.sum(jnp.square(residual_next))
 
     gain_ratio = (loss_curr - loss_next) / gain_ratio_denom
 
@@ -443,7 +438,7 @@ class LevenbergMarquardt(base.IterativeSolver):
         increase_factor=increase_factor,
         error=tree_l2_norm(gradient),
         residual=residual,
-        loss=0.5 * (residual @ residual),
+        loss=0.5 * jnp.sum(jnp.square(residual)),
         delta=delta_params,
         gradient=gradient,
         jac=jac,
@@ -551,9 +546,6 @@ class LevenbergMarquardt(base.IterativeSolver):
     return (velocity, acceleration, delta_params)
 
 
-def print_header():
-  print(f"{'Iteration':^15}{'Cost':^15}{'||Gradient||':^15}{'Damping Factor':^15}")
-
-
 def print_iteration(state: LevenbergMarquardtState):
-  print(f"{state.iter_num:^15}{state.loss:^15.4e}{state.error:^15.4e}{state.damping_factor:^15.4}")
+  jax.debug.print("Iteration: {iter}, Cost: {cost}, ||Gradient||: {error}, Damping Factor: {damp}", 
+                iter=state.iter_num, cost=state.loss, error=state.error, damp=state.damping_factor)

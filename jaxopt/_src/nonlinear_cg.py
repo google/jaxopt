@@ -101,7 +101,6 @@ class NonlinearCG(base.IterativeSolver):
     unroll: whether to unroll the optimization loop (default: "auto").
 
     verbose: whether to print error on every iteration or not.
-      Warning: verbose=True will automatically disable jit.
 
   References:
     Jorge Nocedal and Stephen Wright.

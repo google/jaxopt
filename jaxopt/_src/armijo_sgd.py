@@ -191,8 +191,7 @@ class ArmijoSGD(base.StochasticSolver):
     maxiter: maximum number of solver iterations.
     maxls: maximum number of steps in line search.
     tol: tolerance to use.
-    verbose: whether to print error on every iteration or not. verbose=True will
-      automatically disable jit.
+    verbose: whether to print error on every iteration or not.
 
     implicit_diff: whether to enable implicit diff or autodiff of unrolled
       iterations.

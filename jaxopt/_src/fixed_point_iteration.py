@@ -55,7 +55,6 @@ class FixedPointIteration(base.IterativeSolver):
       if True, the fixed is computed only with respect to first element of the
       sequence returned. Other elements are carried during computation.
     verbose: whether to print error on every iteration or not.
-      Warning: verbose=True will automatically disable jit.
     implicit_diff: whether to enable implicit diff or autodiff of unrolled
       iterations.
     implicit_diff_solve: the linear system solver to use.

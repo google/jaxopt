@@ -217,7 +217,7 @@ class Broyden(base.IterativeSolver):
   def _cond_fun(self, inputs):
     _, state = inputs[0]
     if self.verbose:
-      print("error:", state.error)
+      jax.debug.print("Solver: Broyden, Error: {error}", error=state.error)
     # We continue the optimization loop while the error tolerance is not met and,
     # either failed linesearch is disallowed or linesearch hasn't failed.
     return (state.error > self.tol) & jnp.logical_or(not self.stop_if_linesearch_fails, ~state.failed_linesearch)

@@ -127,7 +127,6 @@ class ProximalGradient(base.IterativeSolver):
     acceleration: whether to use acceleration (also known as FISTA) or not.
     decrease_factor: factor by which to reduce the stepsize during line search.
     verbose: whether to print error on every iteration or not.
-      Warning: verbose=True will automatically disable jit.
 
     implicit_diff: whether to enable implicit diff or autodiff of unrolled
       iterations.

@@ -39,10 +39,10 @@ from jaxopt.tree_util import tree_conj
 
 _FLAG_NOT_DESCENT_DIRECTION = 1
 _FLAG_CURVATURE_COND_NOT_SATSIFIED = 2
-_FLAG_MAX_ITER_REACHED = 4
-_FLAG_INTERVAL_TOO_SMALL = 8
-_FLAG_NAN_INF_VALUES = 16
-_FLAG_NO_STEPSIZE_FOUND = 32
+_FLAG_MAX_ITER_REACHED = 3
+_FLAG_INTERVAL_TOO_SMALL = 4
+_FLAG_NAN_INF_VALUES = 5
+_FLAG_NO_STEPSIZE_FOUND = 6
 
 _dot = functools.partial(jnp.dot, precision=lax.Precision.HIGHEST)
 
@@ -114,25 +114,29 @@ def _set_values(cond, candidate, default):
   return jax.tree_util.tree_map(_set_val, candidate, default)
 
 
+def _status_fail_0():
+  pass
+def _status_fail_1():
+  jax.debug.print("Provided descent direction is not a descent direction.")
+def _status_fail_2():
+  jax.debug.print("Returning stepsize with sufficient decrease but curvature condition not satisfied.")
+def _status_fail_3():
+  jax.debug.print("Maximal number of line search iterations reached.")
+def _status_fail_4():
+  jax.debug.print("Length of searched interval has been reduced below machine precision.")
+def _status_fail_5():
+  jax.debug.print("NaN or Inf values encountered in function values.")
+def _status_fail_6():
+  jax.debug.print("No stepsize satisfying sufficient decrease found.")
+
 def _check_status(fail_code):
   """Print failure reason according to error flag coded bitwise."""
-  if fail_code & _FLAG_NOT_DESCENT_DIRECTION:
-    print("Provided descent direction is not a descent direction.")
-  if fail_code & _FLAG_CURVATURE_COND_NOT_SATSIFIED:
-    print(
-        "Returning stepsize with sufficient decrease but curvature condition"
-        " not satisfied."
-    )
-  if fail_code & _FLAG_MAX_ITER_REACHED:
-    print("Maximal number of line search iterations reached.")
-  if fail_code & _FLAG_INTERVAL_TOO_SMALL:
-    print(
-        "Length of searched interval has been reduced below machine precision."
-    )
-  if fail_code & _FLAG_NAN_INF_VALUES:
-    print("NaN or Inf values encountered in function values.")
-  if fail_code & _FLAG_NO_STEPSIZE_FOUND:
-    print("No stepsize satisfying sufficient decrease found.")
+  function_list = [
+    _status_fail_0, _status_fail_1, _status_fail_2, _status_fail_3, _status_fail_4, 
+    _status_fail_5, _status_fail_6
+  ]
+  jax.debug.print("Failed code: {fail_code}", fail_code=fail_code)
+  jax.lax.switch(fail_code, function_list)
 
 
 class ZoomLineSearchState(NamedTuple):
@@ -747,7 +751,7 @@ class ZoomLineSearch(base.IterativeLineSearch):
     # possible.
     _, state = inputs[0]
     if self.verbose:
-      print(self.__class__.__name__ + " error:", state.error)
+      jax.debug.print("ZoomLineSearch error: {error}", error=state.error)
     return ~state.done
 
   def update(
