@@ -142,11 +142,7 @@ class PolyakSGD(base.StochasticSolver):
     Returns:
       state
     """
-    if self.has_aux:
-      value, aux = self.fun(init_params, *args, **kwargs)
-    else:
-      value = self.fun(init_params, *args, **kwargs)
-      aux = None
+    value, aux = self._fun(init_params, *args, **kwargs)
 
     if self.momentum == 0:
       velocity = None
@@ -221,7 +217,7 @@ class PolyakSGD(base.StochasticSolver):
     return hash(self.attribute_values())
 
   def __post_init__(self):
-    _, self._grad_fun, self._value_and_grad_fun = \
+    self._fun, self._grad_fun, self._value_and_grad_fun = \
       base._make_funs_with_aux(fun=self.fun,
                                value_and_grad=self.value_and_grad,
                                has_aux=self.has_aux)

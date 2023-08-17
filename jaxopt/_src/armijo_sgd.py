@@ -248,11 +248,7 @@ class ArmijoSGD(base.StochasticSolver):
     else:
       velocity = tree_zeros_like(init_params)
 
-    if self.has_aux:
-      value, aux = self.fun(init_params, *args, **kwargs)
-    else:
-      value = self.fun(init_params, *args, **kwargs)
-      aux = None
+    value, aux = self._fun_with_aux(init_params, *args, **kwargs)
 
     params_dtype = tree_single_dtype(init_params)
 
@@ -342,7 +338,7 @@ class ArmijoSGD(base.StochasticSolver):
 
     self._coef = 1 - self.aggressiveness
 
-    fun_with_aux, _, self._value_and_grad_with_aux = \
+    self._fun_with_aux, _, self._value_and_grad_with_aux = \
       base._make_funs_with_aux(fun=self.fun,
                                value_and_grad=self.value_and_grad,
                                has_aux=self.has_aux)
@@ -351,7 +347,7 @@ class ArmijoSGD(base.StochasticSolver):
 
     jit, unroll = self._get_loop_options()
 
-    armijo_with_fun = partial(armijo_line_search, fun_with_aux, unroll, jit)
+    armijo_with_fun = partial(armijo_line_search, self._fun_with_aux, unroll, jit)
     if jit:
       jitted_armijo = jax.jit(armijo_with_fun, static_argnums=(0,1))
       self._armijo_line_search = jitted_armijo
