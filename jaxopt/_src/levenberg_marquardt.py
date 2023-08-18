@@ -43,7 +43,7 @@ class LevenbergMarquardtState(NamedTuple):
   damping_factor: float
   increase_factor: float
   residual: Any
-  loss: Any
+  value: Any
   delta: Any
   error: float
   gradient: Any
@@ -223,7 +223,7 @@ class LevenbergMarquardt(base.IterativeSolver):
         increase_factor=2,
         error=tree_l2_norm(gradient),
         residual=residual,
-        loss=0.5 * jnp.sum(jnp.square(residual)),
+        value=0.5 * jnp.sum(jnp.square(residual)),
         delta=delta_params,
         gradient=gradient,
         jac=jac,
@@ -360,7 +360,7 @@ class LevenbergMarquardt(base.IterativeSolver):
     """
 
     # Current value of the loss function F=0.5*||f||^2.
-    loss_curr = state.loss
+    loss_curr = state.value
 
     # TODO: clean up the linear_solver to take matrix directly and then clean up
     # linear equation solves below for materialize_jac=True to call them.
@@ -438,7 +438,7 @@ class LevenbergMarquardt(base.IterativeSolver):
         increase_factor=increase_factor,
         error=tree_l2_norm(gradient),
         residual=residual,
-        loss=0.5 * jnp.sum(jnp.square(residual)),
+        value=0.5 * jnp.sum(jnp.square(residual)),
         delta=delta_params,
         gradient=gradient,
         jac=jac,
@@ -548,4 +548,4 @@ class LevenbergMarquardt(base.IterativeSolver):
 
 def print_iteration(state: LevenbergMarquardtState):
   jax.debug.print("Iteration: {iter}, Cost: {cost}, ||Gradient||: {error}, Damping Factor: {damp}", 
-                iter=state.iter_num, cost=state.loss, error=state.error, damp=state.damping_factor)
+                iter=state.iter_num, cost=state.value, error=state.error, damp=state.damping_factor)
