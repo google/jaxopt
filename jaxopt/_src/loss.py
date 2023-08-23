@@ -241,10 +241,10 @@ def multiclass_perceptron_loss(label: int,
   one_hot_label = jax.nn.one_hot(label, scores.shape[0])
   return jnp.max(scores) - jnp.dot(scores, one_hot_label)
 
- # Fenchel-Young losses
+# Fenchel-Young losses
 
 
-def make_fenchel_young_loss(max_fun: Callable[[jnp.array], float]):
+def make_fenchel_young_loss(max_fun: Callable[[jnp.ndarray], float]):
   """Creates a Fenchel-Young loss from a max function.
 
   Args:
