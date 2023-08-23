@@ -28,6 +28,7 @@ import jax
 import jax.numpy as jnp
 
 from jaxopt._src import base
+from jaxopt._src.fori_loop import fori_loop
 from jaxopt._src import implicit_diff as idf
 from jaxopt._src import loop
 from jaxopt._src import objective
@@ -155,8 +156,8 @@ class BlockCoordinateDescent(base.IterativeSolver):
     # a for loop that can be potentially non-jitted.
     # this will allow to unit test the number of function eval.
     # (zramzi)
-    params, subfun_g, predictions, sqerror_sum = jax.lax.fori_loop(
-        lower=0, upper=n_for, body_fun=body_fun, init_val=init)
+    params, subfun_g, predictions, sqerror_sum = fori_loop(
+        lower=0, upper=n_for, body_fun=body_fun, init_val=init, jit=self.jit)
     state = BlockCDState(iter_num=state.iter_num + 1,
                          predictions=predictions,
                          subfun_g=subfun_g,
