@@ -37,12 +37,13 @@ from jaxopt.tree_util import tree_conj
 # pylint: disable=g-bare-generic
 # pylint: disable=invalid-name
 
+# Flags are encoded in base 2 to enable bitwise logic
 _FLAG_NOT_DESCENT_DIRECTION = 1
 _FLAG_CURVATURE_COND_NOT_SATSIFIED = 2
-_FLAG_MAX_ITER_REACHED = 3
-_FLAG_INTERVAL_TOO_SMALL = 4
-_FLAG_NAN_INF_VALUES = 5
-_FLAG_NO_STEPSIZE_FOUND = 6
+_FLAG_MAX_ITER_REACHED = 4
+_FLAG_INTERVAL_TOO_SMALL = 8
+_FLAG_NAN_INF_VALUES = 16
+_FLAG_NO_STEPSIZE_FOUND = 32
 
 _dot = functools.partial(jnp.dot, precision=lax.Precision.HIGHEST)
 
@@ -114,29 +115,25 @@ def _set_values(cond, candidate, default):
   return jax.tree_util.tree_map(_set_val, candidate, default)
 
 
-def _status_fail_0():
-  pass
-def _status_fail_1():
-  jax.debug.print("Provided descent direction is not a descent direction.")
-def _status_fail_2():
-  jax.debug.print("Returning stepsize with sufficient decrease but curvature condition not satisfied.")
-def _status_fail_3():
-  jax.debug.print("Maximal number of line search iterations reached.")
-def _status_fail_4():
-  jax.debug.print("Length of searched interval has been reduced below machine precision.")
-def _status_fail_5():
-  jax.debug.print("NaN or Inf values encountered in function values.")
-def _status_fail_6():
-  jax.debug.print("No stepsize satisfying sufficient decrease found.")
+def _cond_print(condition, message):
+  jax.lax.cond(condition, lambda _: jax.debug.print(message), lambda _: None, None)
+
 
 def _check_status(fail_code):
-  """Print failure reason according to error flag coded bitwise."""
-  function_list = [
-    _status_fail_0, _status_fail_1, _status_fail_2, _status_fail_3, _status_fail_4, 
-    _status_fail_5, _status_fail_6
-  ]
-  jax.debug.print("Failed code: {fail_code}", fail_code=fail_code)
-  jax.lax.switch(fail_code, function_list)
+  """Print failure reasons according to error flag coded bitwise."""
+  _cond_print(fail_code & _FLAG_NOT_DESCENT_DIRECTION, 
+              "Provided descent direction is not a descent direction.")
+  _cond_print(fail_code & _FLAG_CURVATURE_COND_NOT_SATSIFIED, 
+              "Returning stepsize with sufficient decrease "
+              "but curvature condition not satisfied.")
+  _cond_print(fail_code & _FLAG_MAX_ITER_REACHED,
+              "Maximal number of line search iterations reached.")
+  _cond_print(fail_code & _FLAG_INTERVAL_TOO_SMALL,
+              "Length of searched interval has been reduced below machine precision.")
+  _cond_print(fail_code & _FLAG_NAN_INF_VALUES,
+              "NaN or Inf values encountered in function values.")
+  _cond_print(fail_code & _FLAG_NO_STEPSIZE_FOUND,
+              "No stepsize satisfying sufficient decrease found.")
 
 
 class ZoomLineSearchState(NamedTuple):
@@ -751,7 +748,7 @@ class ZoomLineSearch(base.IterativeLineSearch):
     # possible.
     _, state = inputs[0]
     if self.verbose:
-      jax.debug.print("ZoomLineSearch error: {error}", error=state.error)
+      jax.debug.print("Solver: ZoomLineSearch, Error: {error}", error=state.error)
     return ~state.done
 
   def update(

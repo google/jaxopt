@@ -236,7 +236,7 @@ class ZoomLinesearchTest(test_util.JaxoptTestCase):
     # Check that we were not able to make a step or an infinitesimal one
     self.assertTrue(s < 1e-5)
     self.assertTrue(
-        state.fail_code & _FLAG_NOT_DESCENT_DIRECTION
+        (state.fail_code & _FLAG_NOT_DESCENT_DIRECTION)
         == _FLAG_NOT_DESCENT_DIRECTION
     )
 
@@ -249,7 +249,7 @@ class ZoomLinesearchTest(test_util.JaxoptTestCase):
     # Check that we still made a step
     self.assertTrue(s == 10.0)
     self.assertTrue(
-        state.fail_code & _FLAG_CURVATURE_COND_NOT_SATSIFIED
+        (state.fail_code & _FLAG_CURVATURE_COND_NOT_SATSIFIED)
         == _FLAG_CURVATURE_COND_NOT_SATSIFIED
     )
 
@@ -261,7 +261,12 @@ class ZoomLinesearchTest(test_util.JaxoptTestCase):
     # Check that we still made a step
     self.assertTrue(s == 16.0)
     self.assertTrue(
-        state.fail_code & _FLAG_MAX_ITER_REACHED == _FLAG_MAX_ITER_REACHED
+        (state.fail_code & _FLAG_MAX_ITER_REACHED) == _FLAG_MAX_ITER_REACHED
+    )
+    # The following checks if encoding bitwise is well done
+    # Here the error should not be that we haven't had a descent direction
+    self.assertFalse(
+      (state.fail_code & _FLAG_NOT_DESCENT_DIRECTION) == _FLAG_NOT_DESCENT_DIRECTION
     )
 
     # Check if it works normally
@@ -280,9 +285,8 @@ class ZoomLinesearchTest(test_util.JaxoptTestCase):
       x = x / 2.0
     ls = ZoomLineSearch(fun_flat)
     _, state = ls.run(init_stepsize=1.0, params=x)
-    # print(state.fail_code)
     self.assertTrue(
-        state.fail_code & _FLAG_INTERVAL_TOO_SMALL == _FLAG_INTERVAL_TOO_SMALL
+        (state.fail_code & _FLAG_INTERVAL_TOO_SMALL) == _FLAG_INTERVAL_TOO_SMALL
     )
 
     # Check behavior for inf/nan values
@@ -294,7 +298,7 @@ class ZoomLinesearchTest(test_util.JaxoptTestCase):
     ls = ZoomLineSearch(fun_inf)
     s, state = ls.run(init_stepsize=1.0, params=x, descent_direction=p)
     self.assertTrue(
-        state.fail_code & _FLAG_NAN_INF_VALUES == _FLAG_NAN_INF_VALUES
+        (state.fail_code & _FLAG_NAN_INF_VALUES) == _FLAG_NAN_INF_VALUES
     )
 
   def test_aux_value(self):
