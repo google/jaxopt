@@ -86,8 +86,7 @@ class HagerZhangLineSearch(base.IterativeLineSearch):
     maxiter: maximum number of line search iterations.
     tol: tolerance of the stopping criterion.
 
-    verbose: whether to print error on every iteration or not. verbose=True will
-      automatically disable jit.
+    verbose: whether to print error on every iteration or not.
 
     jit: whether to JIT-compile the optimization loop (default: "auto").
     unroll: whether to unroll the optimization loop (default: "auto").

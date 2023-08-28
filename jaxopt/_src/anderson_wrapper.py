@@ -69,7 +69,6 @@ class AndersonWrapper(base.IterativeSolver):
     ridge: ridge regularization in solver.
       Consider increasing this value if the solver returns ``NaN``.
     verbose: whether to print error on every iteration or not.
-      Warning: verbose=True will automatically disable jit.
     implicit_diff: whether to enable implicit diff or autodiff of unrolled
       iterations.
     implicit_diff_solve: the linear system solver to use.

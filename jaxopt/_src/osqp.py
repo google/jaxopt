@@ -382,7 +382,6 @@ class BoxOSQP(base.IterativeSolver):
     termination_check_frequency: frequency of termination check. (default: 5).
       One every `termination_check_frequency` the error is computed.
     verbose: If verbose=1, print error at each iteration. If verbose=2, also print stepsizes and primal/dual variables.
-      Warning: verbose>0 will automatically disable jit.
     implicit_diff: whether to enable implicit diff or autodiff of unrolled iterations.
     implicit_diff_solve: the linear system solver to use.
     jit: whether to JIT-compile the optimization loop (default: "auto").
@@ -556,7 +555,10 @@ class BoxOSQP(base.IterativeSolver):
     certif_dual_infeasible = jnp.logical_and(jnp.logical_and(certif_Q <= criterion, certif_c <= criterion), certif_A)
 
     if self.verbose >= 2:
-      print(f"certif_Q={certif_Q} certif_c={certif_c} certif_A={certif_A} criterion={criterion}, Adx={Adx}, certif_l={certif_l}, certif_u={certif_u}")
+      jax.debug.print("certif_Q: {certif_Q} certif_c: {certif_c} certif_A: {certif_A} "
+                      "criterion: {criterion}, Adx: {Adx}, certif_l: {certif_l}, certif_u: {certif_u}", 
+                      certif_Q=certif_Q, certif_c=certif_c, certif_A=certif_A, criterion=criterion, 
+                      Adx=Adx, certif_l=certif_l, certif_u=certif_u)
 
     # infeasible dual implies either infeasible primal, either unbounded primal.
     return jax.lax.cond(certif_dual_infeasible,
@@ -575,7 +577,8 @@ class BoxOSQP(base.IterativeSolver):
     certif_primal_infeasible = jnp.logical_and(certif_A  <= criterion, certif_lu  <= criterion)
 
     if self.verbose >= 2:
-      print(f"certif_A={certif_A}, certif_lu={certif_lu}, criterion={criterion}")
+      jax.debug.print("certif_A: {certif_A}, certif_lu: {certif_lu}, criterion: {criterion}", 
+                      certif_A=certif_A, certif_lu=certif_lu, criterion=criterion)
 
     return jax.lax.cond(certif_primal_infeasible,
       lambda _: (0.,  # primal unfeasible; exit the main loop with error = 0.
@@ -688,15 +691,16 @@ class BoxOSQP(base.IterativeSolver):
     # for active constraints (in particular equality constraints) high stepsize is better
     rho_bar = state.rho_bar
     if self.verbose >= 2:
-      print(f"rho_bar={rho_bar}")
+      jax.debug.print("rho_bar: {rho_bar}", rho_bar=rho_bar)
 
     (x, z), y, solver_state = self._admm_step(params, Q, c, A, (l, u), rho_bar, state)
     if self.verbose >= 3:
-      print(f"x={x}\nz={z}\ny={y}")
+      jax.debug.print("x: {x} z: {z} y: {y}", x=x, z=z, y=y)
 
     primal_residuals, dual_residuals = self._compute_residuals(Q, c, A, x, z, y)
     if self.verbose >= 3:
-      print(f"primal_residuals={primal_residuals}, dual_residuals={dual_residuals}")
+      jax.debug.print("primal_residuals: {primal_residuals}, dual_residuals: {dual_residuals}",
+                      primal_residuals=primal_residuals, dual_residuals=dual_residuals)
 
     # We need our own ifelse cond because automatic jitting of jax.lax.cond branches
     # could pose problems with non jittable matvecs, or prevent printing when verbose > 0.

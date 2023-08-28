@@ -14,12 +14,17 @@
 
 """Common tests."""
 
+from functools import partial
 from absl.testing import absltest
 from absl.testing import parameterized
 
 
 import jax
 import jax.numpy as jnp
+import numpy as onp
+import optax
+from sklearn import datasets
+from sklearn import preprocessing
 
 import jaxopt
 from jaxopt import objective
@@ -29,11 +34,8 @@ from jaxopt import tree_util as tu
 from jaxopt._src import test_util
 from jaxopt._src.base import LinearOperator
 from jaxopt._src.objective import LeastSquares, MulticlassLinearSvmDual
-
-import optax
-
-from sklearn import datasets
-from sklearn import preprocessing
+from jaxopt._src.osqp import BoxOSQP
+from jaxopt._src.osqp import OSQP
 
 
 N_CALLS = 0
@@ -372,6 +374,114 @@ class CommonTest(test_util.JaxoptTestCase):
         solver_name = solver.__class__.__name__
         msg = "weak_type inconsistency for attribute '%s' in solver '%s'"
         self.assertEqual(weak_type0, weak_type1, msg=msg % (field, solver_name))
+
+  def test_jit_with_verbose(self):
+
+    fun = lambda p: p @ p
+
+    def fixed_point_fun(params):
+      return fun(params) - params
+
+    solvers = (
+      # Unconstrained
+      jaxopt.GradientDescent(fun=fun, jit=True, verbose=1),
+      jaxopt.PolyakSGD(fun=fun, jit=True, verbose=1),
+      jaxopt.Broyden(fun=fixed_point_fun, jit=True, verbose=True),
+      jaxopt.AndersonAcceleration(fixed_point_fun=fixed_point_fun, jit=True, verbose=True),
+      jaxopt.ArmijoSGD(fun=fun, jit=True, verbose=1),
+      jaxopt.BFGS(fun, linesearch="zoom", jit=True, verbose=1),
+      jaxopt.BFGS(fun, linesearch="backtracking", jit=True, verbose=1),
+      jaxopt.BFGS(fun, linesearch="hager-zhang", jit=True, verbose=1),
+      jaxopt.LBFGS(fun=fun, jit=True, verbose=1),
+      jaxopt.ArmijoSGD(fun=fun, jit=True, verbose=1),
+      jaxopt.NonlinearCG(fun, jit=True, verbose=1),
+      # Unconstrained, nonlinear least-squares
+      jaxopt.GaussNewton(residual_fun=fun, jit=True, verbose=True),
+      jaxopt.LevenbergMarquardt(residual_fun=fun, jit=True, verbose=True),
+      # Constrained
+      jaxopt.ProjectedGradient(fun=fun,
+        projection=jaxopt.projection.projection_non_negative, jit=True, verbose=1),
+      # Optax wrapper
+      jaxopt.OptaxSolver(opt=optax.adam(1e-1), fun=fun, jit=True, verbose=1),
+    )
+
+    @partial(jax.jit, static_argnums=(1,))
+    def f(p0, solver):
+        return solver.run(p0)
+
+    for solver in solvers:
+      f(jnp.arange(2.), solver)
+
+    # Proximal gradient solvers
+    fun = objective.least_squares
+    X, y = datasets.make_classification(n_samples=10, n_features=5, n_classes=3,
+                                        n_informative=3, random_state=0)
+    data = (X, y)
+    params0 = jnp.zeros(X.shape[1])
+
+    @partial(jax.jit, static_argnums=(1,))
+    def f_prox(p0, solver):
+      update = solver.update
+      state0 = solver.init_state(p0, hyperparams_prox=1.0, data=data)
+      _, state = update(p0, state0, hyperparams_prox=1.0, data=data)
+      return state0, state
+    
+    for solver in (jaxopt.ProximalGradient(fun=fun, prox=prox.prox_lasso),
+                   jaxopt.BlockCoordinateDescent(fun=fun, block_prox=prox.prox_lasso)):
+      state0, state = f_prox(params0, solver)
+
+    # Mirror Descent
+    Y = preprocessing.LabelBinarizer().fit_transform(y)
+    Y = jnp.asarray(Y)
+    n_samples, n_classes = Y.shape
+
+    fun = MulticlassLinearSvmDual()
+    lam = 10.0
+    data = (X, Y)
+
+    beta_init = jnp.ones((n_samples, n_classes)) / n_classes
+    def kl_projection(x, hyperparams_proj):
+      del hyperparams_proj
+      return tu.tree_map(lambda t: jax.nn.softmax(t, -1), x)
+    # Generating function of the Bregman divergence.
+    kl_generating_fun = lambda x: -jnp.sum(jax.scipy.special.entr(x) + x)
+    # Row-wise mirror map.
+    kl_mapping_fun = jax.vmap(jax.grad(kl_generating_fun))
+    projection_grad = jaxopt.MirrorDescent.make_projection_grad(
+          kl_projection, kl_mapping_fun)
+    
+    @jax.jit
+    def f(b0):
+      md = jaxopt.MirrorDescent(
+          fun=fun,
+          projection_grad=projection_grad,
+          stepsize=1e-3,
+          maxiter=30,
+          jit=True,
+          verbose=1)
+      _, state = md.run(b0, None, lam, data)
+      return state
+
+    f(beta_init)
+
+    # Quadratic programming - BoxOSQP  
+    x = jnp.array([1.0, 2.0])
+    a = jnp.array([-0.5, 1.5])
+    b = 0.3
+    q = -x
+    # Find ||y-x||^2 such that jnp.dot(y, a) = b.
+
+    matvec_Q = lambda params_Q,u: u
+    matvec_A = lambda params_A,u: jnp.dot(a, u).reshape(1)
+
+    tol = 1e-4
+
+    @jax.jit
+    def f(params_obj, params_ineq):
+      osqp = BoxOSQP(matvec_Q=matvec_Q, matvec_A=matvec_A, tol=tol, jit=True, verbose=1)
+      return osqp.run(None, (None, params_obj), None, (params_ineq, params_ineq))
+
+    f(q, b)
 
 
 if __name__ == '__main__':

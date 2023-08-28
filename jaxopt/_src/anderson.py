@@ -135,7 +135,6 @@ class AndersonAcceleration(base.IterativeSolver):
       This additional data is not taken into account by the fixed point.
       The solver returns the `aux` associated to the last iterate (i.e the fixed point).
     verbose: whether to print error on every iteration or not.
-      Warning: verbose=True will automatically disable jit.
     implicit_diff: whether to enable implicit diff or autodiff of unrolled
       iterations.
     implicit_diff_solve: the linear system solver to use.

@@ -56,7 +56,6 @@ class GaussNewton(base.IterativeSolver):
       iterations.
     implicit_diff_solve: the linear system solver to use.
     verbose: whether to print error on every iteration or not.
-      Warning: verbose=True will automatically disable jit.
     jit: whether to JIT-compile the bisection loop (default: "auto").
     unroll: whether to unroll the bisection loop (default: "auto").
   """

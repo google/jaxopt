@@ -108,7 +108,6 @@ class BFGS(base.IterativeSolver):
     jit: whether to JIT-compile the optimization loop (default: "auto").
     unroll: whether to unroll the optimization loop (default: "auto").
     verbose: whether to print error on every iteration or not.
-      Warning: verbose=True will automatically disable jit.
 
   Reference:
     Jorge Nocedal and Stephen Wright.

@@ -196,7 +196,6 @@ class LBFGS(base.IterativeSolver):
     jit: whether to JIT-compile the optimization loop (default: "auto").
     unroll: whether to unroll the optimization loop (default: "auto").
     verbose: whether to print error on every iteration or not.
-      Warning: verbose=True will automatically disable jit.
 
   References:
     Jorge Nocedal and Stephen Wright.
@@ -241,7 +240,7 @@ class LBFGS(base.IterativeSolver):
   def _cond_fun(self, inputs):
     _, state = inputs[0]
     if self.verbose:
-      print(self.__class__.__name__ + " error:", state.error)
+      jax.debug.print("Solver: LBFGS, Error: {error}", error=state.error)
     # We continue the optimization loop while the error tolerance is not met and,
     # either failed linesearch is disallowed or linesearch hasn't failed.
     return (state.error > self.tol) & jnp.logical_or(not self.stop_if_linesearch_fails, ~state.failed_linesearch)

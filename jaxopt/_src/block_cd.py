@@ -64,7 +64,6 @@ class BlockCoordinateDescent(base.IterativeSolver):
     maxiter: maximum number of proximal gradient descent iterations.
     tol: tolerance to use.
     verbose: whether to print error on every iteration or not.
-      Warning: verbose=True will automatically disable jit.
     implicit_diff: whether to enable implicit diff or autodiff of unrolled
       iterations.
     implicit_diff_solve: the linear system solver to use.
