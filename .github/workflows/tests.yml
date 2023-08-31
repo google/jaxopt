@@ -8,13 +8,14 @@ on:
 
 jobs:
   build-and-test:
-    name: "Python ${{ matrix.python-version }} on ${{ matrix.os }}"
+    name: "Python ${{ matrix.python-version }} on ${{ matrix.os }}, x64=${{ matrix.enable-x64}}"
     runs-on: "${{ matrix.os }}"
 
     strategy:
       matrix:
         python-version: ["3.8", "3.9", "3.10", "3.11"]
         os: [ubuntu-latest]
+        enable-x64: [1, 0]
 
     steps:
       - uses: "actions/checkout@v3"
@@ -35,10 +36,13 @@ jobs:
           python setup.py install
         shell: bash
       - name: Run tests
+        env:
+          JAX_ENABLE_X64: ${{ matrix.enable-x64 }}
         run: |
           set -xe
           python -VV
           python -c "import jax; print('jax', jax.__version__)"
           python -c "import jaxlib; print('jaxlib', jaxlib.__version__)"
+          echo "JAX_ENABLE_X64=$JAX_ENABLE_X64"
           pytest tests
         shell: bash
