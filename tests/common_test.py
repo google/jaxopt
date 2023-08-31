@@ -583,11 +583,6 @@ class CommonTest(test_util.JaxoptTestCase):
     init_params = 16*jnp.ones((dim,))
 
     for solver in solvers:
-      solver_name = f"{solver.__class__.__name__}"
-      if hasattr(solver, 'linesearch'):
-        solver_name += f" with {solver.linesearch} linesearch"
-      print(solver_name)
-
       stdout = io.StringIO()
       with redirect_stdout(stdout):
         solver_kwargs = {}
@@ -609,8 +604,11 @@ class CommonTest(test_util.JaxoptTestCase):
 
       num_compilations = stdout.getvalue().count("Compiled")
       # Goal would be self.assertTrue(num_compilations==1)
-      # For now, we simply print
-      print(f"Function compiled {num_compilations} times")
+      # For now, we simply print the number of times the function is compiled
+      solver_name = f"{solver.__class__.__name__}"
+      if hasattr(solver, 'linesearch'):
+        solver_name += f" with {solver.linesearch} linesearch"
+      print(f"{solver_name:<38}: objective compiled {num_compilations} times")
 
 if __name__ == '__main__':
   absltest.main()
