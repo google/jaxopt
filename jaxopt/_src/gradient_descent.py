@@ -60,8 +60,8 @@ class GradientDescent(ProximalGradient):
       iterations.
     implicit_diff_solve: the linear system solver to use.
 
-    jit: whether to JIT-compile the optimization loop (default: "auto").
-    unroll: whether to unroll the optimization loop (default: "auto").    
+    jit: whether to JIT-compile the optimization loop (default: True).
+    unroll: whether to unroll the optimization loop (default: "auto").
     """
 
   def init_state(self,

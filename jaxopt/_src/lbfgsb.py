@@ -271,7 +271,7 @@ class LBFGSB(base.IterativeSolver):
     implicit_diff: whether to enable implicit diff or autodiff of unrolled
       iterations.
     implicit_diff_solve: the linear system solver to use.
-    jit: whether to JIT-compile the optimization loop (default: "auto").
+    jit: whether to JIT-compile the optimization loop (default: True).
     unroll: whether to unroll the optimization loop (default: "auto").
     verbose: whether to print error on every iteration or not.
       Warning: verbose=True will automatically disable jit.
@@ -303,7 +303,7 @@ class LBFGSB(base.IterativeSolver):
   implicit_diff: bool = True
   implicit_diff_solve: Optional[Callable[[Any], Any]] = None
 
-  jit: base.AutoOrBoolean = "auto"
+  jit: bool = True
   unroll: base.AutoOrBoolean = "auto"
 
   verbose: bool = False
@@ -581,6 +581,8 @@ class LBFGSB(base.IterativeSolver):
     return self._value_and_grad_fun(params, *args, **kwargs)[1]
 
   def __post_init__(self):
+    super().__post_init__()
+
     _, _, self._value_and_grad_with_aux = base._make_funs_with_aux(
         fun=self.fun,
         value_and_grad=self.value_and_grad,
@@ -597,7 +599,7 @@ class LBFGSB(base.IterativeSolver):
     self.reference_signature = inspect.Signature(parameters)
 
 
-    jit, unroll = self._get_loop_options()
+    unroll = self._get_unroll_option()
     linesearch_solver = _setup_linesearch(
         linesearch=self.linesearch,
         fun=self._value_and_grad_with_aux,
@@ -605,7 +607,7 @@ class LBFGSB(base.IterativeSolver):
         has_aux=True,
         maxlsiter=self.maxls,
         max_stepsize=self.max_stepsize,
-        jit=jit,
+        jit=self.jit,
         unroll=unroll,
         verbose=self.verbose,
     )

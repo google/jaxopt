@@ -73,7 +73,7 @@ class MirrorDescent(base.IterativeSolver):
     implicit_diff_solve: the linear system solver to use.
     has_aux: whether function fun outputs one (False) or more values (True).
       When True it will be assumed by default that fun(...)[0] is the objective.
-    jit: whether to JIT-compile the optimization loop (default: "auto").
+    jit: whether to JIT-compile the optimization loop (default: True).
     unroll: whether to unroll the optimization loop (default: "auto").
 
   References:
@@ -90,7 +90,7 @@ class MirrorDescent(base.IterativeSolver):
   implicit_diff: bool = True
   implicit_diff_solve: Optional[Callable] = None
   has_aux: bool = False
-  jit: base.AutoOrBoolean = "auto"
+  jit: bool = True
   unroll: base.AutoOrBoolean = "auto"
 
   @staticmethod
@@ -203,6 +203,8 @@ class MirrorDescent(base.IterativeSolver):
     return tree_sub(fp, sol)
 
   def __post_init__(self):
+    super().__post_init__()
+
     if self.has_aux:
       fun_with_aux = self.fun
     else:

@@ -53,7 +53,7 @@ def armijo_line_search(fun_with_aux, unroll, jit,
 
   Args:
     fun_with_aux: function to minimize.
-    jit: whether to JIT-compile the line search loop (default: "auto").
+    jit: whether to JIT-compile the line search loop.
     unroll: whether to unroll the line search loop (default: "auto").
     goldstein: boolean, whether to use Goldstein or not.
     maxls: maximum number of steps.
@@ -197,7 +197,7 @@ class ArmijoSGD(base.StochasticSolver):
       iterations.
     implicit_diff_solve: the linear system solver to use.
 
-    jit: whether to JIT-compile the optimization loop (default: "auto").
+    jit: whether to JIT-compile the optimization loop (default: True).
     unroll: whether to unroll the optimization loop (default: "auto").
 
   References:
@@ -229,7 +229,7 @@ class ArmijoSGD(base.StochasticSolver):
   implicit_diff: bool = False
   implicit_diff_solve: Optional[Callable] = None
 
-  jit: base.AutoOrBoolean = "auto"
+  jit: bool = True
   unroll: base.AutoOrBoolean = "auto"
 
   def init_state(self, init_params, *args, **kwargs) -> ArmijoState:
@@ -329,6 +329,8 @@ class ArmijoSGD(base.StochasticSolver):
     return self._value_and_grad_fun(params, *args, **kwargs)[1]
 
   def __post_init__(self):
+    super().__post_init__()
+
     options = ['increase', 'goldstein', 'conservative']
     if self.reset_option not in options:
       raise ValueError(f"'reset_option' should be one of {options}")
@@ -344,10 +346,11 @@ class ArmijoSGD(base.StochasticSolver):
 
     self.reference_signature = self.fun
 
-    jit, unroll = self._get_loop_options()
+    unroll = self._get_unroll_option()
 
-    armijo_with_fun = partial(armijo_line_search, self._fun_with_aux, unroll, jit)
-    if jit:
+    armijo_with_fun = partial(armijo_line_search, self._fun_with_aux, unroll,
+                              self.jit)
+    if self.jit:
       jitted_armijo = jax.jit(armijo_with_fun, static_argnums=(0,1))
       self._armijo_line_search = jitted_armijo
     else:

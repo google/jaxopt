@@ -97,7 +97,7 @@ class NonlinearCG(base.IterativeSolver):
       iterations.
     implicit_diff_solve: the linear system solver to use.
 
-    jit: whether to JIT-compile the optimization loop (default: "auto").
+    jit: whether to JIT-compile the optimization loop (default: True).
     unroll: whether to unroll the optimization loop (default: "auto").
 
     verbose: whether to print error on every iteration or not.
@@ -133,7 +133,7 @@ class NonlinearCG(base.IterativeSolver):
   implicit_diff: bool = True
   implicit_diff_solve: Optional[Callable] = None
 
-  jit: base.AutoOrBoolean = "auto"
+  jit: bool = True
   unroll: base.AutoOrBoolean = "auto"
 
   verbose: int = 0
@@ -284,13 +284,15 @@ class NonlinearCG(base.IterativeSolver):
     return self._value_and_grad_fun(params, *args, **kwargs)[1]
 
   def __post_init__(self):
+    super().__post_init__()
+
     _, _, self._value_and_grad_with_aux = base._make_funs_with_aux(
         fun=self.fun, value_and_grad=self.value_and_grad, has_aux=self.has_aux
     )
 
     self.reference_signature = self.fun
 
-    jit, unroll = self._get_loop_options()
+    unroll = self._get_unroll_option()
 
     linesearch_solver = _setup_linesearch(
         linesearch=self.linesearch,
@@ -299,7 +301,7 @@ class NonlinearCG(base.IterativeSolver):
         has_aux=True,
         maxlsiter=self.maxls,
         max_stepsize=self.max_stepsize,
-        jit=jit,
+        jit=self.jit,
         unroll=unroll,
         verbose=self.verbose
     )

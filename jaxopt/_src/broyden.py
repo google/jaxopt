@@ -174,7 +174,7 @@ class Broyden(base.IterativeSolver):
       iterations.
     implicit_diff_solve: the linear system solver to use.
 
-    jit: whether to JIT-compile the optimization loop (default: "auto").
+    jit: whether to JIT-compile the optimization loop (default: True).
     unroll: whether to unroll the optimization loop (default: "auto").
 
     verbose: whether to print error on every iteration or not.
@@ -209,7 +209,7 @@ class Broyden(base.IterativeSolver):
   implicit_diff: bool = True
   implicit_diff_solve: Optional[Callable] = None
 
-  jit: base.AutoOrBoolean = "auto"
+  jit: bool = True
   unroll: base.AutoOrBoolean = "auto"
 
   verbose: bool = False
@@ -261,7 +261,7 @@ class Broyden(base.IterativeSolver):
                         **state_kwargs,
                         aux=aux,
                         failed_linesearch=jnp.asarray(False),
-                        num_fun_eval=jnp.array(1, base.NUM_EVAL_DTYPE), 
+                        num_fun_eval=jnp.array(1, base.NUM_EVAL_DTYPE),
                         num_linesearch_iter=jnp.array(0, base.NUM_EVAL_DTYPE)
                         )
 
@@ -396,6 +396,8 @@ class Broyden(base.IterativeSolver):
     return value
 
   def __post_init__(self):
+    super().__post_init__()
+
     if self.has_aux:
       fun_ = self.fun
     else:
