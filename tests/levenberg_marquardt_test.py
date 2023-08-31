@@ -78,7 +78,6 @@ class LevenbergMarquardtTest(test_util.JaxoptTestCase):
 
   def setUp(self):
     super().setUp()
-    self.test_in_x_64 = True
 
     self.substrate_conc = onp.array(
         [0.038, 0.194, .425, .626, 1.253, 2.500, 3.740])
@@ -316,6 +315,14 @@ class LevenbergMarquardtTest(test_util.JaxoptTestCase):
     self.assertAllClose(x_opt, x_gt, atol=1e-6)
     self.assertAllClose(state.aux, x_gt**2, atol=1e-6)
 
+  def test_scalar_output_fun(self):
+    lm = LevenbergMarquardt(
+        residual_fun=lambda x: x @ x,
+        tol=1e-1,)
+    x_init = jnp.ones((2,))
+    x_opt, _ = lm.run(x_init)
+
+    self.assertAllClose(x_opt, jnp.zeros((2,)), atol=1e0)
 
 if __name__ == '__main__':
   absltest.main()
