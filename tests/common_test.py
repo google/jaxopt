@@ -19,6 +19,10 @@ from absl.testing import absltest
 from absl.testing import parameterized
 
 
+from contextlib import redirect_stdout
+import io
+
+
 import jax
 import jax.numpy as jnp
 import numpy as onp
@@ -410,7 +414,8 @@ class CommonTest(test_util.JaxoptTestCase):
         return solver.run(p0)
 
     for solver in solvers:
-      run_solver(jnp.arange(2.), solver)
+      with redirect_stdout(io.StringIO()):
+        run_solver(jnp.arange(2.), solver)
 
     # Proximal gradient solvers
     fun = objective.least_squares
@@ -421,14 +426,16 @@ class CommonTest(test_util.JaxoptTestCase):
 
     @partial(jax.jit, static_argnums=(1,))
     def run_solver_prox(p0, solver):
-      update = solver.update
-      state0 = solver.init_state(p0, hyperparams_prox=1.0, data=data)
-      _, state = update(p0, state0, hyperparams_prox=1.0, data=data)
-      return state0, state
-    
-    for solver in (jaxopt.ProximalGradient(fun=fun, prox=prox.prox_lasso, jit=True, verbose=1, maxiter=4),
-                   jaxopt.BlockCoordinateDescent(fun=fun, block_prox=prox.prox_lasso, jit=True, verbose=1, maxiter=4)):
-      run_solver_prox(params0, solver)
+      return solver.run(p0, hyperparams_prox=1.0, data=data)
+
+    for solver in (jaxopt.ProximalGradient(fun=fun, prox=prox.prox_lasso,
+                                           jit=True, verbose=1, maxiter=4),
+                   jaxopt.BlockCoordinateDescent(fun=fun,
+                                                 block_prox=prox.prox_lasso,
+                                                 jit=True, verbose=1, maxiter=4)
+    ):
+      with redirect_stdout(io.StringIO()):
+        run_solver_prox(params0, solver)
 
     # Mirror Descent
     Y = preprocessing.LabelBinarizer().fit_transform(y)
@@ -449,7 +456,7 @@ class CommonTest(test_util.JaxoptTestCase):
     kl_mapping_fun = jax.vmap(jax.grad(kl_generating_fun))
     projection_grad = jaxopt.MirrorDescent.make_projection_grad(
           kl_projection, kl_mapping_fun)
-    
+
     @jax.jit
     def run_mirror_descent(b0):
       md = jaxopt.MirrorDescent(
@@ -462,9 +469,10 @@ class CommonTest(test_util.JaxoptTestCase):
       _, state = md.run(b0, None, lam, data)
       return state
 
-    run_mirror_descent(beta_init)
+    with redirect_stdout(io.StringIO()):
+      run_mirror_descent(beta_init)
 
-    # Quadratic programming - BoxOSQP  
+    # Quadratic programming - BoxOSQP
     x = jnp.array([1.0, 2.0])
     a = jnp.array([-0.5, 1.5])
     b = 0.3
@@ -481,7 +489,8 @@ class CommonTest(test_util.JaxoptTestCase):
       osqp = BoxOSQP(matvec_Q=matvec_Q, matvec_A=matvec_A, tol=tol, jit=True, verbose=1, maxiter=4)
       return osqp.run(None, (None, params_obj), None, (params_ineq, params_ineq))
 
-    run_box_osqp(q, b)
+    with redirect_stdout(io.StringIO()):
+      run_box_osqp(q, b)
 
 
 if __name__ == '__main__':
