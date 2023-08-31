@@ -59,7 +59,10 @@ class GradientDescent(ProximalGradient):
     implicit_diff: whether to enable implicit diff or autodiff of unrolled
       iterations.
     implicit_diff_solve: the linear system solver to use.
-  """
+
+    jit: whether to JIT-compile the optimization loop (default: "auto").
+    unroll: whether to unroll the optimization loop (default: "auto").    
+    """
 
   def init_state(self,
                  init_params: Any,
