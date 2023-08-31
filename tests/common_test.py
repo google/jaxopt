@@ -492,6 +492,125 @@ class CommonTest(test_util.JaxoptTestCase):
     with redirect_stdout(io.StringIO()):
       run_box_osqp(q, b)
 
+  def test_count_compilations(self):
+      # The print will only occur at compilation when jitted. The following will
+      # then count the number of times the function was compiled through the
+      # number of times 'Compiled' is printed.
+    dim = 20
+    common_kwargs = dict(maxiter=4, tol=1e-9)
+
+    def fun(x):
+      print("Compiled")
+      return jnp.sum(x**2)      
+    
+    # Unconstrained minimization algorithms
+    solvers = [
+      jaxopt.AndersonWrapper(solver=jaxopt.GradientDescent(fun, **common_kwargs)),
+      jaxopt.BFGS(fun, **common_kwargs),
+      jaxopt.ArmijoSGD(fun, **common_kwargs),
+      jaxopt.GaussNewton(fun, **common_kwargs),
+      jaxopt.GradientDescent(fun, **common_kwargs),
+      jaxopt.LBFGS(fun, linesearch="zoom", **common_kwargs),
+      jaxopt.LBFGS(fun, linesearch="hager-zhang", **common_kwargs),
+      jaxopt.LBFGS(fun, linesearch="backtracking", **common_kwargs),
+      jaxopt.LevenbergMarquardt(fun, **common_kwargs),
+      jaxopt.NonlinearCG(fun, **common_kwargs),
+      jaxopt.PolyakSGD(fun, **common_kwargs),
+      jaxopt.OptaxSolver(opt=optax.adam(1e-1), fun=fun, **common_kwargs),
+    ]
+
+    # Fixed point algorithms
+    def fixed_point_fun(params):
+      print("Compiled")
+      return params**2 - params
+  
+    solvers += [
+      jaxopt.AndersonAcceleration(fixed_point_fun, **common_kwargs),
+      jaxopt.Broyden(fixed_point_fun, **common_kwargs),
+      jaxopt.Bisection(fixed_point_fun, lower=0.5, upper=4., **common_kwargs)
+    ]
+
+    # Composite/Constrained minimization
+    proj = jaxopt.projection.projection_non_negative
+
+    X, y = datasets.make_classification(n_samples=10, n_features=dim, n_classes=3,
+                                        n_informative=3, random_state=0)
+    data = (X, y)
+
+    class LeastSquaresWithPrints(jaxopt._src.objective.CompositeLinearFunction):
+      """Least squares."""
+
+      def subfun(self, predictions, data):
+        print('Compiled')
+        y = data[1]
+        residuals = predictions - y
+        return 0.5 * jnp.mean(residuals ** 2)
+
+      def make_linop(self, data):
+        return jaxopt._src.base.LinearOperator(data[0])
+
+      def columnwise_lipschitz_const(self, data):
+        linop = self.make_linop(data)
+        return linop.column_l2_norms(squared=True) * 1.0
+
+      def __call__(self, W, data):
+        print('Compiled')
+        return super().__call__(W, data)
+
+    classif_fun = LeastSquaresWithPrints() 
+
+    projection_grad = jaxopt.MirrorDescent.make_projection_grad(lambda x, y: x, mapping_fun=lambda x: x)
+    solvers += [
+      jaxopt.BlockCoordinateDescent(classif_fun, block_prox=prox.prox_lasso, **common_kwargs),
+      jaxopt.LBFGSB(fun, **common_kwargs),
+      jaxopt.ProjectedGradient(fun, projection=proj, **common_kwargs),
+      jaxopt.ProximalGradient(fun, prox=prox.prox_lasso, **common_kwargs),
+      jaxopt.MirrorDescent(fun, projection_grad, stepsize=1., **common_kwargs)
+    ]
+
+    # Linesearches
+    linesearch_solvers = [
+      jaxopt.BacktrackingLineSearch(fun, **common_kwargs),
+      jaxopt.HagerZhangLineSearch(fun, **common_kwargs),
+      jaxopt.ZoomLineSearch(fun, **common_kwargs)
+    ]
+    solvers += linesearch_solvers
+
+    # Quadratic programming with constraints not done 
+    # as it takes directly matrices or linear operators
+
+    # Runs
+    init_params = 16*jnp.ones((dim,))
+
+    for solver in solvers:
+      solver_name = f"{solver.__class__.__name__}"
+      if hasattr(solver, 'linesearch'):
+        solver_name += f" with {solver.linesearch} linesearch"
+      print(solver_name)
+
+      stdout = io.StringIO()
+      with redirect_stdout(stdout):
+        solver_kwargs = {}
+        if solver.__class__ == jaxopt.LBFGSB:
+          solver_kwargs.update(bounds=[-1., 1.])
+        if solver.__class__ in [jaxopt.ProximalGradient, jaxopt.BlockCoordinateDescent]:
+          solver_kwargs.update(hyperparams_prox=1.)
+        if solver.__class__ == jaxopt.MirrorDescent:
+          solver_kwargs.update(hyperparams_proj=1.)
+        if solver.__class__ == jaxopt.BlockCoordinateDescent:
+          solver_kwargs.update(data=data)
+        if solver in linesearch_solvers:
+          solver_kwargs.update(init_stepsize=1., params=init_params)
+        elif solver.__class__ == jaxopt.Bisection:
+          solver_kwargs.update(init_params=2.)
+        else:
+          solver_kwargs.update(init_params=init_params)
+        solver.run(**solver_kwargs)
+
+      num_compilations = stdout.getvalue().count("Compiled")
+      # Goal would be self.assertTrue(num_compilations==1)
+      # For now, we simply print
+      print(f"Function compiled {num_compilations} times")
 
 if __name__ == '__main__':
   absltest.main()
