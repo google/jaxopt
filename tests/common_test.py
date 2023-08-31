@@ -384,33 +384,33 @@ class CommonTest(test_util.JaxoptTestCase):
 
     solvers = (
       # Unconstrained
-      jaxopt.GradientDescent(fun=fun, jit=True, verbose=1),
-      jaxopt.PolyakSGD(fun=fun, jit=True, verbose=1),
-      jaxopt.Broyden(fun=fixed_point_fun, jit=True, verbose=True),
-      jaxopt.AndersonAcceleration(fixed_point_fun=fixed_point_fun, jit=True, verbose=True),
-      jaxopt.ArmijoSGD(fun=fun, jit=True, verbose=1),
-      jaxopt.BFGS(fun, linesearch="zoom", jit=True, verbose=1),
-      jaxopt.BFGS(fun, linesearch="backtracking", jit=True, verbose=1),
-      jaxopt.BFGS(fun, linesearch="hager-zhang", jit=True, verbose=1),
-      jaxopt.LBFGS(fun=fun, jit=True, verbose=1),
-      jaxopt.ArmijoSGD(fun=fun, jit=True, verbose=1),
-      jaxopt.NonlinearCG(fun, jit=True, verbose=1),
+      jaxopt.GradientDescent(fun=fun, jit=True, verbose=1, maxiter=4),
+      jaxopt.PolyakSGD(fun=fun, jit=True, verbose=1, maxiter=4),
+      jaxopt.Broyden(fun=fixed_point_fun, jit=True, verbose=True, maxiter=4),
+      jaxopt.AndersonAcceleration(fixed_point_fun=fixed_point_fun, jit=True, verbose=True, maxiter=4),
+      jaxopt.ArmijoSGD(fun=fun, jit=True, verbose=1, maxiter=4),
+      jaxopt.BFGS(fun, linesearch="zoom", jit=True, verbose=1, maxiter=4),
+      jaxopt.BFGS(fun, linesearch="backtracking", jit=True, verbose=1, maxiter=4),
+      jaxopt.BFGS(fun, linesearch="hager-zhang", jit=True, verbose=1, maxiter=4),
+      jaxopt.LBFGS(fun=fun, jit=True, verbose=1, maxiter=4),
+      jaxopt.ArmijoSGD(fun=fun, jit=True, verbose=1, maxiter=4),
+      jaxopt.NonlinearCG(fun, jit=True, verbose=1, maxiter=4),
       # Unconstrained, nonlinear least-squares
-      jaxopt.GaussNewton(residual_fun=fun, jit=True, verbose=True),
-      jaxopt.LevenbergMarquardt(residual_fun=fun, jit=True, verbose=True),
+      jaxopt.GaussNewton(residual_fun=fun, jit=True, verbose=True, maxiter=4),
+      jaxopt.LevenbergMarquardt(residual_fun=fun, jit=True, verbose=True, maxiter=4),
       # Constrained
       jaxopt.ProjectedGradient(fun=fun,
-        projection=jaxopt.projection.projection_non_negative, jit=True, verbose=1),
+        projection=jaxopt.projection.projection_non_negative, jit=True, verbose=1, maxiter=4),
       # Optax wrapper
-      jaxopt.OptaxSolver(opt=optax.adam(1e-1), fun=fun, jit=True, verbose=1),
+      jaxopt.OptaxSolver(opt=optax.adam(1e-1), fun=fun, jit=True, verbose=1, maxiter=4),
     )
 
     @partial(jax.jit, static_argnums=(1,))
-    def f(p0, solver):
+    def run_solver(p0, solver):
         return solver.run(p0)
 
     for solver in solvers:
-      f(jnp.arange(2.), solver)
+      run_solver(jnp.arange(2.), solver)
 
     # Proximal gradient solvers
     fun = objective.least_squares
@@ -420,15 +420,15 @@ class CommonTest(test_util.JaxoptTestCase):
     params0 = jnp.zeros(X.shape[1])
 
     @partial(jax.jit, static_argnums=(1,))
-    def f_prox(p0, solver):
+    def run_solver_prox(p0, solver):
       update = solver.update
       state0 = solver.init_state(p0, hyperparams_prox=1.0, data=data)
       _, state = update(p0, state0, hyperparams_prox=1.0, data=data)
       return state0, state
     
-    for solver in (jaxopt.ProximalGradient(fun=fun, prox=prox.prox_lasso),
-                   jaxopt.BlockCoordinateDescent(fun=fun, block_prox=prox.prox_lasso)):
-      state0, state = f_prox(params0, solver)
+    for solver in (jaxopt.ProximalGradient(fun=fun, prox=prox.prox_lasso, jit=True, verbose=1, maxiter=4),
+                   jaxopt.BlockCoordinateDescent(fun=fun, block_prox=prox.prox_lasso, jit=True, verbose=1, maxiter=4)):
+      run_solver_prox(params0, solver)
 
     # Mirror Descent
     Y = preprocessing.LabelBinarizer().fit_transform(y)
@@ -451,18 +451,18 @@ class CommonTest(test_util.JaxoptTestCase):
           kl_projection, kl_mapping_fun)
     
     @jax.jit
-    def f(b0):
+    def run_mirror_descent(b0):
       md = jaxopt.MirrorDescent(
           fun=fun,
           projection_grad=projection_grad,
           stepsize=1e-3,
-          maxiter=30,
+          maxiter=4,
           jit=True,
           verbose=1)
       _, state = md.run(b0, None, lam, data)
       return state
 
-    f(beta_init)
+    run_mirror_descent(beta_init)
 
     # Quadratic programming - BoxOSQP  
     x = jnp.array([1.0, 2.0])
@@ -477,11 +477,11 @@ class CommonTest(test_util.JaxoptTestCase):
     tol = 1e-4
 
     @jax.jit
-    def f(params_obj, params_ineq):
-      osqp = BoxOSQP(matvec_Q=matvec_Q, matvec_A=matvec_A, tol=tol, jit=True, verbose=1)
+    def run_box_osqp(params_obj, params_ineq):
+      osqp = BoxOSQP(matvec_Q=matvec_Q, matvec_A=matvec_A, tol=tol, jit=True, verbose=1, maxiter=4)
       return osqp.run(None, (None, params_obj), None, (params_ineq, params_ineq))
 
-    f(q, b)
+    run_box_osqp(q, b)
 
 
 if __name__ == '__main__':
