@@ -117,6 +117,13 @@ html_static_path = ['_static']
 html_css_files = [
     'css/custom.css',
 ]
+html_context = {
+    "display_github": True, # Integrate GitHub
+    "github_user": "google", # Username
+    "github_repo": "jaxopt", # Repo name
+    "github_version": "main", # Version
+    "conf_py_path": "/docs/", # Path in the checkout to the docs root
+}
 
 
 # -- Options for myst ----------------------------------------------
