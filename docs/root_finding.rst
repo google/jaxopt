@@ -71,7 +71,7 @@ Scipy wrapper
 
 
 Broyden's method
---------------
+----------------
 
 .. autosummary::
   :toctree: _autosummary
