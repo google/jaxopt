@@ -35,6 +35,7 @@ jobs:
           python setup.py install
         shell: bash
       - name: Run tests
+        timeout-minutes: 60
         run: |
           set -xe
           python -VV
