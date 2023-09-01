@@ -141,11 +141,8 @@ class ArmijoSgdTest(test_util.JaxoptTestCase):
     opt = ArmijoSGD(fun=fun, reset_option='goldstein', maxiter=1000, tol=tol)
     iterable = dataset_loader(X, y, n_iter=200)
     state = opt.init_state(params, l2reg=l2reg, data=(X, y))
-    @jax.jit
-    def jitted_update(params, state, data):
-      return opt.update(params, state, l2reg=l2reg, data=data)
     for data in itertools.islice(iterable, 0, opt.maxiter):
-      params, state = jitted_update(params, state, data)
+      params, state = opt.update(params, state, l2reg, data)
     # Check optimality conditions.
     error = opt.l2_optimality_error(params, l2reg=l2reg, data=(X, y))
     self.assertLessEqual(error, tol)

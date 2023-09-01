@@ -287,7 +287,6 @@ data_train, data_test, phase, amplitude = generate_task_batch(
   n_samples_test=10,
 )
 state = solver.init_state(meta_params, data_train, data_test)
-jitted_update = jax.jit(solver.update)
 
 pbar = tqdm(range(solver.maxiter))
 
@@ -299,7 +298,7 @@ for it in pbar:
     n_samples_train=10, 
     n_samples_test=10,
   )
-  meta_params, state = jitted_update(meta_params, state, data_train, data_test)
+  meta_params, state = solver.update(meta_params, state, data_train, data_test)
   outer_losses.append(state.value)
   pbar.set_description(f"Outer loss {state.value:.3f}")
 ```
