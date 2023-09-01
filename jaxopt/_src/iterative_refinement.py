@@ -102,7 +102,7 @@ class IterativeRefinement(base.IterativeSolver):
     implicit_diff: whether to enable implicit diff or autodiff of unrolled
       iterations.
     implicit_diff_solve: the linear system solver to use.
-    jit: whether to JIT-compile the optimization loop (default: "auto").
+    jit: whether to JIT-compile the optimization loop (default: True).
     unroll: whether to unroll the optimization loop (default: "auto")
 
   References:
@@ -120,7 +120,7 @@ class IterativeRefinement(base.IterativeSolver):
   tol: float = 1e-7
   verbose: int = 0
   implicit_diff_solve: Optional[Callable] = None
-  jit: base.AutoOrBoolean = "auto"
+  jit: bool = True
   unroll: base.AutoOrBoolean = "auto"
 
   def init_state(self,
@@ -132,7 +132,7 @@ class IterativeRefinement(base.IterativeSolver):
       iter_num=jnp.asarray(0),
       error=jnp.asarray(jnp.inf),
       target_residuals=b,
-      init=init_params, 
+      init=init_params,
       num_matvec_eval=jnp.asarray(0, base.NUM_EVAL_DTYPE),
       num_matvec_bar_eval=jnp.asarray(0, base.NUM_EVAL_DTYPE),
       num_solve_eval=jnp.asarray(0, base.NUM_EVAL_DTYPE)
@@ -215,6 +215,8 @@ class IterativeRefinement(base.IterativeSolver):
     return tree_l2_norm(self.optimality_fun(params, A, b))
 
   def __post_init__(self):
+    super().__post_init__()
+
     self._copy_A = False
 
     if self.matvec_A_bar is None:

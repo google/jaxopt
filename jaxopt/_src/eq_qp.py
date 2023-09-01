@@ -43,7 +43,7 @@ def extract_Qc_from_obj(init_params, params_obj, fun):
       Mandatory when `fun` is not `None`.
     params_obj: tuple of parameters for the objective function.
     fun: objective function.
-  
+
   When `fun` is `None` it retrieves the relevant informations from the tuple `params_obj`,
   whereas when `fun` is not `None` it extracts it using AutoDiff.
   """
@@ -266,7 +266,8 @@ class EqualityConstrainedQP(base.Solver):
         matvec, target, init_params, tol=self.tol, maxiter=self.maxiter
       )
 
-    return base.OptStep(params=base.KKTSolution(primal, dual_eq, None), state=None)
+    return base.OptStep(params=base.KKTSolution(primal, dual_eq, None),
+                        state=None)
 
   def l2_optimality_error(
     self,
@@ -283,7 +284,7 @@ class EqualityConstrainedQP(base.Solver):
 
     if self.fun is not None and self.matvec_Q is not None:
       raise ValueError(f"Specification of parameter 'fun' is incompatible with 'matvec_Q' in method __init__ of {type(self)}")
-    
+
     if self.fun is not None:
       def matvec_Q(params_obj, x):
         params_Q, c, _ = params_obj
@@ -299,7 +300,9 @@ class EqualityConstrainedQP(base.Solver):
     self.matvec_Q = _make_linear_operator(self.matvec_Q)
     self.matvec_A = _make_linear_operator(self.matvec_A)
 
-    self.optimality_fun = _make_eq_qp_optimality_fun(self.matvec_Q, self.matvec_A, self.fun)
+    self.optimality_fun = _make_eq_qp_optimality_fun(self.matvec_Q,
+                                                     self.matvec_A,
+                                                     self.fun)
 
     # Set up implicit diff.
     decorator = idf.custom_root(

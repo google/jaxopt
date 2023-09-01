@@ -193,7 +193,7 @@ class LBFGS(base.IterativeSolver):
     implicit_diff: whether to enable implicit diff or autodiff of unrolled
       iterations.
     implicit_diff_solve: the linear system solver to use.
-    jit: whether to JIT-compile the optimization loop (default: "auto").
+    jit: whether to JIT-compile the optimization loop (default: True).
     unroll: whether to unroll the optimization loop (default: "auto").
     verbose: whether to print error on every iteration or not.
 
@@ -232,7 +232,7 @@ class LBFGS(base.IterativeSolver):
   implicit_diff: bool = True
   implicit_diff_solve: Optional[Callable] = None
 
-  jit: base.AutoOrBoolean = "auto"
+  jit: bool = True
   unroll: base.AutoOrBoolean = "auto"
 
   verbose: bool = False
@@ -419,6 +419,8 @@ class LBFGS(base.IterativeSolver):
     return value, grad
 
   def __post_init__(self):
+    super().__post_init__()
+
     _, _, self._value_and_grad_with_aux = \
       base._make_funs_with_aux(fun=self.fun,
                                value_and_grad=self.value_and_grad,
@@ -426,7 +428,7 @@ class LBFGS(base.IterativeSolver):
 
     self.reference_signature = self.fun
 
-    jit, unroll = self._get_loop_options()
+    unroll = self._get_unroll_option()
 
     self.linesearch_solver = _setup_linesearch(
         linesearch=self.linesearch,
@@ -435,7 +437,7 @@ class LBFGS(base.IterativeSolver):
         has_aux=True,
         maxlsiter=self.maxls,
         max_stepsize=self.max_stepsize,
-        jit=jit,
+        jit=self.jit,
         unroll=unroll,
         verbose=self.verbose,
     )

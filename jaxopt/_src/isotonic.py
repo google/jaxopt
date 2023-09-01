@@ -100,14 +100,15 @@ def _isotonic_l2_pav(y):
   sol = jax.pure_callback(_isotonic_l2_pav_numba, shape_dtype, y)
   return sol
 
+
 def isotonic_l2_pav(y, y_min=-jnp.inf, y_max=jnp.inf, increasing=True):
   r"""Solves an isotonic regression problem using PAV.
 
   Args:
     y: input to isotonic regression, a 1d-array.
 
-    y_min : Lower bound on the lowest predicted value. 
-    y_max : Upper bound on the highest predicted value 
+    y_min : Lower bound on the lowest predicted value.
+    y_max : Upper bound on the highest predicted value
 
     increasing : Order of the constraints:
         If True, it solves :math:`\mathop{\mathrm{arg\,min}}_{v_1 \leq ... \leq v_n} \|v - y\|^2`.
@@ -120,6 +121,7 @@ def isotonic_l2_pav(y, y_min=-jnp.inf, y_max=jnp.inf, increasing=True):
   sol = _isotonic_l2_pav(y * sign) * sign
   sol = jnp.clip(sol, y_min, y_max)
   return sol
+
 
 def _jvp_isotonic_l2_jax_pav(solution, vector, eps=1e-8):
   x = solution

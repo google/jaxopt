@@ -58,7 +58,7 @@ class GaussNewton(base.IterativeSolver):
     implicit_diff_solve: the linear system solver to use.
     has_aux: whether ``residual_fun`` outputs auxiliary data or not.
     verbose: whether to print error on every iteration or not.
-    jit: whether to JIT-compile the bisection loop (default: "auto").
+    jit: whether to JIT-compile the bisection loop (default: True).
     unroll: whether to unroll the bisection loop (default: "auto").
   """
   residual_fun: Callable
@@ -68,7 +68,7 @@ class GaussNewton(base.IterativeSolver):
   implicit_diff_solve: Optional[Callable] = None
   has_aux: bool = False
   verbose: bool = False
-  jit: base.AutoOrBoolean = "auto"
+  jit: bool = True
   unroll: base.AutoOrBoolean = "auto"
 
   def init_state(self,
@@ -128,6 +128,8 @@ class GaussNewton(base.IterativeSolver):
     return base.OptStep(params=params, state=state)
 
   def __post_init__(self):
+    super().__post_init__()
+
     if self.has_aux:
       self._fun_with_aux = self.residual_fun
       self._fun = lambda *a, **kw: self._fun_with_aux(*a, **kw)[0]

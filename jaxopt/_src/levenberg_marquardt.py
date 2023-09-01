@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """Levenberg-Marquardt algorithm in JAX."""
 
 import math
@@ -108,12 +109,12 @@ class LevenbergMarquardt(base.IterativeSolver):
       residual gradient.
     solver: str, optional The solver to use when finding delta_params, the
       update to the params in each iteration. This is done through solving a
-      system of linear equation Ax=b. 'cholesky', 'lu', or 'qr' factorizations, 
+      system of linear equation Ax=b. 'cholesky', 'lu', or 'qr' factorizations,
       'inv' (explicit multiplication with matrix inverse). Note that the inverse
-      approach is the most expensive and least accurate and is just given as an 
-      option for legacy reasons. The user can provide custom solvers, for example 
-      using jaxopt.linear_solve.solve_cg which are more scalable for runtime but 
-      take longer compilations. Cholesky is faster than inverse since it uses 
+      approach is the most expensive and least accurate and is just given as an
+      option for legacy reasons. The user can provide custom solvers, for example
+      using jaxopt.linear_solve.solve_cg which are more scalable for runtime but
+      take longer compilations. Cholesky is faster than inverse since it uses
       the symmetry feature of A. QR factorization is preferred for ill-posed
       stiff problems due to not solving the normal equation.
     geodesic: bool, if we would like to include the geodesic acceleration when
@@ -125,16 +126,16 @@ class LevenbergMarquardt(base.IterativeSolver):
     jac_fun: Callable, a function to calculate the Jacobian. If not None, this
       function is used instead of directly calculating it using ``jax.jacfwd``.
     materialize_jac: bool, whether to materialize Jacobian. If this option is
-      True, Jacobian is either calculated using ``jax.jacfwd`` or obtained from 
+      True, Jacobian is either calculated using ``jax.jacfwd`` or obtained from
       ``jac_fun`` and all variables depending on it, such as J^T or J^T.J are
       obtained directly. If False, all of the Jacobian dependent variables are
-      indirectly obtained using operators on the basis of ``jax.jvp`` and 
+      indirectly obtained using operators on the basis of ``jax.jvp`` and
       ``jax.vjp``.
     implicit_diff: bool, whether to enable implicit diff or autodiff of unrolled
       iterations.
     implicit_diff_solve: the linear system solver to use.
     has_aux: whether ``residual_fun`` outputs auxiliary data or not.
-    jit: whether to JIT-compile the bisection loop (default: "auto").
+    jit: whether to JIT-compile the bisection loop (default: True).
     unroll: whether to unroll the bisection loop (default: "auto").
 
   Reference: This algorithm is for finding the best fit parameters based on the
@@ -161,7 +162,7 @@ class LevenbergMarquardt(base.IterativeSolver):
   implicit_diff: bool = True
   implicit_diff_solve: Optional[Callable] = None
   has_aux: bool = False
-  jit: base.AutoOrBoolean = 'auto'
+  jit: bool = True
   unroll: base.AutoOrBoolean = 'auto'
 
   # We are overriding the _cond_fun of the base solver to enable stopping based
@@ -403,7 +404,7 @@ class LevenbergMarquardt(base.IterativeSolver):
           acceleration = jnp.dot(jtj_corr_inv, state.jt) @ rpp
         else:
           acceleration = jsp.linalg.solve(jtj_corr, state.jt, assume_a='pos') @ rpp
-        
+
         delta_params += 0.5*acceleration
     else:
       matvec = lambda v: self._jtj_op(params, v, *args, **kwargs)
@@ -450,6 +451,8 @@ class LevenbergMarquardt(base.IterativeSolver):
     return base.OptStep(params=params, state=state)
 
   def __post_init__(self):
+    super().__post_init__()
+
     if isinstance(self.solver, Callable):
       self.solver_fn = self.solver
     elif self.solver == 'cholesky':
@@ -491,7 +494,7 @@ class LevenbergMarquardt(base.IterativeSolver):
                          "Jacobian equation instead of the normal equation. Hence, this solver "
                          "choice is inconsistent with materialize_jac=False.")
       if self.solver in ['lu', 'cholesky', 'inv']:
-        warnings.warn(f"The linear solver {self.solver} that requires materialization of " 
+        warnings.warn(f"The linear solver {self.solver} that requires materialization of "
                       "J^T.J matrix is used with materialize_jac=False, which may cause a "
                       "computational overhead. Consider using either a matrix-free iterative "
                       "solver such as cg or bicg or using materialize_jac=True.", category=UserWarning)
@@ -547,5 +550,5 @@ class LevenbergMarquardt(base.IterativeSolver):
 
 
 def print_iteration(state: LevenbergMarquardtState):
-  jax.debug.print("Iteration: {iter}, Cost: {cost}, ||Gradient||: {error}, Damping Factor: {damp}", 
-                iter=state.iter_num, cost=state.value, error=state.error, damp=state.damping_factor)
+  jax.debug.print("Iteration: {iter}, Value: {value}, ||Gradient||: {error}, Damping Factor: {damp}",
+                iter=state.iter_num, value=state.value, error=state.error, damp=state.damping_factor)

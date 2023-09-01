@@ -61,13 +61,16 @@ class BlockCoordinateDescent(base.IterativeSolver):
     block_prox: block-wise proximity operator associated with ``non_smooth``,
       a function of the form ``block_prox(x[j], hyperparams_prox, scaling=1.0)``.
       See ``jaxopt.prox`` for examples.
+
     maxiter: maximum number of proximal gradient descent iterations.
     tol: tolerance to use.
     verbose: whether to print error on every iteration or not.
+
     implicit_diff: whether to enable implicit diff or autodiff of unrolled
       iterations.
     implicit_diff_solve: the linear system solver to use.
-    jit: whether to JIT-compile the optimization loop (default: "auto").
+
+    jit: whether to JIT-compile the optimization loop (default: True).
     unroll: whether to unroll the optimization loop (default: "auto").
   """
   fun: objective.CompositeLinearFunction
@@ -77,7 +80,7 @@ class BlockCoordinateDescent(base.IterativeSolver):
   verbose: int = 0
   implicit_diff: bool = True
   implicit_diff_solve: Optional[Callable] = None
-  jit: base.AutoOrBoolean = "auto"
+  jit: bool = True
   unroll: base.AutoOrBoolean = "auto"
 
   def init_state(self,
@@ -104,7 +107,7 @@ class BlockCoordinateDescent(base.IterativeSolver):
                         subfun_g=subfun_g,
                         error=jnp.asarray(jnp.inf),
                         num_fun_eval=jnp.array(1, base.NUM_EVAL_DTYPE),
-                        num_grad_eval=jnp.array(1, base.NUM_EVAL_DTYPE), 
+                        num_grad_eval=jnp.array(1, base.NUM_EVAL_DTYPE),
                         num_prox_eval=jnp.array(0, base.NUM_EVAL_DTYPE)
                         )
 
@@ -205,6 +208,8 @@ class BlockCoordinateDescent(base.IterativeSolver):
     return  fp - params
 
   def __post_init__(self):
+    super().__post_init__()
+
     if not isinstance(self.fun, objective.CompositeLinearFunction):
       raise AttributeError("fun should be an instance of "
                            "objective.CompositeLinearFunction.")

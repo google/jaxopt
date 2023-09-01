@@ -63,10 +63,12 @@ class BoxCDQP(base.IterativeSolver):
     maxiter: maximum number of coordinate descent iterations.
     tol: tolerance to use.
     verbose: whether to print error on every iteration or not.
+
     implicit_diff: whether to enable implicit diff or autodiff of unrolled
       iterations.
     implicit_diff_solve: the linear system solver to use.
-    jit: whether to JIT-compile the optimization loop (default: "auto").
+
+    jit: whether to JIT-compile the optimization loop (default: True).
     unroll: whether to unroll the optimization loop (default: "auto").
   """
   maxiter: int = 500
@@ -74,7 +76,7 @@ class BoxCDQP(base.IterativeSolver):
   verbose: int = 0
   implicit_diff: bool = True
   implicit_diff_solve: Optional[Callable] = None
-  jit: base.AutoOrBoolean = "auto"
+  jit: bool = True
   unroll: base.AutoOrBoolean = "auto"
 
   def init_state(self,
@@ -138,3 +140,6 @@ class BoxCDQP(base.IterativeSolver):
                      params_obj: base.ArrayPair,
                      params_ineq: base.ArrayPair) -> jnp.ndarray:
     return self._fixed_point_fun(sol, params_obj, params_ineq) - sol
+
+  def __post_init__(self):
+    super().__post_init__()

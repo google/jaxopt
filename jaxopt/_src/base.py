@@ -233,7 +233,7 @@ class Solver(abc.ABC):
 class IterativeSolver(Solver):
   """Base class for iterative solvers.
 
-  Any iterative solver should implement `init` and `update` methods:
+  Any iterative solver should implement `init_state` and `update` methods:
     - `state = init_state(init_params, *args, **kwargs)`
     - `next_params, next_state = update(params, state, *args, **kwargs)`
 
@@ -254,22 +254,13 @@ class IterativeSolver(Solver):
     - `error`
   """
 
-  def _get_loop_options(self):
-    """Returns jit and unroll options based on user-provided attributes."""
-
-    if self.jit == "auto":
-      # We always jit unless verbose mode is enabled.
-      jit = not self.verbose
-    else:
-      jit = self.jit
-
+  def _get_unroll_option(self):
+    """Returns unroll option based on user-provided attributes."""
     if self.unroll == "auto":
       # We unroll when implicit diff is disabled or when jit is disabled.
-      unroll = not getattr(self, "implicit_diff", True) or not jit
+      return not getattr(self, "implicit_diff", True) or not self.jit
     else:
-      unroll = self.unroll
-
-    return jit, unroll
+      return self.unroll
 
   def _cond_fun(self, inputs):
     _, state = inputs[0]
@@ -318,11 +309,11 @@ class IterativeSolver(Solver):
     opt_step = self.update(init_params, state, *args, **kwargs)
     init_val = (opt_step, (args, kwargs))
 
-    jit, unroll = self._get_loop_options()
+    unroll = self._get_unroll_option()
 
     many_step = loop.while_loop(
         cond_fun=self._cond_fun, body_fun=self._body_fun,
-        init_val=init_val, maxiter=self.maxiter - 1, jit=jit,
+        init_val=init_val, maxiter=self.maxiter - 1, jit=self.jit,
         unroll=unroll)[0]
 
     return tree_util.tree_map(
@@ -354,6 +345,10 @@ class IterativeSolver(Solver):
       run = decorator(run)
 
     return run(init_params, *args, **kwargs)
+
+  def __post_init__(self):
+    if self.jit:
+      self.update = jax.jit(self.update)
 
 
 def _where(cond, x, y):

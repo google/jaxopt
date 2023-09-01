@@ -121,9 +121,9 @@ def _cond_print(condition, message):
 
 def _check_status(fail_code):
   """Print failure reasons according to error flag coded bitwise."""
-  _cond_print(fail_code & _FLAG_NOT_DESCENT_DIRECTION, 
+  _cond_print(fail_code & _FLAG_NOT_DESCENT_DIRECTION,
               "Provided descent direction is not a descent direction.")
-  _cond_print(fail_code & _FLAG_CURVATURE_COND_NOT_SATSIFIED, 
+  _cond_print(fail_code & _FLAG_CURVATURE_COND_NOT_SATSIFIED,
               "Returning stepsize with sufficient decrease "
               "but curvature condition not satisfied.")
   _cond_print(fail_code & _FLAG_MAX_ITER_REACHED,
@@ -791,8 +791,6 @@ class ZoomLineSearch(base.IterativeLineSearch):
     del grad
     del descent_direction
 
-    jit, _ = self._get_loop_options()
-
     best_stepsize_, new_state_ = cond(
         state.interval_found,
         self._zoom_into_interval,
@@ -801,7 +799,7 @@ class ZoomLineSearch(base.IterativeLineSearch):
         state,
         fun_args,
         fun_kwargs,
-        jit=jit,
+        jit=self.jit,
     )
     new_state_ = new_state_._replace(
         num_fun_eval=new_state_.num_fun_eval + 1,
@@ -819,7 +817,7 @@ class ZoomLineSearch(base.IterativeLineSearch):
         new_state_,
         fun_args,
         fun_kwargs,
-        jit=jit,
+        jit=self.jit,
     )
     new_state = new_state._replace(
         num_fun_eval=new_state_.num_fun_eval + anticipated_num_func_grad_calls,
