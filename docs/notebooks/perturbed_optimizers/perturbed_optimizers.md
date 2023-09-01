@@ -5,7 +5,7 @@ jupytext:
     extension: .md
     format_name: myst
     format_version: 0.13
-    jupytext_version: 1.14.4
+    jupytext_version: 1.15.1
 kernelspec:
   display_name: Python 3
   language: python
@@ -52,7 +52,7 @@ $$y_\varepsilon^*(\theta) = \mathbf{E}[\mathop{\mathrm{arg\,max}}_{y\in \mathcal
 try:
     import jax.tools.colab_tpu
     jax.tools.colab_tpu.setup_tpu()
-except KeyError:
+except (KeyError, RuntimeError):
     print("TPU not found, continuing without it.")
 ```
 
@@ -61,8 +61,6 @@ except KeyError:
 
 import jax
 import jax.numpy as jnp
-import jaxopt
-import time
 
 from jaxopt import perturbations
 ```
