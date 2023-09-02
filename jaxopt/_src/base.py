@@ -266,7 +266,7 @@ class IterativeSolver(Solver):
     _, state = inputs[0]
     if self.verbose:
       name = self.__class__.__name__
-      jax.debug.print("Sovler: %s, Error: {error}" % name, error=state.error)
+      jax.debug.print("Solver: %s, Error: {error}" % name, error=state.error)
     return state.error > self.tol
 
   def _body_fun(self, inputs):
