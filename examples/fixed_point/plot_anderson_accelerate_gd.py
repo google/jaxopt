@@ -55,7 +55,7 @@ def run_all(solver, w_init, *args, **kwargs):
   sols, errors = [], []
 
   for _ in range(solver.maxiter):
-    sol, state = solver.update(sol, state)
+    sol, state = solver.update(sol, state, *args, **kwargs)
     sols.append(sol)
     errors.append(state.error)
 

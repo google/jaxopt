@@ -154,7 +154,7 @@ def main(argv):
     start = timer()
     for iter_num, batch in zip(range(opt.maxiter+1), ds_iterator):
       loss, _ = value_and_grad_loss(params, data=batch)
-      params, state = solver.update(params, state, batch)
+      params, state = opt.update(params, state, batch)
       if "Armijo" in name or "Polyak" in name:
         steps.append(state.stepsize)
       errors.append(state.error)
