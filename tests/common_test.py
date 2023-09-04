@@ -493,15 +493,18 @@ class CommonTest(test_util.JaxoptTestCase):
       run_box_osqp(q, b)
 
   def test_count_compilations(self):
-      # The print will only occur at compilation when jitted. The following will
-      # then count the number of times the function was compiled through the
-      # number of times 'Compiled' is printed.
+    # We print the type of the inputs when calling the function.
+    # If the function is jitted:
+    #   - At compilation time, this type must be a <Something>Tracer.
+    #   - Afterwards, nothing will be printed
+    # Otherwise if the function is not jitted,
+    #   - no compilation happens, so the printed type is not <Something>Tracer
     dim = 20
     common_kwargs = dict(maxiter=4, tol=1e-9)
 
-    def fun(x):
-      print("Compiled")
-      return jnp.sum(x**2)      
+    def fun(params):
+      print(type(params))
+      return jnp.sum(params**2)      
     
     # Unconstrained minimization algorithms
     solvers = [
@@ -521,7 +524,7 @@ class CommonTest(test_util.JaxoptTestCase):
 
     # Fixed point algorithms
     def fixed_point_fun(params):
-      print("Compiled")
+      print(type(params))
       return params**2 - params
   
     solvers += [
@@ -541,7 +544,7 @@ class CommonTest(test_util.JaxoptTestCase):
       """Least squares."""
 
       def subfun(self, predictions, data):
-        print('Compiled')
+        print(type(predictions))
         y = data[1]
         residuals = predictions - y
         return 0.5 * jnp.mean(residuals ** 2)
@@ -554,7 +557,7 @@ class CommonTest(test_util.JaxoptTestCase):
         return linop.column_l2_norms(squared=True) * 1.0
 
       def __call__(self, W, data):
-        print('Compiled')
+        print(type(W))
         return super().__call__(W, data)
 
     classif_fun = LeastSquaresWithPrints() 
@@ -602,7 +605,7 @@ class CommonTest(test_util.JaxoptTestCase):
           solver_kwargs.update(init_params=init_params)
         solver.run(**solver_kwargs)
 
-      num_compilations = stdout.getvalue().count("Compiled")
+      num_compilations = stdout.getvalue().count("Tracer")
       # Goal would be self.assertTrue(num_compilations==1)
       # For now, we simply print the number of times the function is compiled
       solver_name = f"{solver.__class__.__name__}"
