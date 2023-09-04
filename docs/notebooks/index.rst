@@ -26,9 +26,18 @@ Deep learning
 
     </div>
 
+    <div class="sphx-glr-thumbcontainer" tooltip="Resnet example with Haiku and JAXopt.">
 
+.. only:: html
+
+ .. figure:: /notebooks/deep_learning/thumbnails/resnet_haiku.png
+     :alt: Resnet example with Haiku and JAXopt.
+
+     :doc:`/notebooks/deep_learning/resnet_haiku`
 
 .. raw:: html
+
+    </div>
 
     <div class="sphx-glr-thumbcontainer" tooltip="Adversarial training with JAXopt.">
 

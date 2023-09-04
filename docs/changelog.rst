@@ -1,6 +1,18 @@
 Changelog
 =========
 
+Version 0.9
+-----------
+
+
+Bug fixes and enhancements
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- Improved example :doc:`/notebooks/deep_learning/resnet_flax` (better accuracy in less time) by Fabian Pedregosa.
+- Improved example :doc:`/notebooks/deep_learning/resnet_haiku`, by Fabian Pedregosa.
+- Documentation is built as part of the continuous integration workflow, by Fabian Pedregosa
+
+
 Version 0.8
 -----------
 
@@ -392,7 +404,7 @@ Examples
 
 - :ref:`sphx_glr_auto_examples_constrained_binary_kernel_svm_with_intercept.py`
 - :ref:`sphx_glr_auto_examples_deep_learning_flax_image_classif.py`
-- :ref:`sphx_glr_auto_examples_deep_learning_haiku_image_classif.py`
+- Image Classification with Haiku and JAXopt
 - :ref:`sphx_glr_auto_examples_deep_learning_haiku_vae.py`
 - :ref:`sphx_glr_auto_examples_implicit_diff_lasso_implicit_diff.py`
 - :ref:`sphx_glr_auto_examples_constrained_multiclass_linear_svm.py`
