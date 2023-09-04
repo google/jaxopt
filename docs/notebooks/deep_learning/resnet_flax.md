@@ -188,7 +188,7 @@ plot_sample_images(train_loader_augmented)
 
 +++ {"id": "ITnYDuiIDBkM"}
 
-Finally, we shuffle the data in the train set and create batches of size `'BATCH_SIZE'` for both train and test set
+We now shuffle the data in the train set and create batches of size `'BATCH_SIZE'` for both train and test set
 
 ```{code-cell} ipython3
 :id: TSjMCbukDBkN
@@ -480,7 +480,6 @@ var_params, var_batch_stats = variables["params"], variables["batch_stats"]
 solver_state = solver.init_state(
     var_params, var_batch_stats, (dummy_data, dummy_targets)
 )
-jitted_update = jax.jit(solver.update)
 
 
 def dataset_stats(params, var_batch_stats, data_loader):
@@ -524,7 +523,7 @@ for epoch in pbar:
   train_loss_epoch = []
 
   for batch in train_loader_batched.as_numpy_iterator():
-    var_params, solver_state = jitted_update(
+    var_params, solver_state = solver.update(
         params=var_params,
         state=solver_state,
         bn_params=var_batch_stats,

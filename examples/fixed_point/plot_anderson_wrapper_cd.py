@@ -49,9 +49,8 @@ def run_all(solver, w_init, *args, **kwargs):
   sol = w_init
   sols, errors = [sol], [state.error]
   update = lambda sol,state: solver.update(sol, state, *args, **kwargs)
-  jitted_update = jax.jit(update)
   for _ in range(solver.maxiter):
-    sol, state = jitted_update(sol, state)
+    sol, state = solver.update(sol, state)
     sols.append(sol)
     errors.append(state.error)
   return jnp.stack(sols, axis=0), errors

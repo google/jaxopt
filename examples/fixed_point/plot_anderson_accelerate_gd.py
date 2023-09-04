@@ -36,14 +36,14 @@ Here `m` denotes the history size, and `K` the frequency of Anderson updates.
 import jax
 import jax.numpy as jnp
 
+import matplotlib.pyplot as plt
+from sklearn import datasets
+
 from jaxopt import AndersonAcceleration
 from jaxopt import FixedPointIteration
 
 from jaxopt import objective
 from jaxopt.tree_util import tree_scalar_mul, tree_sub
-
-import matplotlib.pyplot as plt
-from sklearn import datasets
 
 jax.config.update("jax_platform_name", "cpu")
 
@@ -54,12 +54,8 @@ def run_all(solver, w_init, *args, **kwargs):
   sol = w_init
   sols, errors = [], []
 
-  @jax.jit
-  def jitted_update(sol, state):
-    return solver.update(sol, state, *args, **kwargs)
-
   for _ in range(solver.maxiter):
-    sol, state = jitted_update(sol, state)
+    sol, state = solver.update(sol, state)
     sols.append(sol)
     errors.append(state.error)
 
