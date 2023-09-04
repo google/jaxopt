@@ -8,8 +8,9 @@
 # 'pre-commit run --all'
 
 
+repos:
 - repo: https://github.com/mwouts/jupytext
-  rev: v1.13.6
+  rev: v1.15.1
   hooks:
   - id: jupytext
     args: [--sync]
