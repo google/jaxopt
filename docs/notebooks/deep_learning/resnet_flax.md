@@ -449,8 +449,6 @@ plt.show()
 
 +++ {"id": "IVqnrZEEICx3"}
 
-TODO: explain what we're doing in the next two cells
-
 In the next two cells we'll initialize the variables and states. We also define a convenience function `dataset_stats` that we'll call once per epoch to collect the loss and accuracy of our solver over the test set.
 
 ```{code-cell} ipython3
