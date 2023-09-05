@@ -11,6 +11,8 @@ sphinx-remove-toctrees>=0.0.3
 jupyter-sphinx>=0.3.2
 myst-nb
 tensorflow-datasets
+tensorflow
 dm-haiku
 flax
 jupytext
+scikit-learn
