@@ -1,0 +1,36 @@
+name: docs
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  build-and-deploy:
+    name: "Build and deploy documentation"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: "actions/checkout@v3"
+      - name: Set up Python 3.11
+        uses: "actions/setup-python@v4"
+        with:
+            python-version: 3.11
+            cache: 'pip'
+      - run: pip install -r docs/requirements.txt
+      - name: Build documentation
+        run: |
+          set -xe
+          python -VV
+          cd docs && make clean && make html
+      - uses: cpina/github-action-push-to-another-repository@main
+        env:
+          SSH_DEPLOY_KEY: ${{ secrets.SSH_DEPLOY_KEY }}
+          API_TOKEN_GITHUB: ${{ secrets.API_TOKEN_GITHUB }}
+        with:
+          source-directory: '_build/html'
+          destination-github-username: 'fabianp'
+          destination-repository-name: 'jaxopt.github.io'
+          user-email: jaxopt@google.com
+          target-branch: main
+          target-directory: dev
