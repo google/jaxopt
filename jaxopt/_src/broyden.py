@@ -93,7 +93,8 @@ def inv_jacobian_rproduct(pytree: Any,
                           c_history: Any,
                           gamma: float = 1.0,
                           start: int = 0):
-  return inv_jacobian_product(pytree, c_history, d_history, jnp.conjugate(gamma), start)
+  gamma_conj = tree_map(jnp.conjugate, gamma)
+  return inv_jacobian_product(pytree, c_history, d_history, gamma_conj, start)
 
 
 def init_history(pytree, history_size):
