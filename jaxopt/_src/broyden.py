@@ -205,7 +205,7 @@ class Broyden(base.IterativeSolver):
 
   history_size: int = None
   gamma: float = 1.0
-  compute_gamma: bool = False
+  compute_gamma: bool = True
 
   implicit_diff: bool = True
   implicit_diff_solve: Optional[Callable] = None
@@ -259,13 +259,12 @@ class Broyden(base.IterativeSolver):
         # self.alpha = 0.5*max(norm(x0), 1) / normf0
         normf0 = tree_map(jnp.linalg.norm, value)
         normx0 = tree_map(jnp.linalg.norm, init_params)
-        clipped_normx0 = tree_map(lambda x: 0.5 * jnp.max(x, 1), normx0)
+        clipped_normx0 = tree_map(lambda x: - 0.5 * jnp.maximum(x, 1), normx0)
         def safe_divide_by_zero(x, y):
           # a classical division of x by x
           # when y == 0 then return 1
           return jnp.where(y == 0, 1, x / y)
         gamma = tree_map(safe_divide_by_zero, clipped_normx0, normf0)
-        return gamma
       else:
         gamma = self.gamma
         # repeat gamma as a pytre of the shape of init_params
