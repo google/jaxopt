@@ -80,14 +80,13 @@ def inv_jacobian_product(pytree: Any,
       Leaves contain v variables, i.e., `(x[k] - x[k-1])^T B / ((g[k] - g[k-1])^T (x[k] - x[k-1])^T B)`.
     c_history: pytree with the same structure as `pytree`.
       Leaves contain u variables, i.e., `(x[k] - x[k-1]) - B(g[k] - g[k-1])`.
-    gamma: scalar to use for the initial inverse jacobian approximation,
+    gamma: pytree with scalars to use for the initial inverse jacobian approximation,
       i.e., `gamma * I`.
     start: starting index in the circular buffer.
   """
   fun = partial(inv_jacobian_product_leaf,
-                gamma=gamma,
                 start=start)
-  return tree_map(fun, pytree, d_history, c_history)
+  return tree_map(fun, pytree, d_history, c_history, gamma)
 
 def inv_jacobian_rproduct(pytree: Any,
                           d_history: Any,
@@ -115,7 +114,7 @@ class BroydenState(NamedTuple):
   error: float
   d_history: Any
   c_history: Any
-  gamma: jnp.ndarray
+  gamma: Any
   aux: Optional[Any] = None
   failed_linesearch: bool = False
 
@@ -205,6 +204,7 @@ class Broyden(base.IterativeSolver):
 
   history_size: int = None
   gamma: float = 1.0
+  compute_gamma: bool = False
 
   implicit_diff: bool = True
   implicit_diff_solve: Optional[Callable] = None
@@ -244,24 +244,44 @@ class Broyden(base.IterativeSolver):
         iter_num=init_params.state.iter_num,
         stepsize=init_params.state.stepsize,
       )
+      # XXX: not computing the jacobian init approx
+      # when starting from an OptStep object
       init_params = init_params.params
       dtype = tree_single_dtype(init_params)
+      value, aux = self._value_with_aux(init_params, *args, **kwargs)
     else:
       dtype = tree_single_dtype(init_params)
+      value, aux = self._value_with_aux(init_params, *args, **kwargs)
+      if self.compute_gamma:
+        # we use scipy's formula:
+        # https://github.com/scipy/scipy/blob/main/scipy/optimize/_nonlin.py#L569
+        # self.alpha = 0.5*max(norm(x0), 1) / normf0
+        normf0 = tree_map(jnp.linalg.norm, value)
+        normx0 = tree_map(jnp.linalg.norm, init_params)
+        clipped_normx0 = tree_map(lambda x: 0.5 * jnp.max(x, 1), normx0)
+        def safe_divide_by_zero(x, y):
+          # a classical division of x by x
+          # when y == 0 then return 1
+          return jnp.where(y == 0, 1, x / y)
+        gamma = tree_map(safe_divide_by_zero, clipped_normx0, normf0)
+        return gamma
+      else:
+        gamma = self.gamma
+        # repeat gamma as a pytre of the shape of init_params
+        gamma = tree_map(lambda x: jnp.array(gamma), init_params)
       state_kwargs = dict(
         d_history=init_history(init_params, self.history_size),
         c_history=init_history(init_params, self.history_size),
-        gamma=jnp.asarray(self.gamma, dtype=dtype),
+        gamma=gamma,
         iter_num=jnp.asarray(0),
         stepsize=jnp.asarray(self.max_stepsize, dtype=dtype),
       )
-    value, aux = self._value_with_aux(init_params, *args, **kwargs)
     return BroydenState(value=value,
                         error=jnp.asarray(jnp.inf),
                         **state_kwargs,
                         aux=aux,
                         failed_linesearch=jnp.asarray(False),
-                        num_fun_eval=jnp.array(1, base.NUM_EVAL_DTYPE), 
+                        num_fun_eval=jnp.array(1, base.NUM_EVAL_DTYPE),
                         num_linesearch_iter=jnp.array(0, base.NUM_EVAL_DTYPE)
                         )
 
