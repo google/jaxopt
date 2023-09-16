@@ -37,13 +37,25 @@ from jaxopt.tree_util import tree_conj
 # pylint: disable=g-bare-generic
 # pylint: disable=invalid-name
 
-# Flags are encoded in base 2 to enable bitwise logic
-_FLAG_NOT_DESCENT_DIRECTION = 1
-_FLAG_CURVATURE_COND_NOT_SATSIFIED = 2
-_FLAG_MAX_ITER_REACHED = 4
-_FLAG_INTERVAL_TOO_SMALL = 8
-_FLAG_NAN_INF_VALUES = 16
-_FLAG_NO_STEPSIZE_FOUND = 32
+# Flags to print errors, used in tests
+WARNING_PREAMBLE = \
+  "ZoomLineSearchWarning: "
+FLAG_NOT_A_DESCENT_DIRECTION = WARNING_PREAMBLE + \
+  "Provided linesearch direction is not a descent direction. " + \
+  "The linesearch will probably fail."
+FLAG_NAN_INF_VALUES = WARNING_PREAMBLE + \
+  "NaN or Inf values encountered in function values."
+FLAG_INTERVAL_NOT_FOUND = WARNING_PREAMBLE + \
+  "No interval satisfying curvature condition. " + \
+  "Try increasing maximal stepsize." 
+FLAG_INTERVAL_TOO_SMALL = WARNING_PREAMBLE + \
+  "Length of searched interval has been reduced below machine precision."
+FLAG_CURVATURE_COND_NOT_SATSIFIED = WARNING_PREAMBLE + \
+  "Returning stepsize with sufficient decrease " + \
+  "but curvature condition not satisfied."
+FLAG_NO_STEPSIZE_FOUND = WARNING_PREAMBLE + \
+  "Linesearch failed, no stepsize satisfying sufficient decrease found. " + \
+  "Try increasing maximal number of linesearch iterations."
 
 _dot = functools.partial(jnp.dot, precision=lax.Precision.HIGHEST)
 
@@ -119,23 +131,6 @@ def _cond_print(condition, message):
   jax.lax.cond(condition, lambda _: jax.debug.print(message), lambda _: None, None)
 
 
-def _check_status(fail_code):
-  """Print failure reasons according to error flag coded bitwise."""
-  _cond_print(fail_code & _FLAG_NOT_DESCENT_DIRECTION,
-              "Provided descent direction is not a descent direction.")
-  _cond_print(fail_code & _FLAG_CURVATURE_COND_NOT_SATSIFIED,
-              "Returning stepsize with sufficient decrease "
-              "but curvature condition not satisfied.")
-  _cond_print(fail_code & _FLAG_MAX_ITER_REACHED,
-              "Maximal number of line search iterations reached.")
-  _cond_print(fail_code & _FLAG_INTERVAL_TOO_SMALL,
-              "Length of searched interval has been reduced below machine precision.")
-  _cond_print(fail_code & _FLAG_NAN_INF_VALUES,
-              "NaN or Inf values encountered in function values.")
-  _cond_print(fail_code & _FLAG_NO_STEPSIZE_FOUND,
-              "No stepsize satisfying sufficient decrease found.")
-
-
 class ZoomLineSearchState(NamedTuple):
   """Named tuple containing state information for core loop."""
 
@@ -154,7 +149,6 @@ class ZoomLineSearchState(NamedTuple):
 
   error: float
   done: bool
-  fail_code: int  # encode failure status, see _check_status
   failed: bool  # comply to semantic used by other line searches
 
   # Used only during the interval search
@@ -287,23 +281,20 @@ class ZoomLineSearch(base.IterativeLineSearch):
 
   def _make_safe_step(self, _, state, args, kwargs):
     safe_stepsize = state.safe_stepsize
+    _cond_print(safe_stepsize == 0.0, FLAG_NO_STEPSIZE_FOUND)
+    if self.verbose:
+      _cond_print((safe_stepsize > 0.), FLAG_CURVATURE_COND_NOT_SATSIFIED)
     step = tree_add_scalar_mul(
         state.params, safe_stepsize, state.descent_direction
     )
     (value_step, aux_step), grad_step = self._value_and_grad_fun_with_aux(
         step, *args, **kwargs
     )
-    fail_code = state.fail_code
-    fail_code_ = jnp.where(
-        safe_stepsize == 0.0, fail_code | _FLAG_NO_STEPSIZE_FOUND, fail_code
-    )
-    new_fail_code = fail_code_ | _FLAG_CURVATURE_COND_NOT_SATSIFIED
     new_state = state._replace(
         params=step,
         value=value_step,
         grad=grad_step,
         aux=aux_step,
-        fail_code=new_fail_code,
     )
     return safe_stepsize, new_state
 
@@ -319,8 +310,6 @@ class ZoomLineSearch(base.IterativeLineSearch):
     params_init = state.params
     grad_init = state.grad
     aux_init = state.aux
-
-    fail_code = state.fail_code
 
     value_init = state.value_init
     slope_init = state.slope_init
@@ -345,14 +334,8 @@ class ZoomLineSearch(base.IterativeLineSearch):
         )
     )
     is_value_nan = jnp.isnan(new_value_step) | jnp.isinf(new_value_step)
-    flag_not_seen_before = (
-        fail_code & _FLAG_NAN_INF_VALUES
-    ) != _FLAG_NAN_INF_VALUES
-    fail_code1 = jnp.where(
-        is_value_nan & flag_not_seen_before,
-        fail_code | _FLAG_NAN_INF_VALUES,
-        fail_code,
-    )
+    if self.verbose:
+      _cond_print(is_value_nan, FLAG_NAN_INF_VALUES)
 
     decrease_error_ = self._decrease_error(
         new_stepsize, new_value_step, new_slope_step, value_init, slope_init
@@ -431,15 +414,12 @@ class ZoomLineSearch(base.IterativeLineSearch):
     best_stepsize, next_params, next_value, next_grad, next_aux = _set_values(
         done, candidate, default
     )
-    fail_code2 = jnp.where(
-        max_stepsize_reached & ~interval_found,
-        fail_code1 | _FLAG_CURVATURE_COND_NOT_SATSIFIED,
-        fail_code1,
-    )
+    if self.verbose:
+      _cond_print(
+        (max_stepsize_reached & ~interval_found),
+        FLAG_INTERVAL_NOT_FOUND + '\n' + FLAG_CURVATURE_COND_NOT_SATSIFIED
+      )
     max_iter_reached = (iter_num + 1 >= self.maxiter) & (~done)
-    new_fail_code = jnp.where(
-        max_iter_reached, fail_code2 | _FLAG_MAX_ITER_REACHED, fail_code2
-    )
 
     new_state = state._replace(
         iter_num=iter_num + 1,
@@ -448,10 +428,8 @@ class ZoomLineSearch(base.IterativeLineSearch):
         grad=next_grad,
         aux=next_aux,
         #
-        # If error is nan, the linesearch would stop while one may try a smaller stepsize
-        error=jnp.where(jnp.isnan(new_error), jnp.inf, new_error),
+        error=new_error,
         done=done,
-        fail_code=new_fail_code,
         failed=jnp.asarray(max_iter_reached),
         interval_found=interval_found,
         #
@@ -490,8 +468,6 @@ class ZoomLineSearch(base.IterativeLineSearch):
     slope_init = state.slope_init
     descent_direction = state.descent_direction
 
-    fail_code = state.fail_code
-
     low = state.low
     value_low = state.value_low
     slope_low = state.slope_low
@@ -511,14 +487,8 @@ class ZoomLineSearch(base.IterativeLineSearch):
     quad_chk = self.rel_tol_quad * delta
     threshold = jnp.where((jnp.finfo(delta).bits < 64), 1e-5, 1e-10)
     too_small_int = delta <= threshold
-    flag_not_seen_before = (
-        fail_code & _FLAG_INTERVAL_TOO_SMALL
-    ) != _FLAG_INTERVAL_TOO_SMALL
-    fail_code1 = jnp.where(
-        too_small_int & flag_not_seen_before,
-        fail_code | _FLAG_INTERVAL_TOO_SMALL,
-        fail_code,
-    )
+    if self.verbose:
+      _cond_print(too_small_int, FLAG_INTERVAL_TOO_SMALL)
 
     # Find new point by interpolation
     middle_cubic = _cubicmin(
@@ -547,14 +517,8 @@ class ZoomLineSearch(base.IterativeLineSearch):
         )
     )
     is_value_nan = jnp.isnan(value_middle) | jnp.isinf(value_middle)
-    flag_not_seen_before = (
-        fail_code1 & _FLAG_NAN_INF_VALUES
-    ) != _FLAG_NAN_INF_VALUES
-    fail_code2 = jnp.where(
-        is_value_nan & flag_not_seen_before,
-        fail_code1 | _FLAG_NAN_INF_VALUES,
-        fail_code1,
-    )
+    if self.verbose:
+      _cond_print(is_value_nan, FLAG_NAN_INF_VALUES)
 
     decrease_error_ = self._decrease_error(
         middle, value_middle, slope_middle, value_init, slope_init
@@ -622,9 +586,6 @@ class ZoomLineSearch(base.IterativeLineSearch):
     )
 
     max_iter_reached = (iter_num + 1 >= self.maxiter) & (~done)
-    new_fail_code = jnp.where(
-        max_iter_reached, fail_code2 | _FLAG_MAX_ITER_REACHED, fail_code2
-    )
 
     new_state = state._replace(
         iter_num=iter_num + 1,
@@ -633,9 +594,8 @@ class ZoomLineSearch(base.IterativeLineSearch):
         grad=next_grad,
         aux=next_aux,
         #
-        error=jnp.where(jnp.isnan(new_error), jnp.inf, new_error),
+        error=new_error,
         done=done,
-        fail_code=new_fail_code,
         failed=jnp.asarray(max_iter_reached),
         #
         low=new_low,
@@ -705,7 +665,7 @@ class ZoomLineSearch(base.IterativeLineSearch):
 
     slope = tree_vdot_real(tree_conj(grad), descent_direction)
 
-    fail_code = jnp.where(slope > 0, _FLAG_NOT_DESCENT_DIRECTION, 0)
+    _cond_print(slope > 0, FLAG_NOT_A_DESCENT_DIRECTION)
 
     return ZoomLineSearchState(
         iter_num=jnp.asarray(0),
@@ -720,7 +680,6 @@ class ZoomLineSearch(base.IterativeLineSearch):
         #
         error=jnp.asarray(jnp.inf),
         done=jnp.asarray(False),
-        fail_code=jnp.asarray(fail_code),
         failed=jnp.asarray(False),
         interval_found=jnp.asarray(False),
         #
@@ -823,9 +782,6 @@ class ZoomLineSearch(base.IterativeLineSearch):
         num_fun_eval=new_state_.num_fun_eval + anticipated_num_func_grad_calls,
         num_grad_eval=new_state_.num_grad_eval + anticipated_num_func_grad_calls,
     )
-
-    if self.verbose:
-      _check_status(new_state.fail_code)
 
     return base.LineSearchStep(stepsize=best_stepsize, state=new_state)
 

@@ -120,13 +120,15 @@ class BFGS(base.IterativeSolver):
   has_aux: bool = False
 
   maxiter: int = 500
+  # FIXME: should depend on whether float32 or float64 is used.
+  # Tests should pass in float64 without modifying tol
   tol: float = 1e-3
 
   stepsize: Union[float, Callable] = 0.0
   linesearch: str = "zoom"
   linesearch_init: str = "increase"
   condition: Any = None  # deprecated in v0.8
-  maxls: int = 15
+  maxls: int = 30
   decrease_factor: Any = None  # deprecated in v0.8
   increase_factor: float = 1.5
   max_stepsize: float = 1.0
