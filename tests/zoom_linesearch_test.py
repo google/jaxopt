@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Tests for ZoomLineSearch."""
+from contextlib import redirect_stdout
+import io
 
 from absl.testing import absltest
 from absl.testing import parameterized
@@ -20,11 +22,12 @@ import jax.numpy as jnp
 from jaxopt import objective
 from jaxopt import ZoomLineSearch
 from jaxopt._src import test_util
-from jaxopt._src.zoom_linesearch import _FLAG_CURVATURE_COND_NOT_SATSIFIED
-from jaxopt._src.zoom_linesearch import _FLAG_INTERVAL_TOO_SMALL
-from jaxopt._src.zoom_linesearch import _FLAG_MAX_ITER_REACHED
-from jaxopt._src.zoom_linesearch import _FLAG_NAN_INF_VALUES
-from jaxopt._src.zoom_linesearch import _FLAG_NOT_DESCENT_DIRECTION
+from jaxopt._src.zoom_linesearch import FLAG_CURVATURE_COND_NOT_SATSIFIED
+from jaxopt._src.zoom_linesearch import FLAG_INTERVAL_NOT_FOUND
+from jaxopt._src.zoom_linesearch import FLAG_INTERVAL_TOO_SMALL
+from jaxopt._src.zoom_linesearch import FLAG_NAN_INF_VALUES
+from jaxopt._src.zoom_linesearch import FLAG_NO_STEPSIZE_FOUND
+from jaxopt._src.zoom_linesearch import FLAG_NOT_A_DESCENT_DIRECTION
 from jaxopt.tree_util import tree_add_scalar_mul
 from jaxopt.tree_util import tree_negative
 import numpy as onp
@@ -230,44 +233,41 @@ class ZoomLinesearchTest(test_util.JaxoptTestCase):
 
     # 1. Test that the line search fails for p not a descent direction
     x = 60 * p
-    ls = ZoomLineSearch(fun, c2=c2)
-    s, state = ls.run(init_stepsize=1.0, params=x, descent_direction=p)
+    ls = ZoomLineSearch(fun, c2=c2, maxiter=10)
+    stdout = io.StringIO()
+    with redirect_stdout(stdout):
+      s, state = ls.run(init_stepsize=1.0, params=x, descent_direction=p)
     self._check_step_in_state(x, p, s, fun, fun_der, state)
     # Check that we were not able to make a step or an infinitesimal one
-    self.assertTrue(s < 1e-5)
-    self.assertTrue(
-        (state.fail_code & _FLAG_NOT_DESCENT_DIRECTION)
-        == _FLAG_NOT_DESCENT_DIRECTION
-    )
+    self.assertTrue(s == 0.)
+    self.assertTrue(FLAG_NOT_A_DESCENT_DIRECTION in stdout.getvalue())
+    self.assertTrue(FLAG_NO_STEPSIZE_FOUND in stdout.getvalue())
 
     # 2. Test that the line search fails if the maximum stepsize is too small
     # Here, smallest s satisfying strong Wolfe conditions for c2=0.5 is 30
     x = -60 * p
-    ls = ZoomLineSearch(fun, c2=c2, max_stepsize=10)
-    s, state = ls.run(init_stepsize=1.0, params=x, descent_direction=p)
+    ls = ZoomLineSearch(fun, c2=c2, max_stepsize=10, verbose=True)
+    stdout = io.StringIO()
+    with redirect_stdout(stdout):
+      s, state = ls.run(init_stepsize=1.0, params=x, descent_direction=p)
     self._check_step_in_state(x, p, s, fun, fun_der, state)
     # Check that we still made a step
     self.assertTrue(s == 10.0)
-    self.assertTrue(
-        (state.fail_code & _FLAG_CURVATURE_COND_NOT_SATSIFIED)
-        == _FLAG_CURVATURE_COND_NOT_SATSIFIED
-    )
+    self.assertTrue(FLAG_INTERVAL_NOT_FOUND in stdout.getvalue())
+    self.assertTrue(FLAG_CURVATURE_COND_NOT_SATSIFIED in stdout.getvalue())
 
     # 3. s=30 will only be tried on the 6th iteration, so this fails because
     # the maximum number of iterations is reached.
-    ls = ZoomLineSearch(fun, c2=c2, maxiter=5)
-    s, state = ls.run(init_stepsize=1.0, params=x, descent_direction=p)
+    ls = ZoomLineSearch(fun, c2=c2, maxiter=5, verbose=True)
+    stdout = io.StringIO()
+    with redirect_stdout(stdout):
+      s, state = ls.run(init_stepsize=1.0, params=x, descent_direction=p)
     self._check_step_in_state(x, p, s, fun, fun_der, state)
     # Check that we still made a step
     self.assertTrue(s == 16.0)
-    self.assertTrue(
-        (state.fail_code & _FLAG_MAX_ITER_REACHED) == _FLAG_MAX_ITER_REACHED
-    )
-    # The following checks if encoding bitwise is well done
+    self.assertTrue(state.failed)
     # Here the error should not be that we haven't had a descent direction
-    self.assertFalse(
-      (state.fail_code & _FLAG_NOT_DESCENT_DIRECTION) == _FLAG_NOT_DESCENT_DIRECTION
-    )
+    self.assertFalse(FLAG_NOT_A_DESCENT_DIRECTION in stdout.getvalue())
 
     # Check if it works normally
     ls = ZoomLineSearch(fun, c2=c2)
@@ -283,11 +283,11 @@ class ZoomLinesearchTest(test_util.JaxoptTestCase):
     x = jnp.asarray(-0.2)
     if x.dtype == "float64":
       x = x / 2.0
-    ls = ZoomLineSearch(fun_flat)
-    _, state = ls.run(init_stepsize=1.0, params=x)
-    self.assertTrue(
-        (state.fail_code & _FLAG_INTERVAL_TOO_SMALL) == _FLAG_INTERVAL_TOO_SMALL
-    )
+    ls = ZoomLineSearch(fun_flat, verbose=True)
+    stdout = io.StringIO()
+    with redirect_stdout(stdout):
+      ls.run(init_stepsize=1.0, params=x)
+    self.assertTrue(FLAG_INTERVAL_TOO_SMALL in stdout.getvalue())
 
     # Check behavior for inf/nan values
     def fun_inf(x):
@@ -295,11 +295,11 @@ class ZoomLinesearchTest(test_util.JaxoptTestCase):
 
     x = 1.0
     p = -2.0
-    ls = ZoomLineSearch(fun_inf)
-    s, state = ls.run(init_stepsize=1.0, params=x, descent_direction=p)
-    self.assertTrue(
-        (state.fail_code & _FLAG_NAN_INF_VALUES) == _FLAG_NAN_INF_VALUES
-    )
+    ls = ZoomLineSearch(fun_inf, verbose=True, jit=False)
+    stdout = io.StringIO()
+    with redirect_stdout(stdout):
+      ls.run(init_stepsize=1.0, params=x, descent_direction=p)
+    self.assertTrue(FLAG_NAN_INF_VALUES in stdout.getvalue())
 
   def test_aux_value(self):
     def fun(x):
@@ -378,7 +378,7 @@ class ZoomLinesearchTest(test_util.JaxoptTestCase):
       _, state = ls.run(init_stepsize=1.0, params=xk, descent_direction=pk)
       for name in ("done", "interval_found", "failed"):
         self.assertEqual(getattr(state, name).dtype, jnp.bool_)
-      for name in ("iter_num", "fail_code"):
+      for name in ("iter_num", ):
         self.assertEqual(getattr(state, name).dtype, jnp.int64)
       for name in ("num_fun_eval", "num_grad_eval"):
         self.assertEqual(getattr(state, name).dtype, jnp.int32)

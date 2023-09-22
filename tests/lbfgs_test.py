@@ -29,12 +29,14 @@ from jaxopt._src.lbfgs import inv_hessian_product
 from jaxopt._src.lbfgs import select_ith_tree
 from jaxopt.tree_util import tree_sum
 import numpy as onp
-import scipy.optimize as opt
+import scipy.optimize as scipy_opt
 from sklearn import datasets
 
 
 N_CALLS = 0
 
+# Uncomment this line to test in x64 
+# jax.config.update('jax_enable_x64', True)
 
 def _materialize_inv_hessian(s_history, y_history, rho_history, start):
   history_size, n_dim = s_history.shape
@@ -131,6 +133,41 @@ def _lbfgs(fun, init, stepsize=1e-3, maxiter=500, tol=1e-3,
       break
 
   return x
+
+
+def get_fun(name, np):
+
+  def rosenbrock(x):
+    return np.sum(100. * np.diff(x) ** 2 + (1. - x[:-1]) ** 2)
+
+  def himmelblau(p):
+    x, y = p
+    return (x ** 2 + y - 11.) ** 2 + (x + y ** 2 - 7.) ** 2
+
+  def matyas(p):
+    x, y = p
+    return 0.26 * (x ** 2 + y ** 2) - 0.48 * x * y
+
+  def eggholder(p):
+    x, y = p
+    return - (y + 47) * np.sin(np.sqrt(np.abs(x / 2. + y + 47.))) - x * np.sin(
+      np.sqrt(np.abs(x - (y + 47.))))
+
+  def zakharov(x):
+    ii = np.arange(1, len(x) + 1, step=1, dtype=x.dtype)
+    sum1 = (x**2).sum()
+    sum2 = (0.5*ii*x).sum()
+    answer = sum1+sum2**2+sum2**4
+    return answer
+  
+  funs = dict(
+    rosenbrock=rosenbrock,
+    himmelblau=himmelblau,
+    matyas=matyas,
+    eggholder=eggholder,
+    zakharov=zakharov
+  )
+  return funs[name]
 
 
 class LbfgsTest(test_util.JaxoptTestCase):
@@ -270,11 +307,8 @@ class LbfgsTest(test_util.JaxoptTestCase):
     self.assertLessEqual(info.error, 1e-2)
 
   @parameterized.product(implicit_diff=[True, False])
-  def test_Rosenbrock(self, implicit_diff):
-    # optimize the Rosenbrock function.
-    def fun(x, *args, **kwargs):
-      return sum(100.0*(x[1:] - x[:-1]**2.0)**2.0 + (1 - x[:-1])**2.0)
-
+  def test_implicit_diff(self, implicit_diff): 
+    fun = get_fun('rosenbrock', jnp)
     x0 = jnp.zeros(2)
     lbfgs = LBFGS(fun=fun, tol=1e-3, maxiter=500, implicit_diff=implicit_diff)
     x, _ = lbfgs.run(x0)
@@ -369,19 +403,34 @@ class LbfgsTest(test_util.JaxoptTestCase):
     beta_init = jnp.array([0.01,0.01])
 
     # using scipy
-    scipy_res = opt.minimize(fun=binary_logit_log_likelihood, 
-                             args=(onp.asarray(y),onp.asarray(x)), 
-                             x0 = (onp.asarray(beta_init)), method='BFGS')
+    scipy_res = scipy_opt.minimize(
+      fun=binary_logit_log_likelihood, 
+      args=(onp.asarray(y),onp.asarray(x)), 
+      x0 = (onp.asarray(beta_init)), method='BFGS'
+    ).x
+
 
     #jaxopt
     solver = LBFGS(fun=binary_logit_log_likelihood_jax, maxiter=100,
                    linesearch="zoom", maxls=10, tol=1e-12)
-    jaxopt_res = solver.run(beta_init, y, x)
-    self.assertArraysAllClose(scipy_res.x, jaxopt_res.params)
+    jaxopt_res = solver.run(beta_init, y, x).params
+    if jax.config.jax_enable_x64:
+      # NOTE(vroulet): simply testing in function values at high precision
+      scipy_val = binary_logit_log_likelihood(scipy_res,
+                                              onp.asarray(y),
+                                              onp.asarray(x))
+      jaxopt_val = binary_logit_log_likelihood(jaxopt_res, y, x)
+      self.assertArraysAllClose(scipy_val, jaxopt_val)
+    else:
+      self.assertArraysAllClose(scipy_res, jaxopt_res)
+    
 
   @parameterized.product(linesearch=['zoom', 'backtracking', 'hager-zhang'])
   def test_complex(self, linesearch):
     """Test that optimization over complex variable z = x + jy matches equivalent real case"""
+    # NOTE(vroulet): At high precision, the results differ slightly 
+    # (tol=5*1e-15 instead of tol=1e-15 by default at double precision)
+    tol = 5*1e-15 if jax.config.jax_enable_x64 else None
 
     W = jnp.array(
       [[1, - 2],
@@ -407,13 +456,20 @@ class LbfgsTest(test_util.JaxoptTestCase):
 
     z0 = jnp.array([1 - 1j, 0 + 1j])
 
-    solver_C = LBFGS(fun=loss_complex, maxiter=5, history_size=3, stepsize=-1, linesearch=linesearch, min_stepsize=0.1, max_stepsize=2)
-    solver_R = LBFGS(fun=loss_real,    maxiter=5, history_size=3, stepsize=-1, linesearch=linesearch, min_stepsize=0.1, max_stepsize=2)
+    solver_options = dict(maxiter=5,
+                          history_size=3,
+                          stepsize=-1,
+                          linesearch=linesearch,
+                          min_stepsize=0.1,
+                          max_stepsize=2,
+                          )
+    solver_C = LBFGS(fun=loss_complex, **solver_options)
+    solver_R = LBFGS(fun=loss_real, **solver_options)
     sol_C, state_C = solver_C.run(z0)
     sol_R, state_R = solver_R.run(C2R(z0))
 
-    self.assertArraysAllClose(sol_C, R2C(sol_R))
-    self.assertArraysAllClose(state_C.s_history, R2C(state_R.s_history))
+    self.assertArraysAllClose(sol_C, R2C(sol_R), atol=tol, rtol=tol)
+    self.assertArraysAllClose(state_C.s_history, R2C(state_R.s_history), atol=tol, rtol=tol)
 
   def test_handling_pytrees(self):
     def fun_(x):
@@ -443,6 +499,102 @@ class LbfgsTest(test_util.JaxoptTestCase):
     gd = GradientDescent(fun=fun, tol=1e-3, maxiter=20, stepsize=0.01, acceleration=False)
     x_gd = gd.run(x0).params
     self.assertArraysAllClose(x_lbfgs, x_gd)
+
+  @parameterized.product(
+    fun_init_and_opt=[
+      ('rosenbrock', onp.zeros(2, dtype='float32'), 0.),
+      ('himmelblau', onp.ones(2, dtype='float32'), 0.),
+      ('matyas', onp.ones(2) * 6., 0.),
+      ('eggholder', onp.ones(2) * 100., None),  
+      ('zakharov', onp.array([600.0, 700.0, 200.0, 100.0, 90.0, 1e4]), 0.),
+    ],
+  )
+  def test_against_scipy(self, fun_init_and_opt):
+    # Taken from previous jax tests
+    # NOTE(vroulet): Unclear whether lbfgs or bfgs can find true minimum for
+    # eggholder, but they seem to converge to the same solution with current 
+    # implementation and initialization, which is a good check.
+    tol = 1e-15 if jax.config.jax_enable_x64 else 1e-6
+    fun_name, x0, opt = fun_init_and_opt
+    jnp_fun, onp_fun = get_fun(fun_name, jnp), get_fun(fun_name, onp)
+    jaxopt_options = {}
+    if fun_name == 'zakharov':
+      # zakharov function requires more linesearch iterations
+      jaxopt_options.update(dict(maxls = 50))
+    jaxopt_res = LBFGS(jnp_fun, tol=tol, **jaxopt_options).run(x0).params
+    scipy_res = scipy_opt.minimize(onp_fun, x0, method='BFGS').x
+    # scipy not good for matyas and zakharov functions, 
+    # compare to true minimum, zero
+    if fun_name in ['matyas', 'zakharov']:
+      self.assertAllClose(jaxopt_res, jnp.zeros_like(jaxopt_res))
+    elif fun_name == 'eggholder' and jax.config.jax_enable_x64:
+      # FIXME(vroulet): at high precision, eggholder poses issues,
+      # even in function values
+      self.assertAllClose(jnp_fun(jaxopt_res), onp_fun(scipy_res), rtol=1e-14)
+    else:
+      self.assertAllClose(jaxopt_res, scipy_res, check_dtypes=False)
+    if opt is not None:
+      self.assertAllClose(jnp_fun(jaxopt_res), opt, check_dtypes=False)
+
+  def test_minimize_bad_initial_values(self):
+    # Taken from previous jax tests
+    # This test runs deliberately "bad" initial values to test that handling
+    # of failed line search, etc. is the same across implementations
+    tol = 1e-6 if jax.config.jax_enable_x64 else 1e-3
+    initial_value = onp.array([92, 0.001])
+    jnp_fun, onp_fun = get_fun('himmelblau', jnp), get_fun('himmelblau', onp)
+    # Here reuqires higher number of linesearch for jaxopt
+    jaxopt_res = LBFGS(jnp_fun, tol=tol).run(initial_value).params
+    scipy_res = scipy_opt.minimize(
+        fun=onp_fun,
+        jac=jax.grad(onp_fun),
+        method='BFGS',
+        x0=initial_value,
+    ).x
+    # Scipy and jaxopt converge to different minima so check in function values
+    self.assertAllClose(onp_fun(scipy_res), jnp_fun(jaxopt_res))
+    self.assertAllClose(jnp_fun(jaxopt_res), 0.)
+
+  def test_steep(self):
+    # Taken from previous jax tests
+    # See jax related issue https://github.com/google/jax/issues/4594
+    n = 2
+    A = jnp.eye(n) * 1e4
+    def fun(x):
+      return jnp.mean((A @ x) ** 2)
+    results = LBFGS(fun).run(init_params=jnp.ones(n)).params
+    self.assertAllClose(results, jnp.zeros(n))
+
+  def test_minimize_complex_sphere(self):
+    # Taken from previous jax tests
+    z0 = jnp.array([1., 2. - 3.j, 4., -5.j])
+
+    def fun(z):
+      return jnp.real(jnp.dot(jnp.conj(z - z0), z - z0))
+
+    jaxopt_res = LBFGS(fun, tol=1e-6).run(jnp.zeros_like(z0)).params
+
+    self.assertAllClose(jaxopt_res, z0)
+
+  def test_complex_rosenbrock(self):
+    # Taken from previous jax tests
+    tol = 1e-12 if jax.config.jax_enable_x64 else 1e-6
+
+    complex_dim = 5
+
+    fun_real = get_fun('rosenbrock', jnp)
+    init_re = jnp.zeros((2 * complex_dim,), dtype=complex)
+    expect_re = jnp.ones((2 * complex_dim,), dtype=complex)
+
+    def fun(z):
+      x_re = jnp.concatenate([jnp.real(z), jnp.imag(z)])
+      return fun_real(x_re)
+
+    init = init_re[:complex_dim] + 1.j * init_re[complex_dim:]
+    expect = expect_re[:complex_dim] + 1.j * expect_re[complex_dim:]
+
+    jaxopt_res = LBFGS(fun, tol=tol).run(init).params
+    self.assertAllClose(jaxopt_res, expect)
 
 if __name__ == '__main__':
   absltest.main()
