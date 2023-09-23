@@ -33,29 +33,29 @@ from jaxopt.tree_util import tree_add_scalar_mul
 from jaxopt.tree_util import tree_scalar_mul
 from jaxopt.tree_util import tree_vdot_real
 from jaxopt.tree_util import tree_conj
+from jaxopt.tree_util import tree_l2_norm
 
 # pylint: disable=g-bare-generic
 # pylint: disable=invalid-name
 
 # Flags to print errors, used in tests
 WARNING_PREAMBLE = \
-  "ZoomLineSearchWarning: "
-FLAG_NOT_A_DESCENT_DIRECTION = WARNING_PREAMBLE + \
-  "Provided linesearch direction is not a descent direction. " + \
-  "The linesearch will probably fail."
+  "WARNING: jaxopt.ZoomLineSearch: "
 FLAG_NAN_INF_VALUES = WARNING_PREAMBLE + \
   "NaN or Inf values encountered in function values."
 FLAG_INTERVAL_NOT_FOUND = WARNING_PREAMBLE + \
-  "No interval satisfying curvature condition. " + \
-  "Try increasing maximal stepsize." 
+  "No interval satisfying curvature condition." + \
+  "Consider increasing maximal possible stepsize of the linesearch."
 FLAG_INTERVAL_TOO_SMALL = WARNING_PREAMBLE + \
-  "Length of searched interval has been reduced below machine precision."
+  "Length of searched interval has been reduced below threshold."
 FLAG_CURVATURE_COND_NOT_SATSIFIED = WARNING_PREAMBLE + \
   "Returning stepsize with sufficient decrease " + \
   "but curvature condition not satisfied."
 FLAG_NO_STEPSIZE_FOUND = WARNING_PREAMBLE + \
-  "Linesearch failed, no stepsize satisfying sufficient decrease found. " + \
-  "Try increasing maximal number of linesearch iterations."
+  "Linesearch failed, no stepsize satisfying sufficient decrease found."
+FLAG_NOT_A_DESCENT_DIRECTION = WARNING_PREAMBLE + \
+  "The linesearch failed because the provided direction " + \
+  "is not a descent direction. "
 
 _dot = functools.partial(jnp.dot, precision=lax.Precision.HIGHEST)
 
@@ -127,8 +127,8 @@ def _set_values(cond, candidate, default):
   return jax.tree_util.tree_map(_set_val, candidate, default)
 
 
-def _cond_print(condition, message):
-  jax.lax.cond(condition, lambda _: jax.debug.print(message), lambda _: None, None)
+def _cond_print(condition, message, **kwargs):
+  jax.lax.cond(condition, lambda _: jax.debug.print(message, **kwargs), lambda _: None, None)
 
 
 class ZoomLineSearchState(NamedTuple):
@@ -147,6 +147,8 @@ class ZoomLineSearchState(NamedTuple):
   num_fun_eval: int
   num_grad_eval: int
 
+  decrease_error: float
+  curvature_error: float
   error: float
   done: bool
   failed: bool  # comply to semantic used by other line searches
@@ -212,9 +214,13 @@ class ZoomLineSearch(base.IterativeLineSearch):
       rel_tol_cubic*interval_size (default: 0.2)
     rel_tol_quad: point computed by quadratic interpolation accepted if inside
       rel_tol_quad*interval_size (default: 0.1)
+    interval_threshold: if the size of the interval searched is below this threshold
+      and a sufficient decrease for some stepsize s has been found, 
+      then the linesearch takes s and moves on. (default=5*1e-5, which corresponds 
+      to 15 linesearch iterations for init_stepsize = 1)
     increase_factor: factor to mutliply stepsize at initialization until finding
       interval satisfying curvature condition (default: 2.)
-    max_stepsize: maximal possible stepsize. (default: 2**30)
+    max_stepsize: maximal possible stepsize, (default: 2**maxiter)
     tol: tolerance of the stopping criterion. (default: 0.0)
     maxiter: maximum number of line search iterations. (default: 30)
     verbose: whether to print error on every iteration or not. verbose=True will
@@ -232,13 +238,12 @@ class ZoomLineSearch(base.IterativeLineSearch):
   c3: float = 1e-6
   rel_tol_cubic: float = 0.2
   rel_tol_quad: float = 0.1
+  interval_threshold: float = 5*1e-5
   increase_factor: float = 2.0
 
   tol: float = 0.0
   maxiter: int = 30
-  # max_stepsize needs to be large enough for the linesearch to be able
-  # to find a good stepsize
-  max_stepsize: float = 2**30
+  max_stepsize: Optional[float] = None
 
   verbose: bool = False
   jit: base.AutoOrBoolean = "auto"
@@ -263,7 +268,7 @@ class ZoomLineSearch(base.IterativeLineSearch):
         value_step - value_init - self.c1 * stepsize * slope_init
     )
     # or an approximate decrease condition, see equation (23) of [2]
-    approx_decrease_error_ = slope_step - (2 * self.c1 - 1.0) * slope_init
+    approx_decrease_error = slope_step - (2 * self.c1 - 1.0) * slope_init
 
     # The classical Armijo condition may fail to be satisfied if we are too
     # close to a minimum, causing the optimizer to fail as explained in [2]
@@ -271,7 +276,7 @@ class ZoomLineSearch(base.IterativeLineSearch):
     # We switch to approximate Wolfe conditions only if we are close enough to
     # the minimizer which is captured by the following criterion.
     delta_values = value_step - value_init - self.c3 * jnp.abs(value_init)
-    approx_decrease_error = jnp.maximum(approx_decrease_error_, delta_values)
+    approx_decrease_error = jnp.maximum(approx_decrease_error, delta_values)
     # We take then the *minimum* of both errors.
     return jnp.minimum(approx_decrease_error, exact_decrease_error)
 
@@ -279,13 +284,18 @@ class ZoomLineSearch(base.IterativeLineSearch):
     # See equation (3.7b) of [1].
     return jnp.abs(slope_step) - self.c2 * jnp.abs(slope_init)
 
-  def _make_safe_step(self, _, state, args, kwargs):
+  def _make_safe_step(self, stepsize, state, args, kwargs):
     safe_stepsize = state.safe_stepsize
-    _cond_print(safe_stepsize == 0.0, FLAG_NO_STEPSIZE_FOUND)
     if self.verbose:
       _cond_print((safe_stepsize > 0.), FLAG_CURVATURE_COND_NOT_SATSIFIED)
+    final_stepsize = jax.lax.cond(
+      safe_stepsize > 0., 
+      lambda safe_stepsize, *_: safe_stepsize,
+      self.failure_diagnostic,
+      safe_stepsize, stepsize, state
+    )
     step = tree_add_scalar_mul(
-        state.params, safe_stepsize, state.descent_direction
+        state.params, final_stepsize, state.descent_direction
     )
     (value_step, aux_step), grad_step = self._value_and_grad_fun_with_aux(
         step, *args, **kwargs
@@ -296,7 +306,7 @@ class ZoomLineSearch(base.IterativeLineSearch):
         grad=grad_step,
         aux=aux_step,
     )
-    return safe_stepsize, new_state
+    return final_stepsize, new_state
 
   def _keep_step(self, stepsize, state, _, __):
     return stepsize, state
@@ -337,16 +347,16 @@ class ZoomLineSearch(base.IterativeLineSearch):
     if self.verbose:
       _cond_print(is_value_nan, FLAG_NAN_INF_VALUES)
 
-    decrease_error_ = self._decrease_error(
+    decrease_error = self._decrease_error(
         new_stepsize, new_value_step, new_slope_step, value_init, slope_init
     )
-    decrease_error = jnp.maximum(decrease_error_, 0.0)
+    decrease_error = jnp.maximum(decrease_error, 0.0)
     decrease_error = jnp.where(
         jnp.isnan(decrease_error), jnp.inf, decrease_error
     )
 
-    curvature_error_ = self._curvature_error(new_slope_step, slope_init)
-    curvature_error = jnp.maximum(curvature_error_, 0.0)
+    curvature_error = self._curvature_error(new_slope_step, slope_init)
+    curvature_error = jnp.maximum(curvature_error, 0.0)
     curvature_error = jnp.where(
         jnp.isnan(curvature_error), jnp.inf, curvature_error
     )
@@ -403,21 +413,21 @@ class ZoomLineSearch(base.IterativeLineSearch):
     # the linesearch is done for either of the two reasons above, we set
     # directly the new parameters, gradient, value and aux to the ones found.
     done = (new_error <= self.tol) | (max_stepsize_reached & ~interval_found)
-    default = [0.0, params_init, value_init, grad_init, aux_init]
+    default = [params_init, value_init, grad_init, aux_init]
     candidate = [
-        new_stepsize,
         new_step,
         new_value_step,
         new_grad_step,
         new_aux_step,
     ]
-    best_stepsize, next_params, next_value, next_grad, next_aux = _set_values(
+    next_params, next_value, next_grad, next_aux = _set_values(
         done, candidate, default
     )
     if self.verbose:
       _cond_print(
         (max_stepsize_reached & ~interval_found),
-        FLAG_INTERVAL_NOT_FOUND + '\n' + FLAG_CURVATURE_COND_NOT_SATSIFIED
+        FLAG_INTERVAL_NOT_FOUND + '\n' 
+        + FLAG_CURVATURE_COND_NOT_SATSIFIED
       )
     max_iter_reached = (iter_num + 1 >= self.maxiter) & (~done)
 
@@ -428,6 +438,8 @@ class ZoomLineSearch(base.IterativeLineSearch):
         grad=next_grad,
         aux=next_aux,
         #
+        decrease_error=decrease_error,
+        curvature_error=curvature_error,
         error=new_error,
         done=done,
         failed=jnp.asarray(max_iter_reached),
@@ -448,7 +460,7 @@ class ZoomLineSearch(base.IterativeLineSearch):
         #
         safe_stepsize=new_safe_stepsize,
     )
-    return base.LineSearchStep(stepsize=best_stepsize, state=new_state)
+    return base.LineSearchStep(stepsize=new_stepsize, state=new_state)
 
   def _zoom_into_interval(self, stepsize, state, args, kwargs):
     """Zoom procedure described in Algorithm 3.6 of [1]."""
@@ -485,7 +497,11 @@ class ZoomLineSearch(base.IterativeLineSearch):
     right = jnp.maximum(high, low)
     cubic_chk = self.rel_tol_cubic * delta
     quad_chk = self.rel_tol_quad * delta
-    threshold = jnp.where((jnp.finfo(delta).bits < 64), 1e-5, 1e-10)
+
+    # Rather large values of threshold compared to machine precision
+    # such that we avoid wasting iterations to satisfy curvature condition
+    # (a stepsize reducing values is taken if it exists when threshold is met)
+    threshold = self.interval_threshold
     too_small_int = delta <= threshold
     if self.verbose:
       _cond_print(too_small_int, FLAG_INTERVAL_TOO_SMALL)
@@ -520,16 +536,16 @@ class ZoomLineSearch(base.IterativeLineSearch):
     if self.verbose:
       _cond_print(is_value_nan, FLAG_NAN_INF_VALUES)
 
-    decrease_error_ = self._decrease_error(
+    decrease_error = self._decrease_error(
         middle, value_middle, slope_middle, value_init, slope_init
     )
-    decrease_error = jnp.maximum(decrease_error_, 0.0)
+    decrease_error = jnp.maximum(decrease_error, 0.0)
     decrease_error = jnp.where(
         jnp.isnan(decrease_error), jnp.inf, decrease_error
     )
 
-    curvature_error_ = self._curvature_error(slope_middle, slope_init)
-    curvature_error = jnp.maximum(curvature_error_, 0.0)
+    curvature_error = self._curvature_error(slope_middle, slope_init)
+    curvature_error = jnp.maximum(curvature_error, 0.0)
     curvature_error = jnp.where(
         jnp.isnan(curvature_error), jnp.inf, curvature_error
     )
@@ -539,14 +555,14 @@ class ZoomLineSearch(base.IterativeLineSearch):
     # If the new point satisfies at least the decrease error we keep it in case
     # the curvature error cannot be satisfied. We take the largest possible one
     safe_decrease = decrease_error <= self.tol
-    new_safe_stepsize_ = jnp.where(safe_decrease, middle, safe_stepsize)
-    new_safe_stepsize = jnp.maximum(new_safe_stepsize_, safe_stepsize)
+    new_safe_stepsize = jnp.where(safe_decrease, middle, safe_stepsize)
+    new_safe_stepsize = jnp.maximum(new_safe_stepsize, safe_stepsize)
 
     # If both armijo and curvature conditions are satisfied, we are done.
     done = new_error <= self.tol
-    default = [0.0, params_init, value_init, grad_init, aux_init]
-    candidate = [middle, step, value_middle, grad_step, aux_step]
-    best_stepsize, next_params, next_value, next_grad, next_aux = _set_values(
+    default = [params_init, value_init, grad_init, aux_init]
+    candidate = [step, value_middle, grad_step, aux_step]
+    next_params, next_value, next_grad, next_aux = _set_values(
         new_error <= self.tol, candidate, default
     )
 
@@ -584,9 +600,15 @@ class ZoomLineSearch(base.IterativeLineSearch):
         [high, value_high],
         [low, value_low],
     )
-
-    max_iter_reached = (iter_num + 1 >= self.maxiter) & (~done)
-
+    # We stop if the searched interval is reduced below machine precision 
+    # and we already have found a positive stepsize ensuring sufficient
+    # decrease. If no stepsize with sufficient decrease has been found, 
+    # we keep going on (some extremely steep functions require very small
+    # stepsizes, see zakharov test in lbfgs_test.py)
+    max_iter_reached = (iter_num + 1 >= self.maxiter)
+    presumably_failed = jnp.asarray(max_iter_reached) | \
+      (too_small_int & (new_safe_stepsize > 0.))
+    failed = presumably_failed & ~done
     new_state = state._replace(
         iter_num=iter_num + 1,
         params=next_params,
@@ -594,9 +616,11 @@ class ZoomLineSearch(base.IterativeLineSearch):
         grad=next_grad,
         aux=next_aux,
         #
+        decrease_error=decrease_error,
+        curvature_error=curvature_error,
         error=new_error,
         done=done,
-        failed=jnp.asarray(max_iter_reached),
+        failed=failed,
         #
         low=new_low,
         value_low=new_value_low,
@@ -609,7 +633,7 @@ class ZoomLineSearch(base.IterativeLineSearch):
         #
         safe_stepsize=new_safe_stepsize,
     )
-    return base.LineSearchStep(stepsize=best_stepsize, state=new_state)
+    return base.LineSearchStep(stepsize=middle, state=new_state)
 
   def init_state(
       self,
@@ -665,8 +689,6 @@ class ZoomLineSearch(base.IterativeLineSearch):
 
     slope = tree_vdot_real(tree_conj(grad), descent_direction)
 
-    _cond_print(slope > 0, FLAG_NOT_A_DESCENT_DIRECTION)
-
     return ZoomLineSearchState(
         iter_num=jnp.asarray(0),
         params=params,
@@ -678,6 +700,8 @@ class ZoomLineSearch(base.IterativeLineSearch):
         slope_init=slope,
         descent_direction=descent_direction,
         #
+        decrease_error=jnp.asarray(jnp.inf),
+        curvature_error=jnp.asarray(jnp.inf),
         error=jnp.asarray(jnp.inf),
         done=jnp.asarray(False),
         failed=jnp.asarray(False),
@@ -700,15 +724,6 @@ class ZoomLineSearch(base.IterativeLineSearch):
         num_fun_eval=num_fun_eval,
         num_grad_eval=num_grad_eval,
     )
-
-  def _cond_fun(self, inputs):
-    # Stop the linesearch according to done rather than the error as one may
-    # reach the maximal stepsize and no decrease of the curvature error may be
-    # possible.
-    _, state = inputs[0]
-    if self.verbose:
-      jax.debug.print("Solver: ZoomLineSearch, Error: {error}", error=state.error)
-    return ~state.done
 
   def update(
       self,
@@ -769,7 +784,7 @@ class ZoomLineSearch(base.IterativeLineSearch):
       (new_state_.failed) & (new_state_.iter_num == self.maxiter)
     ).astype(base.NUM_EVAL_DTYPE)
     best_stepsize, new_state = cond(
-        (new_state_.failed) & (new_state_.iter_num == self.maxiter),
+        new_state_.failed,
         self._make_safe_step,
         self._keep_step,
         best_stepsize_,
@@ -785,9 +800,89 @@ class ZoomLineSearch(base.IterativeLineSearch):
 
     return base.LineSearchStep(stepsize=best_stepsize, state=new_state)
 
+  def _cond_fun(self, inputs):
+    # Stop the linesearch according to done or failed rather than the error as one may
+    # reach the maximal stepsize and no decrease of the curvature error may be
+    # possible or the searched interval has been reduced too much.
+    stepsize, state = inputs[0]
+    if self.verbose:
+      self._log_info(stepsize, state)
+    return ~(state.done | state.failed)
+
+  def _log_info(self, stepsize, state):
+    jax.debug.print(
+        "INFO: jaxopt.ZoomLineSearch: " + \
+        "Iter: {iter}, " + \
+        "Stepsize: {stepsize}, " + \
+        "Decrease error: {decrease_error}, " + \
+        "Curvature error: {curvature_error}",
+        iter=state.iter_num,
+        stepsize=stepsize,
+        decrease_error=state.decrease_error,
+        curvature_error=state.curvature_error
+    )
+
+  def failure_diagnostic(self, safe_stepsize, stepsize, state):
+    jax.debug.print(FLAG_NO_STEPSIZE_FOUND)
+    self._log_info(stepsize, state)
+
+    slope_init = state.slope_init
+    is_descent_dir = slope_init < 0.
+    _cond_print(
+      ~is_descent_dir,
+      FLAG_NOT_A_DESCENT_DIRECTION + \
+      "The slope (={slope_init}) at stepsize=0 should be negative",
+      slope_init=slope_init
+    )
+    _cond_print(
+      is_descent_dir,
+      WARNING_PREAMBLE + \
+      "Consider augmenting the maximal number of linesearch iterations."
+    )
+    eps = jnp.finfo(stepsize).eps
+    below_eps = stepsize < eps
+    _cond_print(
+      below_eps & is_descent_dir,
+      WARNING_PREAMBLE + \
+      "Computed stepsize (={stepsize}) " + \
+      "is below machine precision (={eps}), " +\
+      "consider passing to higher precision like x64, using " +\
+      "jax.config.update('jax_enable_x64).",
+      stepsize=stepsize, 
+      eps=eps
+    )
+    abs_slope_init = jnp.abs(slope_init)
+    high_slope = abs_slope_init > 1e16
+    _cond_print(
+      high_slope & is_descent_dir,
+      WARNING_PREAMBLE + \
+      "Very large absolute slope at stepsize=0. (|slope|={abs_slope_init}). " + \
+      "The objective is badly conditioned. " + \
+      "Consider reparameterizing objective (e.g., normalizing parameters) " + \
+      "or finding a better guess for the initial parameters for the solver.",
+      abs_slope_init=abs_slope_init
+    )
+    outside_domain = jnp.isinf(state.decrease_error)
+    _cond_print(
+      outside_domain,
+      WARNING_PREAMBLE + \
+      "Cannot even make a step without getting Inf or Nan. " + \
+      "The linesearch won't make a step and the optimizer is stuck."
+    )
+    _cond_print(
+      ~outside_domain,
+      WARNING_PREAMBLE + \
+      "Making an unsafe step, not decreasing enough the objective. " + \
+      "Convergence of the solver is compromised as it does not reduce values."
+    )
+    final_stepsize = jnp.where(outside_domain, safe_stepsize, stepsize)
+    return final_stepsize
+
   def __post_init__(self):
     self._fun_with_aux, _, self._value_and_grad_fun_with_aux = (
         _make_funs_with_aux(
             self.fun, value_and_grad=self.value_and_grad, has_aux=self.has_aux
         )
     )
+    if not self.max_stepsize:
+      self.max_stepsize = float(2**self.maxiter)

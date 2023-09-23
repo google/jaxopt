@@ -90,9 +90,14 @@ class NonlinearCG(base.IterativeSolver):
       line search when using backtracking linesearch (default: 0.8).
     increase_factor: factor by which to increase the stepsize during line search
       (default: 1.2).
-    max_stepsize: upper bound on stepsize.
-    min_stepsize: lower bound on stepsize.
-
+    max_stepsize: upper bound on stepsize guess at start of each linesearch run
+      for linesearch_init='increase'.
+      Note that the linesearch is allowed to take a larger stepsize to satisfy
+      curvature conditions.
+    min_stepsize: lower bound on stepsize guess at start of each linesearch run
+      for linesearch_init='increase'.
+      Note that the linesearch is allowed to take a smaller stepsize to satisfy 
+      decrease conditions.
     implicit_diff: whether to enable implicit diff or autodiff of unrolled
       iterations.
     implicit_diff_solve: the linear system solver to use.
@@ -123,7 +128,7 @@ class NonlinearCG(base.IterativeSolver):
   linesearch: str = "zoom"
   linesearch_init: str = "increase"
   condition: Any = None  # deprecated in v0.8
-  maxls: int = 15
+  maxls: int = 50
   decrease_factor: Any = None  # deprecated in v0.8
   increase_factor: float = 1.2
   max_stepsize: float = 1.0
@@ -293,14 +298,13 @@ class NonlinearCG(base.IterativeSolver):
     self.reference_signature = self.fun
 
     unroll = self._get_unroll_option()
-
     linesearch_solver = _setup_linesearch(
         linesearch=self.linesearch,
         fun=self._value_and_grad_with_aux,
         value_and_grad=True,
         has_aux=True,
         maxlsiter=self.maxls,
-        max_stepsize=self.max_stepsize,
+        max_stepsize=None,
         jit=self.jit,
         unroll=unroll,
         verbose=self.verbose

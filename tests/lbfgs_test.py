@@ -517,11 +517,7 @@ class LbfgsTest(test_util.JaxoptTestCase):
     tol = 1e-15 if jax.config.jax_enable_x64 else 1e-6
     fun_name, x0, opt = fun_init_and_opt
     jnp_fun, onp_fun = get_fun(fun_name, jnp), get_fun(fun_name, onp)
-    jaxopt_options = {}
-    if fun_name == 'zakharov':
-      # zakharov function requires more linesearch iterations
-      jaxopt_options.update(dict(maxls = 50))
-    jaxopt_res = LBFGS(jnp_fun, tol=tol, **jaxopt_options).run(x0).params
+    jaxopt_res = LBFGS(jnp_fun, tol=tol).run(x0).params
     scipy_res = scipy_opt.minimize(onp_fun, x0, method='BFGS').x
     # scipy not good for matyas and zakharov functions, 
     # compare to true minimum, zero

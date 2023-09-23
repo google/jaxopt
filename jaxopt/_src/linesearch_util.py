@@ -41,7 +41,8 @@ def _setup_linesearch(
         value_and_grad=value_and_grad,
         has_aux=has_aux,
         maxiter=maxlsiter,
-        max_stepsize=max_stepsize,
+        # NOTE(vroulet): max_stepsize has no effect in the solver
+        # max_stepsize=max_stepsize,
         jit=jit,
         unroll=unroll,
         verbose=verbose,
@@ -63,7 +64,8 @@ def _setup_linesearch(
         value_and_grad=value_and_grad,
         has_aux=has_aux,
         maxiter=maxlsiter,
-        max_stepsize=max_stepsize,
+        # NOTE(vroulet): max_stepsize has no effect in the solver
+        # max_stepsize=max_stepsize,
         jit=jit,
         unroll=unroll,
         verbose=verbose,
@@ -95,6 +97,8 @@ def _init_stepsize(
         # Else, we increase a bit the previous one.
         stepsize * increase_factor,
     )
+    # Never guess higher than max_stepsize
+    init_stepsize = jnp.minimum(init_stepsize, max_stepsize)
   else:
     raise ValueError(
         f"Strategy {strategy} not available/tested. "

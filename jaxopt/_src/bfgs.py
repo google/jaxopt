@@ -100,8 +100,14 @@ class BFGS(base.IterativeSolver):
       backtracking line search (default: 0.8).
     increase_factor: factor by which to increase the stepsize during line search
       (default: 1.5).
-    max_stepsize: upper bound on stepsize.
-    min_stepsize: lower bound on stepsize.
+    max_stepsize: upper bound on stepsize guess at start of each linesearch run
+      for linesearch_init='increase'.
+      Note that the linesearch is allowed to take a larger stepsize to satisfy
+      curvature conditions.
+    min_stepsize: lower bound on stepsize guess at start of each linesearch run
+      for linesearch_init='increase'.
+      Note that the linesearch is allowed to take a smaller stepsize to satisfy 
+      decrease conditions.
     implicit_diff: whether to enable implicit diff or autodiff of unrolled
       iterations.
     implicit_diff_solve: the linear system solver to use.
@@ -286,7 +292,7 @@ class BFGS(base.IterativeSolver):
         value_and_grad=True,
         has_aux=True,
         maxlsiter=self.maxls,
-        max_stepsize=self.max_stepsize,
+        max_stepsize=None,
         jit=self.jit,
         unroll=unroll,
         verbose=self.verbose,

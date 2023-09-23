@@ -81,7 +81,7 @@ class HagerZhangLineSearch(base.IterativeLineSearch):
     c1: constant used by the Wolfe and Approximate Wolfe condition.
     c2: constant strictly less than 1 used by the Wolfe and Approximate Wolfe
       condition.
-    max_stepsize: upper bound on stepsize.
+    max_stepsize: upper bound on stepsize (unused).
 
     maxiter: maximum number of line search iterations.
     tol: tolerance of the stopping criterion.
@@ -103,7 +103,8 @@ class HagerZhangLineSearch(base.IterativeLineSearch):
   expansion_factor: float = 5.0
   shrinkage_factor: float = 0.66
   approximate_wolfe_threshold = 1e-6
-  max_stepsize: float = 1.0
+  # TODO(vroulet): remove max_stepsize argument as it is not used
+  max_stepsize: float = 1.0 
 
   verbose: int = 0
   jit: base.AutoOrBoolean = "auto"

@@ -36,7 +36,8 @@ from sklearn import datasets
 
 
 # pylint: disable=invalid-name
-
+# Uncomment the line below in order to run in float64.
+# jax.config.update("jax_enable_x64", True)
 
 class ZoomLinesearchTest(test_util.JaxoptTestCase):
   """Tests for ZoomLineSearch."""
@@ -216,7 +217,7 @@ class ZoomLinesearchTest(test_util.JaxoptTestCase):
         w_init, descent_dir, stepsize, fun_, jax.grad(fun_), state
     )
 
-  def test_failure_cases(self):
+  def test_failure_descent_direction(self):
     # See gh-7475
 
     # For this f and p, starting at a point on axis 0, the strong Wolfe
@@ -225,44 +226,56 @@ class ZoomLinesearchTest(test_util.JaxoptTestCase):
     def fun(x):
       return jnp.dot(x, x)
 
-    def fun_der(x):
-      return 2.0 * x
-
-    c2 = 0.5
     p = jnp.array([1.0, 0.0])
-
-    # 1. Test that the line search fails for p not a descent direction
     x = 60 * p
-    ls = ZoomLineSearch(fun, c2=c2, maxiter=10)
+
+    # Test that the line search fails for p not a descent direction
+    # For high maxiter, still finds a decrease error because of 
+    # the approximate Wolfe condition so we reduced maxiter
+    ls = ZoomLineSearch(fun, c2=0.5, maxiter=18)
     stdout = io.StringIO()
     with redirect_stdout(stdout):
       s, state = ls.run(init_stepsize=1.0, params=x, descent_direction=p)
-    self._check_step_in_state(x, p, s, fun, fun_der, state)
+    self._check_step_in_state(x, p, s, fun, jax.grad(fun), state)
     # Check that we were not able to make a step or an infinitesimal one
-    self.assertTrue(s == 0.)
+    self.assertLess(s, 1e-5)
     self.assertTrue(FLAG_NOT_A_DESCENT_DIRECTION in stdout.getvalue())
     self.assertTrue(FLAG_NO_STEPSIZE_FOUND in stdout.getvalue())
 
-    # 2. Test that the line search fails if the maximum stepsize is too small
-    # Here, smallest s satisfying strong Wolfe conditions for c2=0.5 is 30
+  def test_failure_too_small_max_stepsize(self):
+    def fun(x):
+      return jnp.dot(x, x)
+
+    p = jnp.array([1.0, 0.0])
     x = -60 * p
-    ls = ZoomLineSearch(fun, c2=c2, max_stepsize=10, verbose=True)
+
+    # Test that the line search fails if the maximum stepsize is too small
+    # Here, smallest s satisfying strong Wolfe conditions for c2=0.5 is 30
+    ls = ZoomLineSearch(fun, c2=0.5, max_stepsize=10, verbose=True)
     stdout = io.StringIO()
     with redirect_stdout(stdout):
       s, state = ls.run(init_stepsize=1.0, params=x, descent_direction=p)
-    self._check_step_in_state(x, p, s, fun, fun_der, state)
+    self._check_step_in_state(x, p, s, fun, jax.grad(fun), state)
     # Check that we still made a step
     self.assertTrue(s == 10.0)
     self.assertTrue(FLAG_INTERVAL_NOT_FOUND in stdout.getvalue())
     self.assertTrue(FLAG_CURVATURE_COND_NOT_SATSIFIED in stdout.getvalue())
 
-    # 3. s=30 will only be tried on the 6th iteration, so this fails because
+  def test_failure_not_enough_iter(self):
+    def fun(x):
+      return jnp.dot(x, x)
+
+    p = jnp.array([1.0, 0.0])
+    x = -60 * p
+
+    c2 = 0.5
+    # s=30 will only be tried on the 6th iteration, so this fails because
     # the maximum number of iterations is reached.
     ls = ZoomLineSearch(fun, c2=c2, maxiter=5, verbose=True)
     stdout = io.StringIO()
     with redirect_stdout(stdout):
       s, state = ls.run(init_stepsize=1.0, params=x, descent_direction=p)
-    self._check_step_in_state(x, p, s, fun, fun_der, state)
+    self._check_step_in_state(x, p, s, fun, jax.grad(fun), state)
     # Check that we still made a step
     self.assertTrue(s == 16.0)
     self.assertTrue(state.failed)
@@ -272,10 +285,11 @@ class ZoomLinesearchTest(test_util.JaxoptTestCase):
     # Check if it works normally
     ls = ZoomLineSearch(fun, c2=c2)
     s, state = ls.run(init_stepsize=1.0, params=x, descent_direction=p)
-    self._assert_line_conds(x, p, s, fun, fun_der, c1=ls.c1, c2=c2)
-    self._check_step_in_state(x, p, s, fun, fun_der, state)
+    self._assert_line_conds(x, p, s, fun, jax.grad(fun), c1=ls.c1, c2=c2)
+    self._check_step_in_state(x, p, s, fun, jax.grad(fun), state)
     self.assertTrue(s >= 30.0)
 
+  def test_failure_flat_fun(self):
     # Check failure for a very flat function
     def fun_flat(x):
       return jnp.exp(-1 / x**2)
@@ -288,14 +302,16 @@ class ZoomLinesearchTest(test_util.JaxoptTestCase):
     with redirect_stdout(stdout):
       ls.run(init_stepsize=1.0, params=x)
     self.assertTrue(FLAG_INTERVAL_TOO_SMALL in stdout.getvalue())
+    print(stdout.getvalue())
 
+  def test_failure_inf_value(self):
     # Check behavior for inf/nan values
     def fun_inf(x):
       return jnp.log(x)
 
     x = 1.0
     p = -2.0
-    ls = ZoomLineSearch(fun_inf, verbose=True, jit=False)
+    ls = ZoomLineSearch(fun_inf, verbose=True)
     stdout = io.StringIO()
     with redirect_stdout(stdout):
       ls.run(init_stepsize=1.0, params=x, descent_direction=p)
@@ -423,6 +439,4 @@ class ZoomLinesearchTest(test_util.JaxoptTestCase):
 
 
 if __name__ == "__main__":
-  # Uncomment the line below in order to run in float64.
-  # jax.config.update("jax_enable_x64", True)
   absltest.main()

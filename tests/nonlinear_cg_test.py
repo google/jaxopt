@@ -26,6 +26,8 @@ from jaxopt import objective
 from jaxopt._src import test_util
 from sklearn import datasets
 
+# Uncomment this line to test in x64 
+jax.config.update('jax_enable_x64', True)
 
 def get_random_pytree():
     key = jax.random.PRNGKey(1213)
