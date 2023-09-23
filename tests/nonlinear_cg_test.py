@@ -26,6 +26,8 @@ from jaxopt import objective
 from jaxopt._src import test_util
 from sklearn import datasets
 
+# Uncomment this line to test in x64 
+# jax.config.update('jax_enable_x64', True)
 
 def get_random_pytree():
     key = jax.random.PRNGKey(1213)
@@ -149,8 +151,10 @@ class NonlinearCGTest(test_util.JaxoptTestCase):
                            maxls=3, method=method, linesearch=linesearch)
     sol_C, _ = solver_C.run(z0)
     sol_R, _ = solver_R.run(C2R(z0))
-
-    self.assertArraysAllClose(sol_C, R2C(sol_R))
+    # NOTE(vroulet): there is a slight loss of precision between real
+    # and complex cases (observable for any linesearch with jax.enable_x64
+    tol = 5*1e-15 if jax.config.jax_enable_x64 else 5*1e-6
+    self.assertArraysAllClose(sol_C, R2C(sol_R), atol=tol, rtol=tol)
 
 
 if __name__ == '__main__':

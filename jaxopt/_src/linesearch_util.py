@@ -58,12 +58,12 @@ def _setup_linesearch(
         verbose=verbose,
     )
   elif linesearch == "hager-zhang":
+    # NOTE(vroulet): max_stepsize has no effect in HZ
     linesearch_solver = HagerZhangLineSearch(
         fun=fun,
         value_and_grad=value_and_grad,
         has_aux=has_aux,
         maxiter=maxlsiter,
-        max_stepsize=max_stepsize,
         jit=jit,
         unroll=unroll,
         verbose=verbose,

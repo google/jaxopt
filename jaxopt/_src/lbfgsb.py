@@ -262,7 +262,7 @@ class LBFGSB(base.IterativeSolver):
     increase_factor: factor by which to increase the stepsize during line search
       (default: 1.5).
     max_stepsize: upper bound on stepsize.
-    min_stepsize: lower bound on stepsize.
+    min_stepsize: lower bound on stepsize guess at start of each linesearch run.
     history_size: size of the memory to use.
     use_gamma: whether to initialize the Hessian approximation with gamma *
       theta, where gamma is chosen following equation (7.20) of 'Numerical
@@ -289,7 +289,7 @@ class LBFGSB(base.IterativeSolver):
   linesearch_init: str = "increase"
   stop_if_linesearch_fails: bool = False
   condition: Any = None  # deprecated in v0.8
-  maxls: int = 20
+  maxls: int = 30
   decrease_factor: Any = None  # deprecated in v0.8
   increase_factor: float = 1.5
   max_stepsize: float = 1.0

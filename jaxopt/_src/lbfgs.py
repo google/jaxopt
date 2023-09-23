@@ -184,7 +184,7 @@ class LBFGS(base.IterativeSolver):
     increase_factor: factor by which to increase the stepsize during line search
       (default: 1.5).
     max_stepsize: upper bound on stepsize.
-    min_stepsize: lower bound on stepsize.
+    min_stepsize: lower bound on stepsize guess at start of each linesearch run.
     history_size: size of the memory to use.
     use_gamma: whether to initialize the inverse Hessian approximation with
       gamma * I, where gamma is chosen following equation (7.20) of 'Numerical
