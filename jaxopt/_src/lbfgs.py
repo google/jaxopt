@@ -423,7 +423,7 @@ class LBFGS(base.IterativeSolver):
   def __post_init__(self):
     super().__post_init__()
 
-    _, _, self._value_and_grad_with_aux = \
+    _fun_with_aux, _, self._value_and_grad_with_aux = \
       base._make_funs_with_aux(fun=self.fun,
                                value_and_grad=self.value_and_grad,
                                has_aux=self.has_aux)
@@ -434,8 +434,8 @@ class LBFGS(base.IterativeSolver):
 
     self.linesearch_solver = _setup_linesearch(
         linesearch=self.linesearch,
-        fun=self._value_and_grad_with_aux,
-        value_and_grad=True,
+        fun=_fun_with_aux,
+        value_and_grad=self._value_and_grad_with_aux,
         has_aux=True,
         maxlsiter=self.maxls,
         max_stepsize=self.max_stepsize,

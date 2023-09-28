@@ -20,6 +20,7 @@ from typing import Any
 from typing import Callable
 from typing import NamedTuple
 from typing import Optional
+from typing import Union
 
 import jax
 from jax import lax
@@ -224,7 +225,7 @@ class ZoomLineSearch(base.IterativeLineSearch):
   """
 
   fun: Callable
-  value_and_grad: bool = False
+  value_and_grad: Union[bool, Callable] = False
   has_aux: bool = False
 
   c1: float = 1e-4

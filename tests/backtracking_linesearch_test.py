@@ -21,6 +21,8 @@ import jax.numpy as jnp
 from jaxopt import objective
 from jaxopt._src import test_util
 from jaxopt import BacktrackingLineSearch
+from jaxopt.tree_util import tree_add_scalar_mul
+from jaxopt.tree_util import tree_negative
 from jaxopt.tree_util import tree_scalar_mul
 from jaxopt.tree_util import tree_vdot
 
@@ -28,7 +30,8 @@ import numpy as onp
 
 from sklearn import datasets
 
-
+N_FUN_CALLS = 0
+N_GRAD_CALLS = 0
 class BacktrackingLinesearchTest(test_util.JaxoptTestCase):
 
   def _check_conditions_satisfied(
@@ -57,16 +60,31 @@ class BacktrackingLinesearchTest(test_util.JaxoptTestCase):
               initial_grad, descent_direction))
       self.assertTrue(goldstein)
     elif condition_name == "strong-wolfe":
-      new_gd_vdot = tree_vdot(final_state.grad, descent_direction)
-      gd_vdot = tree_vdot(initial_grad, descent_direction)
-      curvature = jnp.all(jnp.abs(new_gd_vdot) <= c2 * jnp.abs(gd_vdot))
+      new_slope = tree_vdot(final_state.grad, descent_direction)
+      slope = tree_vdot(initial_grad, descent_direction)
+      curvature = jnp.all(jnp.abs(new_slope) <= c2 * jnp.abs(slope))
       self.assertTrue(curvature)
 
     elif condition_name == "wolfe":
-      new_gd_vdot = tree_vdot(final_state.grad, descent_direction)
-      gd_vdot = tree_vdot(initial_grad, descent_direction)
-      curvature = jnp.all(new_gd_vdot >= c2 * gd_vdot)
+      new_slope = tree_vdot(final_state.grad, descent_direction)
+      slope = tree_vdot(initial_grad, descent_direction)
+      curvature = jnp.all(new_slope >= c2 * slope)
       self.assertTrue(curvature)
+
+  def _check_stepsize_match_params(self,
+                                   value_and_grad_fun, 
+                                   stepsize, 
+                                   params, 
+                                   descent_direction, 
+                                   state, 
+                                   **fun_kwargs):
+    self.assertTrue(state.failed or state.done)
+    step = tree_add_scalar_mul(params, stepsize, descent_direction)
+    value, grad = value_and_grad_fun(step, **fun_kwargs)
+    self.assertAllClose(step, state.params)
+    self.assertAllClose(value, state.value)
+    self.assertAllClose(grad, state.grad)
+
 
   def test_aux_value(self):
     X, y = datasets.make_classification(n_samples=10, n_features=5, n_classes=2,
@@ -127,6 +145,12 @@ class BacktrackingLinesearchTest(test_util.JaxoptTestCase):
     self.assertLessEqual(state.error, 1e-5)
     self._check_conditions_satisfied(
         cond, ls.c1, ls.c2, stepsize, initial_value, initial_grad, state)
+    self._check_stepsize_match_params(jax.value_and_grad(fun),
+                                      stepsize,
+                                      w_init,
+                                      tree_negative(initial_grad),
+                                      state, 
+                                      data=data)
 
     # Call to run with value_and_grad=True.
     ls = BacktrackingLineSearch(fun=jax.value_and_grad(fun),
@@ -139,14 +163,25 @@ class BacktrackingLinesearchTest(test_util.JaxoptTestCase):
     self.assertLessEqual(state.error, 1e-5)
     self._check_conditions_satisfied(
         cond, ls.c1, ls.c2, stepsize, initial_value, initial_grad, state)
-
+    self._check_stepsize_match_params(jax.value_and_grad(fun),
+                                      stepsize,
+                                      w_init,
+                                      tree_negative(initial_grad),
+                                      state,
+                                      data=data)
     # Failed linesearch (high c1 ensures convergence condition is not met).
     ls = BacktrackingLineSearch(fun=fun, maxiter=20, condition=cond, c1=2.)
-    _, state = ls.run(
+    stepsize, state = ls.run(
         init_stepsize=1.0, params=w_init, fun_kwargs={"data": data}
     )
     self.assertTrue(jnp.all(state.failed))
     self.assertFalse(jnp.any(state.done))
+    self._check_stepsize_match_params(jax.value_and_grad(fun),
+                                      stepsize,
+                                      w_init,
+                                      tree_negative(initial_grad),
+                                      state,
+                                      data=data)
 
   @parameterized.product(
       cond=["armijo", "goldstein", "strong-wolfe", "wolfe"],
@@ -159,24 +194,55 @@ class BacktrackingLinesearchTest(test_util.JaxoptTestCase):
       return result, grad
 
     x_init = -0.001
+    _, grad = fun(x_init)
+    descent_direction = tree_negative(grad)
 
     # Make sure initial step triggers a non-finite value.
     ls = BacktrackingLineSearch(
         fun=fun, condition=cond, max_stepsize=2.0, value_and_grad=True)
     stepsize = 1.25
-    state = ls.init_state(init_stepsize=stepsize, params=x_init)
 
-    # Run this twice and check that we decrease the stepsize but don't
-    # terminate.
-    for _ in range(2):
-      stepsize, state = ls.update(stepsize=stepsize, state=state, params=x_init)
-      self.assertFalse(state.done)
+    stepsize, state = ls.run(init_stepsize=stepsize, params=x_init)
+    self._check_stepsize_match_params(fun,
+                                      stepsize,
+                                      x_init,
+                                      descent_direction,
+                                      state)
+    self.assertFalse(jnp.isnan(state.value) or jnp.isinf(state.value))
 
-    # The linesearch should have backtracked to the safe region, and the
-    # quadratic bowl will guarantee termination of the linesearch for parameters
-    # sufficiently close.
-    stepsize, state = ls.update(stepsize=stepsize, state=state, params=x_init)
-    self.assertTrue(state.done)
+  @parameterized.product(cond=["armijo", "goldstein"])
+  def test_eval_count(self, cond):
+    global N_FUN_CALLS
+    global N_GRAD_CALLS
+
+    def fun(x):
+      global N_FUN_CALLS
+      N_FUN_CALLS += 1
+      return 32*jnp.sum(x**2)
+    
+    _value_and_grad_fun = jax.value_and_grad(fun)
+
+    def value_and_grad_fun(x):
+      global N_GRAD_CALLS
+      N_GRAD_CALLS += 1
+      return _value_and_grad_fun(x)
+    
+    params = jnp.asarray(1.)
+    init_stepsize = jnp.asarray(1.)
+    # Reset number of calls
+    N_FUN_CALLS = 0
+    N_GRAD_CALLS = 0
+
+    linesearch = BacktrackingLineSearch(fun,
+                                        value_and_grad=value_and_grad_fun,
+                                        condition=cond,
+                                        jit=False)
+    _, ls_state = linesearch.run(init_stepsize, params)
+    self.assertEqual(N_FUN_CALLS, ls_state.num_fun_eval)
+    self.assertEqual(N_GRAD_CALLS, ls_state.num_grad_eval)
+    # One initial gradient call and one final = 2 calls
+    self.assertEqual(N_GRAD_CALLS, 2)
+    self.assertGreater(N_FUN_CALLS, N_GRAD_CALLS)
 
 
 if __name__ == '__main__':
