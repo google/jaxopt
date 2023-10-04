@@ -91,8 +91,7 @@ class NonlinearCG(base.IterativeSolver):
     increase_factor: factor by which to increase the stepsize during line search
       (default: 1.2).
     max_stepsize: upper bound on stepsize.
-    min_stepsize: lower bound on stepsize.
-
+    min_stepsize: lower bound on stepsize guess at start of each linesearch run.
     implicit_diff: whether to enable implicit diff or autodiff of unrolled
       iterations.
     implicit_diff_solve: the linear system solver to use.
@@ -123,7 +122,7 @@ class NonlinearCG(base.IterativeSolver):
   linesearch: str = "zoom"
   linesearch_init: str = "increase"
   condition: Any = None  # deprecated in v0.8
-  maxls: int = 15
+  maxls: int = 30
   decrease_factor: Any = None  # deprecated in v0.8
   increase_factor: float = 1.2
   max_stepsize: float = 1.0

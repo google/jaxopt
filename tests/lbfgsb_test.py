@@ -29,6 +29,8 @@ import numpy as onp
 
 from sklearn import datasets
 
+# Uncomment this line to test in x64 
+# jax.config.update('jax_enable_x64', True)
 
 class LbfgsbTest(test_util.JaxoptTestCase):
 

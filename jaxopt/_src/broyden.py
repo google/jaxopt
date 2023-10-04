@@ -165,7 +165,7 @@ class Broyden(base.IterativeSolver):
     increase_factor: factor by which to increase the stepsize during line search
       (default: 1.5).
     max_stepsize: upper bound on stepsize.
-    min_stepsize: lower bound on stepsize.
+    min_stepsize: lower bound on stepsize guess at start of the linesearch run.
 
     history_size: size of the memory to use.
     gamma: the initialization of the inverse Jacobian is going to be gamma * I.

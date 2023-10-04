@@ -200,7 +200,7 @@ class BfgsTest(test_util.JaxoptTestCase):
     # implementation and initialization, which is a good check.
 
     # high precision for faithful checks
-    tol = 1e-15 if jax.config.jax_enable_x64 else 1e-6
+    tol = 1e-15 if jax.config.jax_enable_x64 else 1e-7
     # jaxopt_opts = dict(maxls=100) if jax.config.jax_enable_x64 else {}
     fun_name, x0, opt = fun_init_and_opt
     jnp_fun, onp_fun = get_fun(fun_name, jnp), get_fun(fun_name, onp)
