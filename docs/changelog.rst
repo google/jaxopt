@@ -1,9 +1,8 @@
 Changelog
 =========
 
-Version 0.9
------------
-
+Version 0.8.1
+-------------
 
 Bug fixes and enhancements
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -11,7 +10,16 @@ Bug fixes and enhancements
 - Improved example :doc:`/notebooks/deep_learning/resnet_flax` (better accuracy in less time) by Fabian Pedregosa.
 - Improved example :doc:`/notebooks/deep_learning/resnet_haiku`, by Fabian Pedregosa.
 - Documentation is built as part of the continuous integration workflow, by Fabian Pedregosa
+- Jit update method, by Mathieu Blondel.
+- Linesearch improvements, by Vincent Roulet.
+- GaussNewton and LevenbergMarquardt improvements, by Amir Saadat.
+- Verbose support even when jit=True, by Amir Saadat.
+- Various doc improvements, by Fabian Pedregosa.
 
+Contributors
+~~~~~~~~~~~~
+
+Amir Saadat, Fabian Pedregosa, Mathieu Blondel, Peter Hawkins, Vincent Roulet.
 
 Version 0.8
 -----------
