@@ -18,6 +18,7 @@ from typing import Any
 from typing import Callable
 from typing import NamedTuple
 from typing import List
+from typing import Union
 
 from typing import Optional
 from dataclasses import dataclass
@@ -134,7 +135,7 @@ class AndersonAcceleration(base.IterativeSolver):
     has_aux: wether fixed_point_fun returns additional data. (default: False)
       This additional data is not taken into account by the fixed point.
       The solver returns the `aux` associated to the last iterate (i.e the fixed point).
-    verbose: whether to print error on every iteration or not.
+    verbose: whether to print information on every iteration or not.
     implicit_diff: whether to enable implicit diff or autodiff of unrolled
       iterations.
     implicit_diff_solve: the linear system solver to use.
@@ -154,7 +155,7 @@ class AndersonAcceleration(base.IterativeSolver):
   tol: float = 1e-5
   ridge: float = 1e-5
   has_aux: bool = False
-  verbose: bool = False
+  verbose: Union[bool, int] = False
   implicit_diff: bool = True
   implicit_diff_solve: Optional[Callable] = None
   jit: bool = True
@@ -246,6 +247,8 @@ class AndersonAcceleration(base.IterativeSolver):
                                aux=aux,
                                num_fun_eval=state.num_fun_eval+1)
 
+    if self.verbose:
+      self.log_info(next_state, error_name="Residual Norm")
     return base.OptStep(params=next_params, state=next_state)
 
   def optimality_fun(self, params, *args, **kwargs):

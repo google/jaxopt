@@ -126,7 +126,7 @@ class ProximalGradient(base.IterativeSolver):
     tol: tolerance to use.
     acceleration: whether to use acceleration (also known as FISTA) or not.
     decrease_factor: factor by which to reduce the stepsize during line search.
-    verbose: whether to print error on every iteration or not.
+    verbose: whether to print information on every iteration or not.
 
     implicit_diff: whether to enable implicit diff or autodiff of unrolled
       iterations.
@@ -153,7 +153,7 @@ class ProximalGradient(base.IterativeSolver):
   tol: float = 1e-3
   acceleration: bool = True
   decrease_factor: float = 0.5
-  verbose: int = 0
+  verbose: Union[bool, int] = False
 
   implicit_diff: bool = True
   implicit_diff_solve: Optional[Callable] = None
@@ -273,6 +273,15 @@ class ProximalGradient(base.IterativeSolver):
                                stepsize=jnp.asarray(next_stepsize, dtype=dtype),
                                error=jnp.asarray(next_error, dtype=dtype),
                                aux=aux)
+
+    if self.verbose:
+      self.log_info(
+          next_state,
+          error_name="Distance btw Iterates",
+          additional_info={
+            "Stepsize": next_stepsize
+          }
+      )
     return base.OptStep(params=next_x, state=next_state)
 
   def update(self,

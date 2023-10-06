@@ -18,6 +18,7 @@ from typing import Any
 from typing import Callable
 from typing import NamedTuple
 from typing import Optional
+from typing import Union
 
 from dataclasses import dataclass
 
@@ -57,7 +58,7 @@ class GaussNewton(base.IterativeSolver):
       iterations.
     implicit_diff_solve: the linear system solver to use.
     has_aux: whether ``residual_fun`` outputs auxiliary data or not.
-    verbose: whether to print error on every iteration or not.
+    verbose: whether to print information on every iteration or not.
     jit: whether to JIT-compile the bisection loop (default: True).
     unroll: whether to unroll the bisection loop (default: "auto").
   """
@@ -67,7 +68,7 @@ class GaussNewton(base.IterativeSolver):
   implicit_diff: bool = True
   implicit_diff_solve: Optional[Callable] = None
   has_aux: bool = False
-  verbose: bool = False
+  verbose: Union[bool, int] = False
   jit: bool = True
   unroll: base.AutoOrBoolean = "auto"
 
@@ -116,15 +117,22 @@ class GaussNewton(base.IterativeSolver):
 
     delta_params = linear_solve.solve_cg(matvec, gradient)
     params = tree_sub(params, delta_params)
+    value = 0.5 * jnp.sum(jnp.square(residual))
 
     state = GaussNewtonState(iter_num=state.iter_num + 1,
                              error=tree_l2_norm(delta_params),
                              residual=residual,
-                             value=0.5 * jnp.sum(jnp.square(residual)),
+                             value=value,
                              delta=delta_params,
                              gradient=gradient,
                              aux=aux)
 
+    if self.verbose:
+      self.log_info(
+          state,
+          error_name="Norm GN Update",
+          additional_info={"Objective Value": value}
+      )
     return base.OptStep(params=params, state=state)
 
   def __post_init__(self):

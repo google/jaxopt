@@ -18,6 +18,7 @@ from typing import Any
 from typing import Callable
 from typing import NamedTuple
 from typing import Optional
+from typing import Union
 
 from dataclasses import dataclass
 
@@ -56,7 +57,7 @@ class Bisection(base.IterativeSolver):
     check_bracket: whether to check correctness of the bracketing interval.
       If True, the method ``run`` cannot be jitted.
     implicit_diff_solve: the linear system solver to use.
-    verbose: whether to print error on every iteration or not.
+    verbose: whether to print information on every iteration or not.
     jit: whether to JIT-compile the bisection loop (default: True).
     unroll: whether to unroll the bisection loop (default: "auto").
 
@@ -67,7 +68,7 @@ class Bisection(base.IterativeSolver):
   maxiter: int = 30
   tol: float = 1e-5
   check_bracket: bool = True
-  verbose: bool = False
+  verbose: Union[bool, int] = False
   implicit_diff_solve: Optional[Callable] = None
   has_aux: bool = False
   jit: bool = True
@@ -151,6 +152,15 @@ class Bisection(base.IterativeSolver):
                            aux=aux,
                            num_fun_eval=state.num_fun_eval + 1)
 
+    if self.verbose:
+      self.log_info(
+          state,
+          error_name="Absolute Value Output", 
+          additional_info={
+              "High Point": high, 
+              "Low Point": low
+          }
+      )
     return base.OptStep(params=params, state=state)
 
   def run(self,

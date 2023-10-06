@@ -64,7 +64,7 @@ class BlockCoordinateDescent(base.IterativeSolver):
 
     maxiter: maximum number of proximal gradient descent iterations.
     tol: tolerance to use.
-    verbose: whether to print error on every iteration or not.
+    verbose: whether to print information on every iteration or not.
 
     implicit_diff: whether to enable implicit diff or autodiff of unrolled
       iterations.
@@ -77,7 +77,7 @@ class BlockCoordinateDescent(base.IterativeSolver):
   block_prox: Callable
   maxiter: int = 500
   tol: float = 1e-4
-  verbose: int = 0
+  verbose: Union[bool, int] = False
   implicit_diff: bool = True
   implicit_diff_solve: Optional[Callable] = None
   jit: bool = True
@@ -167,6 +167,11 @@ class BlockCoordinateDescent(base.IterativeSolver):
                          num_grad_eval=state.num_grad_eval + n_for,
                          num_prox_eval=state.num_prox_eval + n_for)
 
+    if self.verbose:
+      self.log_info(
+          state, 
+          error_name="Distance btw Iterates"
+      )
     return base.OptStep(params=params, state=state)
 
   def _fixed_point_fun(self, params, hyperparams_prox, *args, **kwargs):

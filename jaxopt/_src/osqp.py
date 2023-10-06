@@ -381,7 +381,9 @@ class BoxOSQP(base.IterativeSolver):
     tol: absolute tolerance for stoping criterion (default: 1e-3).
     termination_check_frequency: frequency of termination check. (default: 5).
       One every `termination_check_frequency` the error is computed.
-    verbose: If verbose=1, print error at each iteration. If verbose=2, also print stepsizes and primal/dual variables.
+    verbose: If verbose=1 or True, print error at each iteration. 
+      If verbose=2, also print stepsizes and primal/dual variables.
+      If verbose=3, also print primal and dual residuals.
     implicit_diff: whether to enable implicit diff or autodiff of unrolled iterations.
     implicit_diff_solve: the linear system solver to use.
     jit: whether to JIT-compile the optimization loop (default: True).
@@ -417,7 +419,7 @@ class BoxOSQP(base.IterativeSolver):
   maxiter: int = 4000
   tol: float = 1e-3
   termination_check_frequency: int = 5
-  verbose: int = 0
+  verbose: Union[bool, int] = False
   implicit_diff: bool = True
   implicit_diff_solve: Optional[Callable] = None
   jit: bool = True
@@ -554,7 +556,7 @@ class BoxOSQP(base.IterativeSolver):
 
     certif_dual_infeasible = jnp.logical_and(jnp.logical_and(certif_Q <= criterion, certif_c <= criterion), certif_A)
 
-    if self.verbose >= 2:
+    if int(self.verbose) >= 2:
       jax.debug.print("certif_Q: {certif_Q} certif_c: {certif_c} certif_A: {certif_A} "
                       "criterion: {criterion}, Adx: {Adx}, certif_l: {certif_l}, certif_u: {certif_u}",
                       certif_Q=certif_Q, certif_c=certif_c, certif_A=certif_A, criterion=criterion,
@@ -576,7 +578,7 @@ class BoxOSQP(base.IterativeSolver):
     certif_lu = tree_add(tree_vdot(bounded_l, dy_minus), tree_vdot(bounded_u, dy_plus))
     certif_primal_infeasible = jnp.logical_and(certif_A  <= criterion, certif_lu  <= criterion)
 
-    if self.verbose >= 2:
+    if int(self.verbose) >= 2:
       jax.debug.print("certif_A: {certif_A}, certif_lu: {certif_lu}, criterion: {criterion}",
                       certif_A=certif_A, certif_lu=certif_lu, criterion=criterion)
 
@@ -688,15 +690,15 @@ class BoxOSQP(base.IterativeSolver):
 
     # for active constraints (in particular equality constraints) high stepsize is better
     rho_bar = state.rho_bar
-    if self.verbose >= 2:
+    if int(self.verbose) >= 2:
       jax.debug.print("rho_bar: {rho_bar}", rho_bar=rho_bar)
 
     (x, z), y, solver_state = self._admm_step(params, Q, c, A, (l, u), rho_bar, state)
-    if self.verbose >= 3:
+    if int(self.verbose) >= 3:
       jax.debug.print("x: {x} z: {z} y: {y}", x=x, z=z, y=y)
 
     primal_residuals, dual_residuals = self._compute_residuals(Q, c, A, x, z, y)
-    if self.verbose >= 3:
+    if int(self.verbose) >= 3:
       jax.debug.print("primal_residuals: {primal_residuals}, dual_residuals: {dual_residuals}",
                       primal_residuals=primal_residuals, dual_residuals=dual_residuals)
 

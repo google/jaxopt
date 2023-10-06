@@ -195,7 +195,8 @@ class LBFGS(base.IterativeSolver):
     implicit_diff_solve: the linear system solver to use.
     jit: whether to JIT-compile the optimization loop (default: True).
     unroll: whether to unroll the optimization loop (default: "auto").
-    verbose: whether to print error on every iteration or not.
+    verbose: if set to True or 1 prints the information at each step of 
+      the solver, if set to 2, print also the information of the linesearch.
 
   References:
     Jorge Nocedal and Stephen Wright.
@@ -237,12 +238,10 @@ class LBFGS(base.IterativeSolver):
   jit: bool = True
   unroll: base.AutoOrBoolean = "auto"
 
-  verbose: bool = False
+  verbose: Union[bool, int] = False
 
   def _cond_fun(self, inputs):
     _, state = inputs[0]
-    if self.verbose:
-      jax.debug.print("Solver: LBFGS, Error: {error}", error=state.error)
     # We continue the optimization loop while the error tolerance is not met and,
     # either failed linesearch is disallowed or linesearch hasn't failed.
     return (state.error > self.tol) & jnp.logical_or(not self.stop_if_linesearch_fails, ~state.failed_linesearch)
@@ -405,6 +404,17 @@ class LBFGS(base.IterativeSolver):
                            num_fun_eval=new_num_fun_eval,
                            num_linesearch_iter=new_num_linesearch_iter)
 
+    if self.verbose:
+      self.log_info(
+          new_state,
+          error_name="Gradient Norm",
+          additional_info={
+              "Objective Value": new_value,
+              "Stepsize": new_stepsize,
+              "Number Linesearch Iterations": 
+              new_state.num_linesearch_iter - state.num_linesearch_iter
+          }
+      )
     return base.OptStep(params=new_params, state=new_state)
 
   def optimality_fun(self, params, *args, **kwargs):

@@ -16,7 +16,7 @@
 
 import warnings
 from dataclasses import dataclass
-from typing import Any, Callable, NamedTuple, Optional
+from typing import Any, Callable, NamedTuple, Optional, Union
 
 import jax
 import jax.numpy as jnp
@@ -99,7 +99,8 @@ class NonlinearCG(base.IterativeSolver):
     jit: whether to JIT-compile the optimization loop (default: True).
     unroll: whether to unroll the optimization loop (default: "auto").
 
-    verbose: whether to print error on every iteration or not.
+    verbose: if set to True or 1 prints the information at each step of 
+      the solver, if set to 2, print also the information of the linesearch.
 
   References:
     Jorge Nocedal and Stephen Wright.
@@ -135,7 +136,7 @@ class NonlinearCG(base.IterativeSolver):
   jit: bool = True
   unroll: base.AutoOrBoolean = "auto"
 
-  verbose: int = 0
+  verbose: Union[bool, int] = False
 
   def init_state(self,
                  init_params: Any,
@@ -269,6 +270,17 @@ class NonlinearCG(base.IterativeSolver):
                                  num_grad_eval=new_num_grad_eval,
                                  num_linesearch_iter=new_num_linesearch_iter)
 
+    if self.verbose:
+      self.log_info(
+          new_state,
+          error_name="Gradient Norm",
+          additional_info={
+              "Objective Value": new_value,
+              "Stepsize": new_stepsize,
+              "Number Linesearch Iterations": 
+              new_state.num_linesearch_iter - state.num_linesearch_iter
+          }
+      )
     return base.OptStep(params=new_params, state=new_state)
 
   def optimality_fun(self, params, *args, **kwargs):
@@ -302,7 +314,7 @@ class NonlinearCG(base.IterativeSolver):
         max_stepsize=self.max_stepsize,
         jit=self.jit,
         unroll=unroll,
-        verbose=self.verbose
+        verbose=int(self.verbose)-1
     )
 
     self.run_ls = linesearch_solver.run
