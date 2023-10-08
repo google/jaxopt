@@ -105,7 +105,7 @@ class AndersonState(NamedTuple):
   error: float
   params_history: Any
   residuals_history: Any
-  residual_gram: jnp.array
+  residual_gram: jnp.ndarray
   aux: Optional[Any] = None
 
   num_fun_eval: int = 0
@@ -135,11 +135,10 @@ class AndersonAcceleration(base.IterativeSolver):
       This additional data is not taken into account by the fixed point.
       The solver returns the `aux` associated to the last iterate (i.e the fixed point).
     verbose: whether to print error on every iteration or not.
-      Warning: verbose=True will automatically disable jit.
     implicit_diff: whether to enable implicit diff or autodiff of unrolled
       iterations.
     implicit_diff_solve: the linear system solver to use.
-    jit: whether to JIT-compile the optimization loop (default: "auto").
+    jit: whether to JIT-compile the optimization loop (default: True).
     unroll: whether to unroll the optimization loop (default: "auto")
 
   References:
@@ -158,7 +157,7 @@ class AndersonAcceleration(base.IterativeSolver):
   verbose: bool = False
   implicit_diff: bool = True
   implicit_diff_solve: Optional[Callable] = None
-  jit: base.AutoOrBoolean = "auto"
+  jit: bool = True
   unroll: base.AutoOrBoolean = "auto"
 
   def init_state(self,
@@ -255,6 +254,8 @@ class AndersonAcceleration(base.IterativeSolver):
     return tree_sub(next_params, params)
 
   def __post_init__(self):
+    super().__post_init__()
+
     if self.history_size < 2:
       raise ValueError("history_size should be greater or equal to 2.")
 

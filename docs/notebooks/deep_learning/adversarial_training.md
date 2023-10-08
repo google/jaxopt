@@ -5,7 +5,7 @@ jupytext:
     extension: .md
     format_name: myst
     format_version: 0.13
-    jupytext_version: 1.14.4
+    jupytext_version: 1.15.1
 kernelspec:
   display_name: Python 3
   language: python
@@ -65,7 +65,7 @@ import collections
 try:
     import jax.tools.colab_tpu
     jax.tools.colab_tpu.setup_tpu()
-except KeyError:
+except (KeyError, RuntimeError):
     print("TPU not found, continuing without it.")
 from flax import linen as nn
 import jax
@@ -80,6 +80,9 @@ plt.rcParams.update({'font.size': 22})
 import optax
 import tensorflow as tf
 import tensorflow_datasets as tfds
+# Hide any GPUs from TensorFlow. Otherwise TF might reserve memory and make
+# it unavailable to JAX.
+tf.config.experimental.set_visible_devices([], "GPU")
 ```
 
 Show on which platform JAX is running. The code below should take around 3 min to run on GPU but might take longer on CPUs.
@@ -147,9 +150,6 @@ class CNN(nn.Module):
 ```
 
 ```{code-cell} ipython3
-# Hide any GPUs from TensorFlow. Otherwise TF might reserve memory and make
-# it unavailable to JAX.
-tf.config.experimental.set_visible_devices([], "GPU")
 train_ds, ds_info = load_dataset("train", is_training=True,
                                  batch_size=FLAGS.train_batch_size)
 test_ds, _ = load_dataset("test", is_training=False,
@@ -226,9 +226,8 @@ solver = OptaxSolver(
 key = jax.random.PRNGKey(0)
 params = net.init(key, jnp.zeros(input_shape))["params"]
 
-state = solver.init_state(params)
+state = solver.init_state(params, FLAGS.l2reg, next(train_ds))
 start = datetime.datetime.now().replace(microsecond=0)
-jitted_update = jax.jit(solver.update)
 
 accuracy_train = []
 accuracy_test = []
@@ -243,7 +242,7 @@ for it in range(solver.maxiter):
   adversarial_images_train = pgd_attack(
       images, labels, params, epsilon=FLAGS.epsilon)
   # train on adversarial images
-  params, state = jitted_update(
+  params, state = solver.update(
       params=params,
       state=state,
       l2reg=FLAGS.l2reg,

@@ -21,6 +21,7 @@ jobs:
       - uses: "actions/setup-python@v4"
         with:
             python-version: "${{ matrix.python-version }}"
+            cache: 'pip'
       - name: Install dependencies
         run: |
           set -xe
@@ -35,6 +36,7 @@ jobs:
           python setup.py install
         shell: bash
       - name: Run tests
+        timeout-minutes: 60
         run: |
           set -xe
           python -VV
@@ -42,3 +44,30 @@ jobs:
           python -c "import jaxlib; print('jaxlib', jaxlib.__version__)"
           pytest tests
         shell: bash
+
+
+  build-and-test-docs:
+    name: "Build documentation"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cancel previous
+        uses: styfle/cancel-workflow-action@0.11.0
+        with:
+          access_token: ${{ github.token }}
+        if: ${{github.ref != 'refs/heads/main'}}
+      - uses: "actions/checkout@v3"
+      - name: Set up Python 3.11
+        uses: "actions/setup-python@v4"
+        with:
+            python-version: 3.11
+            cache: 'pip'
+      - name: Install dependencies
+        run: |
+          set -xe
+          pip install --upgrade pip setuptools wheel
+          pip install -r docs/requirements.txt
+      - name: Build documentation
+        run: |
+          set -xe
+          python -VV
+          cd docs && make clean && make html

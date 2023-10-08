@@ -29,6 +29,8 @@ import numpy as onp
 
 from sklearn import datasets
 
+# Uncomment this line to test in x64 
+# jax.config.update('jax_enable_x64', True)
 
 class LbfgsbTest(test_util.JaxoptTestCase):
 
@@ -262,7 +264,20 @@ class LbfgsbTest(test_util.JaxoptTestCase):
     res = grad_fn(0.5, jnp.array(0.0), (jnp.array(0.0), jnp.array(10.0)), data)
     self.assertEqual(res, data)
       
+  def test_linear_in_box(self):
+    # Fixing issue #492
+    def fun(x):
+      a, b = x
+      return -a
 
+    solver = LBFGSB(fun, maxiter=3)
+
+    b = 0.
+    init = jnp.array([-0.5, b])
+    upper = jnp.array([1.0, 1.0])
+    lower = jnp.array([-1.0, -1.0])
+    result = solver.run(init, bounds=(lower, upper))
+    self.assertArraysAllClose(result.params, jnp.array([1., b]))
 
 if __name__ == "__main__":
   absltest.main()

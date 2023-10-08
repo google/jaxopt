@@ -29,6 +29,7 @@ from typing import Any
 from typing import Callable
 from typing import NamedTuple
 from typing import Optional
+from typing import Union
 
 import jax
 import jax.numpy as jnp
@@ -36,7 +37,8 @@ import jax.numpy as jnp
 from jaxopt._src import base
 from jaxopt.tree_util import tree_add_scalar_mul
 from jaxopt.tree_util import tree_scalar_mul
-from jaxopt.tree_util import tree_vdot
+from jaxopt.tree_util import tree_vdot_real
+from jaxopt.tree_util import tree_conj
 
 
 def _failed_nan(value, grad):
@@ -64,6 +66,8 @@ class HagerZhangLineSearchState(NamedTuple):
 class HagerZhangLineSearch(base.IterativeLineSearch):
   """Hager-Zhang line search.
 
+  Supports complex variables.
+
   Attributes:
     fun: a function of the form ``fun(params, *args, **kwargs)``, where
       ``params`` are parameters of the model,
@@ -78,19 +82,18 @@ class HagerZhangLineSearch(base.IterativeLineSearch):
     c1: constant used by the Wolfe and Approximate Wolfe condition.
     c2: constant strictly less than 1 used by the Wolfe and Approximate Wolfe
       condition.
-    max_stepsize: upper bound on stepsize.
+    max_stepsize: upper bound on stepsize (unused).
 
     maxiter: maximum number of line search iterations.
     tol: tolerance of the stopping criterion.
 
-    verbose: whether to print error on every iteration or not. verbose=True will
-      automatically disable jit.
+    verbose: whether to print error on every iteration or not.
 
     jit: whether to JIT-compile the optimization loop (default: "auto").
     unroll: whether to unroll the optimization loop (default: "auto").
   """
   fun: Callable  # pylint:disable=g-bare-generic
-  value_and_grad: bool = False
+  value_and_grad: Union[bool, Callable] = False
   has_aux: bool = False
 
   maxiter: int = 30
@@ -101,7 +104,8 @@ class HagerZhangLineSearch(base.IterativeLineSearch):
   expansion_factor: float = 5.0
   shrinkage_factor: float = 0.66
   approximate_wolfe_threshold = 1e-6
-  max_stepsize: float = 1.0
+  # TODO(vroulet): remove max_stepsize argument as it is not used
+  max_stepsize: float = 1.0 
 
   verbose: int = 0
   jit: base.AutoOrBoolean = "auto"
@@ -109,11 +113,8 @@ class HagerZhangLineSearch(base.IterativeLineSearch):
 
   def _value_and_grad_on_line(self, x, c, descent_direction, *args, **kwargs):
     z = tree_add_scalar_mul(x, c, descent_direction)
-    if self.has_aux:
-      (value, _), grad = self._value_and_grad_fun(z, *args, **kwargs)
-    else:
-      value, grad = self._value_and_grad_fun(z, *args, **kwargs)
-    return value, tree_vdot(grad, descent_direction)
+    (value, _), grad = self._value_and_grad_fun_with_aux(z, *args, **kwargs)
+    return value, tree_vdot_real(tree_conj(grad), descent_direction)
 
   def _satisfies_wolfe_and_approx_wolfe(
       self,
@@ -124,7 +125,7 @@ class HagerZhangLineSearch(base.IterativeLineSearch):
       grad_initial,
       approx_wolfe_threshold_value,
       descent_direction):
-    gd_vdot = tree_vdot(grad_initial, descent_direction)
+    gd_vdot = tree_vdot_real(tree_conj(grad_initial), descent_direction)
 
     # Armijo condition
     # armijo = value_c <= value_initial + self.c1 * c * gd_vdot
@@ -373,12 +374,9 @@ class HagerZhangLineSearch(base.IterativeLineSearch):
     del init_stepsize
 
     if value is None or grad is None:
-      if self.has_aux:
-        (value, _), grad = self._value_and_grad_fun(
-            params, *fun_args, **fun_kwargs
-        )
-      else:
-        value, grad = self._value_and_grad_fun(params, *fun_args, **fun_kwargs)
+      (value, _), grad = self._value_and_grad_fun_with_aux(
+          params, *fun_args, **fun_kwargs
+      )
       num_fun_eval = 1
       num_grad_eval = 1
     else:
@@ -387,7 +385,7 @@ class HagerZhangLineSearch(base.IterativeLineSearch):
 
 
     if descent_direction is None:
-      descent_direction = tree_scalar_mul(-1, grad)
+      descent_direction = tree_scalar_mul(-1, tree_conj(grad))
 
     approx_wolfe_threshold_value = (
         value + self.approximate_wolfe_threshold * jnp.abs(value))
@@ -465,19 +463,17 @@ class HagerZhangLineSearch(base.IterativeLineSearch):
     Returns:
       (params, state)
     """
-
+    new_num_fun_eval = state.num_fun_eval
+    new_num_grad_eval = state.num_grad_eval
     if value is None or grad is None:
-      if self.has_aux:
-        (value, _), grad = self._value_and_grad_fun(
-            params, *fun_args, **fun_kwargs
-        )
-      else:
-        value, grad = self._value_and_grad_fun(params, *fun_args, **fun_kwargs)
-    new_num_fun_eval = state.num_fun_eval + 1
-    new_num_grad_eval = state.num_grad_eval + 1
+      (value, _), grad = self._value_and_grad_fun_with_aux(
+          params, *fun_args, **fun_kwargs
+      )
+      new_num_fun_eval = new_num_fun_eval + 1
+      new_num_grad_eval = new_num_grad_eval + 1
 
     if descent_direction is None:
-      descent_direction = tree_scalar_mul(-1, grad)
+      descent_direction = tree_scalar_mul(-1, tree_conj(grad))
 
     approx_wolfe_threshold_value = (
         value + self.approximate_wolfe_threshold * jnp.abs(value))
@@ -526,13 +522,9 @@ class HagerZhangLineSearch(base.IterativeLineSearch):
 
     new_stepsize = jnp.where(state.done, stepsize, best_point)
     new_params = tree_add_scalar_mul(params, best_point, descent_direction)
-    if self.has_aux:
-      (new_value, new_aux), new_grad = self._value_and_grad_fun(
-          new_params, *fun_args, **fun_kwargs)
-    else:
-      new_value, new_grad = self._value_and_grad_fun(
-          new_params, *fun_args, **fun_kwargs)
-      new_aux = None
+    (new_value, new_aux), new_grad = self._value_and_grad_fun_with_aux(
+        new_params, *fun_args, **fun_kwargs
+    )
     new_num_fun_eval += 1
     new_num_grad_eval += 1
 
@@ -565,9 +557,4 @@ class HagerZhangLineSearch(base.IterativeLineSearch):
     return base.LineSearchStep(stepsize=new_stepsize, state=new_state)
 
   def __post_init__(self):
-    if self.value_and_grad:
-      self._value_and_grad_fun = self.fun
-    else:
-      self._value_and_grad_fun = jax.value_and_grad(
-          self.fun, has_aux=self.has_aux
-      )
+    _, _, self._value_and_grad_fun_with_aux = base._make_funs_with_aux(self.fun, self.value_and_grad, self.has_aux)

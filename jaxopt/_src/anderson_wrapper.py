@@ -49,7 +49,7 @@ class AndersonWrapperState(NamedTuple):
   error: float
   params_history: Any
   residuals_history: Any
-  residual_gram: jnp.array
+  residual_gram: jnp.ndarray
 
 
 @dataclass(eq=False)
@@ -69,11 +69,10 @@ class AndersonWrapper(base.IterativeSolver):
     ridge: ridge regularization in solver.
       Consider increasing this value if the solver returns ``NaN``.
     verbose: whether to print error on every iteration or not.
-      Warning: verbose=True will automatically disable jit.
     implicit_diff: whether to enable implicit diff or autodiff of unrolled
       iterations.
     implicit_diff_solve: the linear system solver to use.
-    jit: whether to JIT-compile the optimization loop (default: "auto").
+    jit: whether to JIT-compile the optimization loop (default: True).
     unroll: whether to unroll the optimization loop (default: "auto")
   """
   solver: base.IterativeSolver
@@ -84,7 +83,7 @@ class AndersonWrapper(base.IterativeSolver):
   verbose: bool = False
   implicit_diff: bool = True
   implicit_diff_solve: Optional[Callable] = None
-  jit: base.AutoOrBoolean = "auto"
+  jit: bool = True
   unroll: base.AutoOrBoolean = "auto"
 
   def init_state(self, init_params, *args, **kwargs) -> AndersonWrapperState:
@@ -169,6 +168,8 @@ class AndersonWrapper(base.IterativeSolver):
     return self.solver.optimality_fun(params, *args, **kwargs)
 
   def __post_init__(self):
+    super().__post_init__()
+
     self.maxiter = self.solver.maxiter
     self.tol = self.solver.tol
 

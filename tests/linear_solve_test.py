@@ -78,8 +78,10 @@ class LinearSolveTest(test_util.JaxoptTestCase):
     x = linear_solve.solve_lu(matvec, b)
     x2 = jax.numpy.linalg.solve(A, b)
     x3 = linear_solve.solve_iterative_refinement(matvec, b)
+    x4 = linear_solve.solve_qr(matvec, b)
     self.assertArraysAllClose(x, x2)
     self.assertArraysAllClose(x, x3)
+    self.assertArraysAllClose(x, x4, atol=1e-4)
 
     # Tensor case.
     A = rng.randn(5, 3, 5, 3)
@@ -104,8 +106,10 @@ class LinearSolveTest(test_util.JaxoptTestCase):
     x = linear_solve.solve_cholesky(matvec, b)
     x2 = jax.numpy.linalg.solve(A, b)
     x3 = linear_solve.solve_inv(matvec, b)
+    x4 = linear_solve.solve_qr(matvec, b)
     self.assertArraysAllClose(x, x2, atol=1e-2)
     self.assertArraysAllClose(x, x3, atol=1e-2)
+    self.assertArraysAllClose(x, x4, atol=1e-2)
 
   def test_solve_sparse(self):
     rng = onp.random.RandomState(0)
@@ -122,10 +126,13 @@ class LinearSolveTest(test_util.JaxoptTestCase):
     x3 = linear_solve.solve_gmres(matvec, b)
     x4 = linear_solve.solve_bicgstab(matvec, b)
     x5 = linear_solve.solve_iterative_refinement(matvec, b)
+    x6 = linear_solve.solve_qr(matvec, b)
+    
     self.assertArraysAllClose(x, x2, atol=1e-4)
     self.assertArraysAllClose(x, x3, atol=1e-4)
     self.assertArraysAllClose(x, x4, atol=1e-4)
     self.assertArraysAllClose(x, x5, atol=1e-4)
+    self.assertArraysAllClose(x, x6, atol=1e-4)
 
   def test_solve_sparse_ridge(self):
     rng = onp.random.RandomState(0)

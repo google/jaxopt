@@ -53,7 +53,7 @@ def armijo_line_search(fun_with_aux, unroll, jit,
 
   Args:
     fun_with_aux: function to minimize.
-    jit: whether to JIT-compile the line search loop (default: "auto").
+    jit: whether to JIT-compile the line search loop.
     unroll: whether to unroll the line search loop (default: "auto").
     goldstein: boolean, whether to use Goldstein or not.
     maxls: maximum number of steps.
@@ -191,14 +191,13 @@ class ArmijoSGD(base.StochasticSolver):
     maxiter: maximum number of solver iterations.
     maxls: maximum number of steps in line search.
     tol: tolerance to use.
-    verbose: whether to print error on every iteration or not. verbose=True will
-      automatically disable jit.
+    verbose: whether to print error on every iteration or not.
 
     implicit_diff: whether to enable implicit diff or autodiff of unrolled
       iterations.
     implicit_diff_solve: the linear system solver to use.
 
-    jit: whether to JIT-compile the optimization loop (default: "auto").
+    jit: whether to JIT-compile the optimization loop (default: True).
     unroll: whether to unroll the optimization loop (default: "auto").
 
   References:
@@ -230,7 +229,7 @@ class ArmijoSGD(base.StochasticSolver):
   implicit_diff: bool = False
   implicit_diff_solve: Optional[Callable] = None
 
-  jit: base.AutoOrBoolean = "auto"
+  jit: bool = True
   unroll: base.AutoOrBoolean = "auto"
 
   def init_state(self, init_params, *args, **kwargs) -> ArmijoState:
@@ -248,11 +247,7 @@ class ArmijoSGD(base.StochasticSolver):
     else:
       velocity = tree_zeros_like(init_params)
 
-    if self.has_aux:
-      value, aux = self.fun(init_params, *args, **kwargs)
-    else:
-      value = self.fun(init_params, *args, **kwargs)
-      aux = None
+    value, aux = self._fun_with_aux(init_params, *args, **kwargs)
 
     params_dtype = tree_single_dtype(init_params)
 
@@ -334,6 +329,8 @@ class ArmijoSGD(base.StochasticSolver):
     return self._value_and_grad_fun(params, *args, **kwargs)[1]
 
   def __post_init__(self):
+    super().__post_init__()
+
     options = ['increase', 'goldstein', 'conservative']
     if self.reset_option not in options:
       raise ValueError(f"'reset_option' should be one of {options}")
@@ -342,17 +339,18 @@ class ArmijoSGD(base.StochasticSolver):
 
     self._coef = 1 - self.aggressiveness
 
-    fun_with_aux, _, self._value_and_grad_with_aux = \
+    self._fun_with_aux, _, self._value_and_grad_with_aux = \
       base._make_funs_with_aux(fun=self.fun,
                                value_and_grad=self.value_and_grad,
                                has_aux=self.has_aux)
 
     self.reference_signature = self.fun
 
-    jit, unroll = self._get_loop_options()
+    unroll = self._get_unroll_option()
 
-    armijo_with_fun = partial(armijo_line_search, fun_with_aux, unroll, jit)
-    if jit:
+    armijo_with_fun = partial(armijo_line_search, self._fun_with_aux, unroll,
+                              self.jit)
+    if self.jit:
       jitted_armijo = jax.jit(armijo_with_fun, static_argnums=(0,1))
       self._armijo_line_search = jitted_armijo
     else:

@@ -26,13 +26,15 @@ from jaxopt._src import base
 from jaxopt._src.linesearch_util import _init_stepsize
 from jaxopt._src.linesearch_util import _setup_linesearch
 from jaxopt._src.tree_util import tree_single_dtype
+from jaxopt._src.tree_util import get_real_dtype
 from jaxopt.tree_util import tree_add_scalar_mul
+from jaxopt.tree_util import tree_conj
 from jaxopt.tree_util import tree_l2_norm
 from jaxopt.tree_util import tree_map
 from jaxopt.tree_util import tree_scalar_mul
 from jaxopt.tree_util import tree_sub
 from jaxopt.tree_util import tree_sum
-from jaxopt.tree_util import tree_vdot
+from jaxopt.tree_util import tree_vdot_real
 
 
 def select_ith_tree(tree_history, i):
@@ -47,7 +49,7 @@ def inv_hessian_product(pytree: Any,
                         start: int = 0):
   """Product between an approximate Hessian inverse and a pytree.
 
-  Histories are pytrees of the same structure as `pytree` except 
+  Histories are pytrees of the same structure as `pytree` except
   that the leaves are arrays of shape `(history_size, ...)`, where
   `...` means the same shape as `pytree`'s leaves.
 
@@ -79,7 +81,7 @@ def inv_hessian_product(pytree: Any,
 
   def body_right(r, i):
     si, yi = select_ith_tree(s_history, i), select_ith_tree(y_history, i)
-    alpha = rho_history[i] * tree_vdot(si, r)
+    alpha = rho_history[i] * tree_vdot_real(si, r)
     r = tree_add_scalar_mul(r, -alpha, yi)
     return r, alpha
   r, alpha = jax.lax.scan(body_right, pytree, indices, reverse=True)
@@ -89,7 +91,7 @@ def inv_hessian_product(pytree: Any,
   def body_left(r, args):
     i, alpha = args
     si, yi = select_ith_tree(s_history, i), select_ith_tree(y_history, i)
-    beta = rho_history[i] * tree_vdot(yi, r)
+    beta = rho_history[i] * tree_vdot_real(yi, r)
     r = tree_add_scalar_mul(r, alpha - beta, si)
     return r, beta
   r, _ = jax.lax.scan(body_left, r, (indices, alpha))
@@ -104,10 +106,10 @@ def compute_gamma(s_history: Any, y_history: Any, last: int):
   # See Numerical Optimization, second edition, equation (7.20).
   # Note that unlike BFGS, the initialization can change on every iteration.
 
-  fun = lambda s_history, y_history: tree_vdot(y_history[last], s_history[last])
+  fun = lambda s_history, y_history: tree_vdot_real(y_history[last], s_history[last])
   num = tree_sum(tree_map(fun, s_history, y_history))
 
-  fun = lambda y_history: tree_vdot(y_history[last], y_history[last])
+  fun = lambda y_history: tree_vdot_real(y_history[last], y_history[last])
   denom = tree_sum(tree_map(fun, y_history))
 
   return jnp.where(denom > 0, num / denom, 1.0)
@@ -145,6 +147,8 @@ class LbfgsState(NamedTuple):
 class LBFGS(base.IterativeSolver):
   """LBFGS solver.
 
+  Supports complex variables, see second reference.
+
   Attributes:
     fun: a smooth function of the form ``fun(x, *args, **kwargs)``.
     value_and_grad: whether ``fun`` just returns the value (False) or both the
@@ -180,7 +184,7 @@ class LBFGS(base.IterativeSolver):
     increase_factor: factor by which to increase the stepsize during line search
       (default: 1.5).
     max_stepsize: upper bound on stepsize.
-    min_stepsize: lower bound on stepsize.
+    min_stepsize: lower bound on stepsize guess at start of each linesearch run.
     history_size: size of the memory to use.
     use_gamma: whether to initialize the inverse Hessian approximation with
       gamma * I, where gamma is chosen following equation (7.20) of 'Numerical
@@ -189,15 +193,18 @@ class LBFGS(base.IterativeSolver):
     implicit_diff: whether to enable implicit diff or autodiff of unrolled
       iterations.
     implicit_diff_solve: the linear system solver to use.
-    jit: whether to JIT-compile the optimization loop (default: "auto").
+    jit: whether to JIT-compile the optimization loop (default: True).
     unroll: whether to unroll the optimization loop (default: "auto").
     verbose: whether to print error on every iteration or not.
-      Warning: verbose=True will automatically disable jit.
 
-  Reference:
+  References:
     Jorge Nocedal and Stephen Wright.
     Numerical Optimization, second edition.
     Algorithm 7.5 (page 179).
+
+    Laurent Sorber, Marc van Barel, and Lieven de Lathauwer.
+    Unconstrained Optimization of Real Functions in Complex Variables.
+    SIAM J. Optim., Vol. 22, No. 3, pp. 879-898
   """
 
   fun: Callable
@@ -205,6 +212,8 @@ class LBFGS(base.IterativeSolver):
   has_aux: bool = False
 
   maxiter: int = 500
+  # FIXME: should depend on whether float32 or float64 is used.
+  # Tests should pass in float64 without modifying tol
   tol: float = 1e-3
 
   stepsize: Union[float, Callable] = 0.0
@@ -212,7 +221,7 @@ class LBFGS(base.IterativeSolver):
   linesearch_init: str = "increase"
   stop_if_linesearch_fails: bool = False
   condition: Any = None  # deprecated in v0.8
-  maxls: int = 15
+  maxls: int = 30
   decrease_factor: Any = None  # deprecated in v0.8
   increase_factor: float = 1.5
   max_stepsize: float = 1.0
@@ -225,7 +234,7 @@ class LBFGS(base.IterativeSolver):
   implicit_diff: bool = True
   implicit_diff_solve: Optional[Callable] = None
 
-  jit: base.AutoOrBoolean = "auto"
+  jit: bool = True
   unroll: base.AutoOrBoolean = "auto"
 
   verbose: bool = False
@@ -233,7 +242,7 @@ class LBFGS(base.IterativeSolver):
   def _cond_fun(self, inputs):
     _, state = inputs[0]
     if self.verbose:
-      print(self.__class__.__name__ + " error:", state.error)
+      jax.debug.print("Solver: LBFGS, Error: {error}", error=state.error)
     # We continue the optimization loop while the error tolerance is not met and,
     # either failed linesearch is disallowed or linesearch hasn't failed.
     return (state.error > self.tol) & jnp.logical_or(not self.stop_if_linesearch_fails, ~state.failed_linesearch)
@@ -263,21 +272,21 @@ class LBFGS(base.IterativeSolver):
         stepsize=init_params.state.stepsize,
       )
       init_params = init_params.params
-      dtype = tree_single_dtype(init_params)
+      realdtype = get_real_dtype(tree_single_dtype(init_params))
     else:
-      dtype = tree_single_dtype(init_params)
+      realdtype = get_real_dtype(tree_single_dtype(init_params))
       state_kwargs = dict(
           s_history=init_history(init_params, self.history_size),
           y_history=init_history(init_params, self.history_size),
-          rho_history=jnp.zeros(self.history_size, dtype=dtype),
-          gamma=jnp.asarray(1.0, dtype=dtype),
+          rho_history=jnp.zeros(self.history_size, dtype=realdtype),
+          gamma=jnp.asarray(1.0, dtype=realdtype),
           iter_num=jnp.asarray(0),
-          stepsize=jnp.asarray(self.max_stepsize, dtype=dtype),
+          stepsize=jnp.asarray(self.max_stepsize, dtype=realdtype),
       )
     (value, aux), grad = self._value_and_grad_with_aux(init_params, *args, **kwargs)
     return LbfgsState(value=value,
                       grad=grad,
-                      error=jnp.asarray(jnp.inf, dtype=dtype),
+                      error=jnp.asarray(jnp.inf, dtype=realdtype),
                       **state_kwargs,
                       aux=aux,
                       failed_linesearch=jnp.asarray(False),
@@ -304,9 +313,11 @@ class LBFGS(base.IterativeSolver):
     if isinstance(params, base.OptStep):
       params = params.params
 
+    realdtype = state.rho_history.dtype  # avoid recomputation, take realdtype from initialized state
+
     start = state.iter_num % self.history_size
     value, grad = (state.value, state.grad)
-    descent_direction = tree_scalar_mul(-1.0, grad)
+    descent_direction = tree_scalar_mul(-1.0, tree_conj(grad))
     s_history = state.s_history
     y_history = state.y_history
     rho_history = state.rho_history
@@ -364,8 +375,8 @@ class LBFGS(base.IterativeSolver):
       new_num_linesearch_iter = state.num_linesearch_iter
       failed_linesearch = jnp.asarray(False)
     s = tree_sub(new_params, params)
-    y = tree_sub(new_grad, grad)
-    vdot_sy = tree_vdot(s, y)
+    y = tree_conj(tree_sub(new_grad, grad))
+    vdot_sy = tree_vdot_real(s, y)
     rho = jnp.where(vdot_sy == 0, 0, 1. / vdot_sy)
 
     if self.history_size:
@@ -376,15 +387,14 @@ class LBFGS(base.IterativeSolver):
     if self.history_size and self.use_gamma:
       gamma = compute_gamma(s_history, y_history, start)
     else:
-      gamma = jnp.array(1.0)
+      gamma = jnp.array(1.0, dtype=realdtype)
 
-    dtype = tree_single_dtype(params)
     error = tree_l2_norm(new_grad)
     new_state = LbfgsState(iter_num=state.iter_num + 1,
                            value=new_value,
                            grad=new_grad,
-                           stepsize=jnp.asarray(new_stepsize),
-                           error=jnp.asarray(error, dtype=dtype),
+                           stepsize=jnp.asarray(new_stepsize, dtype=realdtype),
+                           error=jnp.asarray(error, dtype=realdtype),
                            s_history=s_history,
                            y_history=y_history,
                            rho_history=rho_history,
@@ -411,23 +421,25 @@ class LBFGS(base.IterativeSolver):
     return value, grad
 
   def __post_init__(self):
-    _, _, self._value_and_grad_with_aux = \
+    super().__post_init__()
+
+    _fun_with_aux, _, self._value_and_grad_with_aux = \
       base._make_funs_with_aux(fun=self.fun,
                                value_and_grad=self.value_and_grad,
                                has_aux=self.has_aux)
 
     self.reference_signature = self.fun
 
-    jit, unroll = self._get_loop_options()
+    unroll = self._get_unroll_option()
 
     self.linesearch_solver = _setup_linesearch(
         linesearch=self.linesearch,
-        fun=self._value_and_grad_with_aux,
-        value_and_grad=True,
+        fun=_fun_with_aux,
+        value_and_grad=self._value_and_grad_with_aux,
         has_aux=True,
         maxlsiter=self.maxls,
         max_stepsize=self.max_stepsize,
-        jit=jit,
+        jit=self.jit,
         unroll=unroll,
         verbose=self.verbose,
     )

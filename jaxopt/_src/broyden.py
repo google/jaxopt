@@ -165,7 +165,7 @@ class Broyden(base.IterativeSolver):
     increase_factor: factor by which to increase the stepsize during line search
       (default: 1.5).
     max_stepsize: upper bound on stepsize.
-    min_stepsize: lower bound on stepsize.
+    min_stepsize: lower bound on stepsize guess at start of the linesearch run.
 
     history_size: size of the memory to use.
     gamma: the initialization of the inverse Jacobian is going to be gamma * I.
@@ -174,7 +174,7 @@ class Broyden(base.IterativeSolver):
       iterations.
     implicit_diff_solve: the linear system solver to use.
 
-    jit: whether to JIT-compile the optimization loop (default: "auto").
+    jit: whether to JIT-compile the optimization loop (default: True).
     unroll: whether to unroll the optimization loop (default: "auto").
 
     verbose: whether to print error on every iteration or not.
@@ -210,7 +210,7 @@ class Broyden(base.IterativeSolver):
   implicit_diff: bool = True
   implicit_diff_solve: Optional[Callable] = None
 
-  jit: base.AutoOrBoolean = "auto"
+  jit: bool = True
   unroll: base.AutoOrBoolean = "auto"
 
   verbose: bool = False
@@ -218,7 +218,7 @@ class Broyden(base.IterativeSolver):
   def _cond_fun(self, inputs):
     _, state = inputs[0]
     if self.verbose:
-      print("error:", state.error)
+      jax.debug.print("Solver: Broyden, Error: {error}", error=state.error)
     # We continue the optimization loop while the error tolerance is not met and,
     # either failed linesearch is disallowed or linesearch hasn't failed.
     return (state.error > self.tol) & jnp.logical_or(not self.stop_if_linesearch_fails, ~state.failed_linesearch)
@@ -416,6 +416,8 @@ class Broyden(base.IterativeSolver):
     return value
 
   def __post_init__(self):
+    super().__post_init__()
+
     if self.has_aux:
       fun_ = self.fun
     else:

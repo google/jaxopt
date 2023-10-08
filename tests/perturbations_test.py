@@ -24,14 +24,14 @@ from jaxopt._src import test_util
 from jaxopt import loss
 
 
-def one_hot_argmax(inputs: jnp.array) -> jnp.array:
+def one_hot_argmax(inputs: jnp.ndarray) -> jnp.ndarray:
   """An argmax one-hot function for arbitrary shapes."""
   inputs_flat = jnp.reshape(inputs, (-1))
   flat_one_hot = jax.nn.one_hot(jnp.argmax(inputs_flat), inputs_flat.shape[0])
   return jnp.reshape(flat_one_hot, inputs.shape)
 
 
-def ranks(inputs: jnp.array) -> jnp.array:
+def ranks(inputs: jnp.ndarray) -> jnp.ndarray:
   return jnp.argsort(jnp.argsort(inputs, axis=-1), axis=-1)
 
 
@@ -782,7 +782,6 @@ class PerturbationsAnyDimTest(test_util.JaxoptTestCase):
     grad_scalar = grad_scalar_fun(pert_ranks, rngs[1])
     grad_compose = grad_pert_ranks @ jac_pert_ranks
     self.assertArraysAllClose(grad_scalar, grad_compose)
-
 
 
 if __name__ == '__main__':

@@ -62,14 +62,15 @@ class ProjectedGradient(base.IterativeSolver):
 
     acceleration: whether to use acceleration (also known as FISTA) or not.
     verbose: whether to print error on every iteration or not.
-      Warning: verbose=True will automatically disable jit.
 
     implicit_diff: whether to enable implicit diff or autodiff of unrolled
       iterations.
     implicit_diff_solve: the linear system solver to use.
+
     has_aux: whether function fun outputs one (False) or more values (True).
       When True it will be assumed by default that fun(...)[0] is the objective.
-    jit: whether to JIT-compile the optimization loop (default: "auto").
+
+    jit: whether to JIT-compile the optimization loop (default: True).
     unroll: whether to unroll the optimization loop (default: "auto").
   """
   fun: Callable
@@ -89,7 +90,7 @@ class ProjectedGradient(base.IterativeSolver):
   implicit_diff: bool = True
   implicit_diff_solve: Optional[Callable] = None
 
-  jit: base.AutoOrBoolean = "auto"
+  jit: bool = True
   unroll: base.AutoOrBoolean = "auto"
 
   def init_state(self,
@@ -140,6 +141,8 @@ class ProjectedGradient(base.IterativeSolver):
     return self._pg.optimality_fun(sol, hyperparams_proj, *args, **kwargs)
 
   def __post_init__(self):
+    super().__post_init__()
+
     prox_fun = prox.make_prox_from_projection(self.projection)
 
     self._pg = ProximalGradient(fun=self.fun,

@@ -11,6 +11,8 @@ Deep learning
 
 .. raw:: html
 
+    <div class="sphx-glr-thumbnails">
+    
     <div class="sphx-glr-thumbcontainer" tooltip="Resnet example with Flax and JAXopt.">
 
 .. only:: html
@@ -24,9 +26,18 @@ Deep learning
 
     </div>
 
+    <div class="sphx-glr-thumbcontainer" tooltip="Resnet example with Haiku and JAXopt.">
 
+.. only:: html
+
+ .. figure:: /notebooks/deep_learning/thumbnails/resnet_haiku.png
+     :alt: Resnet example with Haiku and JAXopt.
+
+     :doc:`/notebooks/deep_learning/resnet_haiku`
 
 .. raw:: html
+
+    </div>
 
     <div class="sphx-glr-thumbcontainer" tooltip="Adversarial training with JAXopt.">
 
@@ -41,16 +52,18 @@ Deep learning
 
     </div>
 
+    </div><!-- end sphx-glr-thumbnails -->
 
-.. raw:: html
 
-    <div class="sphx-glr-clear"></div>
+
 
 Implicit Differentiation
 ------------------------
 
 
 .. raw:: html
+
+    <div class="sphx-glr-thumbnails">
 
     <div class="sphx-glr-thumbcontainer" tooltip="Bi-level dataset distillation with JAXopt.">
 
@@ -64,7 +77,6 @@ Implicit Differentiation
 .. raw:: html
 
     </div>
-
 
 
 .. raw:: html
@@ -82,6 +94,8 @@ Implicit Differentiation
 
     </div>
 
+    </div><!-- end sphx-glr-thumbnails -->
+
 
 
 Distributed Optimization
@@ -89,6 +103,8 @@ Distributed Optimization
 
 
 .. raw:: html
+
+    <div class="sphx-glr-thumbnails">
 
     <div class="sphx-glr-thumbcontainer" tooltip="Distributed Optimization with JAXopt.">
 
@@ -102,7 +118,6 @@ Distributed Optimization
 .. raw:: html
 
     </div>
-
 
 
 .. raw:: html
@@ -121,12 +136,16 @@ Distributed Optimization
 
     </div>
 
+    </div><!-- end sphx-glr-thumbnails -->
+
 
 Perturbed optimizers
 --------------------
 
 
 .. raw:: html
+
+    <div class="sphx-glr-thumbnails">
 
     <div class="sphx-glr-thumbcontainer" tooltip="Perturbed optimizers with JAXopt.">
 
@@ -140,3 +159,6 @@ Perturbed optimizers
 .. raw:: html
 
     </div>
+
+    </div><!-- end sphx-glr-thumbnails -->
+

@@ -148,17 +148,13 @@ def main(argv):
     ds_iterator = iter(train_ds)
     state = opt.init_state(params, data=next(ds_iterator))
 
-    @jax.jit
-    def jitted_update(params, state, batch):
-      return opt.update(params, state, batch)
-
     value_and_grad_loss = jax.value_and_grad(loss_fun)
     errors, steps, losses = [], [], []
 
     start = timer()
     for iter_num, batch in zip(range(opt.maxiter+1), ds_iterator):
       loss, _ = value_and_grad_loss(params, data=batch)
-      params, state = jitted_update(params, state, batch)
+      params, state = opt.update(params, state, batch)
       if "Armijo" in name or "Polyak" in name:
         steps.append(state.stepsize)
       errors.append(state.error)

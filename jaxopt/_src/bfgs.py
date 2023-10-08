@@ -101,14 +101,13 @@ class BFGS(base.IterativeSolver):
     increase_factor: factor by which to increase the stepsize during line search
       (default: 1.5).
     max_stepsize: upper bound on stepsize.
-    min_stepsize: lower bound on stepsize.
+    min_stepsize: lower bound on stepsize guess at start of the linesearch run.
     implicit_diff: whether to enable implicit diff or autodiff of unrolled
       iterations.
     implicit_diff_solve: the linear system solver to use.
-    jit: whether to JIT-compile the optimization loop (default: "auto").
+    jit: whether to JIT-compile the optimization loop (default: True).
     unroll: whether to unroll the optimization loop (default: "auto").
     verbose: whether to print error on every iteration or not.
-      Warning: verbose=True will automatically disable jit.
 
   Reference:
     Jorge Nocedal and Stephen Wright.
@@ -121,13 +120,15 @@ class BFGS(base.IterativeSolver):
   has_aux: bool = False
 
   maxiter: int = 500
+  # FIXME: should depend on whether float32 or float64 is used.
+  # Tests should pass in float64 without modifying tol
   tol: float = 1e-3
 
   stepsize: Union[float, Callable] = 0.0
   linesearch: str = "zoom"
   linesearch_init: str = "increase"
   condition: Any = None  # deprecated in v0.8
-  maxls: int = 15
+  maxls: int = 30
   decrease_factor: Any = None  # deprecated in v0.8
   increase_factor: float = 1.5
   max_stepsize: float = 1.0
@@ -137,7 +138,7 @@ class BFGS(base.IterativeSolver):
   implicit_diff: bool = True
   implicit_diff_solve: Optional[Callable] = None
 
-  jit: base.AutoOrBoolean = "auto"
+  jit: bool = True
   unroll: base.AutoOrBoolean = "auto"
 
   verbose: bool = False
@@ -270,21 +271,23 @@ class BFGS(base.IterativeSolver):
     return value, grad
 
   def __post_init__(self):
-    _, _, self._value_and_grad_with_aux = \
+    super().__post_init__()
+
+    _fun_with_aux, _, self._value_and_grad_with_aux = \
       base._make_funs_with_aux(fun=self.fun,
                                value_and_grad=self.value_and_grad,
                                has_aux=self.has_aux)
 
     self.reference_signature = self.fun
-    jit, unroll = self._get_loop_options()
+    unroll = self._get_unroll_option()
     self.linesearch_solver = _setup_linesearch(
         linesearch=self.linesearch,
-        fun=self._value_and_grad_with_aux,
-        value_and_grad=True,
+        fun=_fun_with_aux,
+        value_and_grad=self._value_and_grad_with_aux,
         has_aux=True,
         maxlsiter=self.maxls,
         max_stepsize=self.max_stepsize,
-        jit=jit,
+        jit=self.jit,
         unroll=unroll,
         verbose=self.verbose,
     )

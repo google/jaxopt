@@ -163,6 +163,7 @@ def _find_cauchy_point(
 
   i, df, ddf, mask_sorted, c, p = jax.lax.while_loop(_cond, _body, init_state)
   dt_min = jnp.maximum(-df / ddf, jnp.zeros([], dtype=m.dtype))
+  dt_min = jnp.where(jnp.isnan(dt_min), jnp.zeros([], dtype=m.dtype), dt_min)
   t_old = (
       jax.lax.cond(
           i > 0, lambda: t_sorted[i - 1], lambda: jnp.zeros([], dtype=m.dtype)
@@ -261,7 +262,7 @@ class LBFGSB(base.IterativeSolver):
     increase_factor: factor by which to increase the stepsize during line search
       (default: 1.5).
     max_stepsize: upper bound on stepsize.
-    min_stepsize: lower bound on stepsize.
+    min_stepsize: lower bound on stepsize guess at start of each linesearch run.
     history_size: size of the memory to use.
     use_gamma: whether to initialize the Hessian approximation with gamma *
       theta, where gamma is chosen following equation (7.20) of 'Numerical
@@ -270,7 +271,7 @@ class LBFGSB(base.IterativeSolver):
     implicit_diff: whether to enable implicit diff or autodiff of unrolled
       iterations.
     implicit_diff_solve: the linear system solver to use.
-    jit: whether to JIT-compile the optimization loop (default: "auto").
+    jit: whether to JIT-compile the optimization loop (default: True).
     unroll: whether to unroll the optimization loop (default: "auto").
     verbose: whether to print error on every iteration or not.
       Warning: verbose=True will automatically disable jit.
@@ -288,7 +289,7 @@ class LBFGSB(base.IterativeSolver):
   linesearch_init: str = "increase"
   stop_if_linesearch_fails: bool = False
   condition: Any = None  # deprecated in v0.8
-  maxls: int = 20
+  maxls: int = 30
   decrease_factor: Any = None  # deprecated in v0.8
   increase_factor: float = 1.5
   max_stepsize: float = 1.0
@@ -302,7 +303,7 @@ class LBFGSB(base.IterativeSolver):
   implicit_diff: bool = True
   implicit_diff_solve: Optional[Callable[[Any], Any]] = None
 
-  jit: base.AutoOrBoolean = "auto"
+  jit: bool = True
   unroll: base.AutoOrBoolean = "auto"
 
   verbose: bool = False
@@ -580,7 +581,9 @@ class LBFGSB(base.IterativeSolver):
     return self._value_and_grad_fun(params, *args, **kwargs)[1]
 
   def __post_init__(self):
-    _, _, self._value_and_grad_with_aux = base._make_funs_with_aux(
+    super().__post_init__()
+
+    _fun_with_aux, _, self._value_and_grad_with_aux = base._make_funs_with_aux(
         fun=self.fun,
         value_and_grad=self.value_and_grad,
         has_aux=self.has_aux,
@@ -596,15 +599,15 @@ class LBFGSB(base.IterativeSolver):
     self.reference_signature = inspect.Signature(parameters)
 
 
-    jit, unroll = self._get_loop_options()
+    unroll = self._get_unroll_option()
     linesearch_solver = _setup_linesearch(
         linesearch=self.linesearch,
-        fun=self._value_and_grad_with_aux,
-        value_and_grad=True,
+        fun=_fun_with_aux,
+        value_and_grad=self._value_and_grad_with_aux,
         has_aux=True,
         maxlsiter=self.maxls,
         max_stepsize=self.max_stepsize,
-        jit=jit,
+        jit=self.jit,
         unroll=unroll,
         verbose=self.verbose,
     )

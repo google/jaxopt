@@ -54,7 +54,8 @@ We can also compose ``ridge_reg_solution`` with other functions::
 
 .. topic:: Examples
 
-   * :ref:`sphx_glr_auto_examples_implicit_diff_plot_dataset_distillation.py`
+   * :doc:`/notebooks/implicit_diff/dataset_distillation`
+   * :doc:`/notebooks/implicit_diff/maml`
    * :ref:`sphx_glr_auto_examples_implicit_diff_lasso_implicit_diff.py`
    * :ref:`sphx_glr_auto_examples_implicit_diff_sparse_coding.py`
 

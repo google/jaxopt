@@ -127,13 +127,12 @@ class ProximalGradient(base.IterativeSolver):
     acceleration: whether to use acceleration (also known as FISTA) or not.
     decrease_factor: factor by which to reduce the stepsize during line search.
     verbose: whether to print error on every iteration or not.
-      Warning: verbose=True will automatically disable jit.
 
     implicit_diff: whether to enable implicit diff or autodiff of unrolled
       iterations.
     implicit_diff_solve: the linear system solver to use.
 
-    jit: whether to JIT-compile the optimization loop (default: "auto").
+    jit: whether to JIT-compile the optimization loop (default: True).
     unroll: whether to unroll the optimization loop (default: "auto").
 
   References:
@@ -159,7 +158,7 @@ class ProximalGradient(base.IterativeSolver):
   implicit_diff: bool = True
   implicit_diff_solve: Optional[Callable] = None
 
-  jit: base.AutoOrBoolean = "auto"
+  jit: bool = True
   unroll: base.AutoOrBoolean = "auto"
 
   def init_state(self,
@@ -195,6 +194,7 @@ class ProximalGradient(base.IterativeSolver):
                             aux=aux)
     else:
       state = ProxGradState(iter_num=jnp.asarray(0),
+                            t=jnp.asarray(1.0),
                             stepsize=jnp.asarray(1.0, dtype=dtype),
                             error=jnp.asarray(jnp.inf, dtype=dtype),
                             aux=aux)
@@ -316,6 +316,8 @@ class ProximalGradient(base.IterativeSolver):
     return grad, aux
 
   def __post_init__(self):
+    super().__post_init__()
+
     fun_with_aux, _, self._value_and_grad_with_aux = \
       base._make_funs_with_aux(fun=self.fun,
                                value_and_grad=self.value_and_grad,
@@ -331,12 +333,12 @@ class ProximalGradient(base.IterativeSolver):
     parameters.insert(1, new_param)
     self.reference_signature = inspect.Signature(parameters)
 
-    jit, unroll = self._get_loop_options()
+    unroll = self._get_unroll_option()
 
     fista_ls_with_fun= partial(fista_line_search, fun_without_aux,
-                               self._prox_grad, jit, unroll)
+                               self._prox_grad, self.jit, unroll)
 
-    if jit:
+    if self.jit:
       jitted_fista_ls_with_fun = jax.jit(fista_ls_with_fun, static_argnums=(0,))
       self._fista_line_search = jitted_fista_ls_with_fun
     else:

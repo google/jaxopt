@@ -34,7 +34,6 @@ from jaxopt import BlockCoordinateDescent
 
 from jaxopt import objective
 from jaxopt import prox
-from jaxopt.tree_util import tree_scalar_mul, tree_sub
 
 import matplotlib.pyplot as plt
 from sklearn import datasets
@@ -48,10 +47,8 @@ def run_all(solver, w_init, *args, **kwargs):
   state = solver.init_state(w_init, *args, **kwargs)
   sol = w_init
   sols, errors = [sol], [state.error]
-  update = lambda sol,state: solver.update(sol, state, *args, **kwargs)
-  jitted_update = jax.jit(update)
   for _ in range(solver.maxiter):
-    sol, state = jitted_update(sol, state)
+    sol, state = solver.update(sol, state, *args, **kwargs)
     sols.append(sol)
     errors.append(state.error)
   return jnp.stack(sols, axis=0), errors

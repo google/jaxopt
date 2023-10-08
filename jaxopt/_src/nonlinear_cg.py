@@ -23,13 +23,14 @@ import jax.numpy as jnp
 from jaxopt._src import base
 from jaxopt._src.linesearch_util import _init_stepsize
 from jaxopt._src.linesearch_util import _setup_linesearch
-from jaxopt._src.tree_util import tree_single_dtype
+from jaxopt._src.tree_util import tree_single_dtype, get_real_dtype
 from jaxopt.tree_util import tree_add_scalar_mul
 from jaxopt.tree_util import tree_div
 from jaxopt.tree_util import tree_l2_norm
 from jaxopt.tree_util import tree_scalar_mul
 from jaxopt.tree_util import tree_sub
-from jaxopt.tree_util import tree_vdot
+from jaxopt.tree_util import tree_vdot_real
+from jaxopt.tree_util import tree_conj
 
 
 class NonlinearCGState(NamedTuple):
@@ -51,6 +52,8 @@ class NonlinearCGState(NamedTuple):
 @dataclass(eq=False)
 class NonlinearCG(base.IterativeSolver):
   """Nonlinear conjugate gradient solver.
+
+  Supports complex variables, see second reference.
 
   Attributes:
     fun: a smooth function of the form ``fun(x, *args, **kwargs)``.
@@ -88,22 +91,24 @@ class NonlinearCG(base.IterativeSolver):
     increase_factor: factor by which to increase the stepsize during line search
       (default: 1.2).
     max_stepsize: upper bound on stepsize.
-    min_stepsize: lower bound on stepsize.
-
+    min_stepsize: lower bound on stepsize guess at start of each linesearch run.
     implicit_diff: whether to enable implicit diff or autodiff of unrolled
       iterations.
     implicit_diff_solve: the linear system solver to use.
 
-    jit: whether to JIT-compile the optimization loop (default: "auto").
+    jit: whether to JIT-compile the optimization loop (default: True).
     unroll: whether to unroll the optimization loop (default: "auto").
 
     verbose: whether to print error on every iteration or not.
-      Warning: verbose=True will automatically disable jit.
 
-  Reference:
+  References:
     Jorge Nocedal and Stephen Wright.
     Numerical Optimization, second edition.
     Algorithm 5.4 (page 121).
+
+    Laurent Sorber, Marc van Barel, and Lieven de Lathauwer.
+    Unconstrained Optimization of Real Functions in Complex Variables.
+    SIAM J. Optim., Vol. 22, No. 3, pp. 879-898
   """
 
   fun: Callable
@@ -117,7 +122,7 @@ class NonlinearCG(base.IterativeSolver):
   linesearch: str = "zoom"
   linesearch_init: str = "increase"
   condition: Any = None  # deprecated in v0.8
-  maxls: int = 15
+  maxls: int = 30
   decrease_factor: Any = None  # deprecated in v0.8
   increase_factor: float = 1.2
   max_stepsize: float = 1.0
@@ -127,7 +132,7 @@ class NonlinearCG(base.IterativeSolver):
   implicit_diff: bool = True
   implicit_diff_solve: Optional[Callable] = None
 
-  jit: base.AutoOrBoolean = "auto"
+  jit: bool = True
   unroll: base.AutoOrBoolean = "auto"
 
   verbose: int = 0
@@ -151,18 +156,22 @@ class NonlinearCG(base.IterativeSolver):
                                                        **kwargs)
 
     dtype = tree_single_dtype(init_params)
+    realdtype = get_real_dtype(dtype)
 
     return NonlinearCGState(iter_num=jnp.asarray(0),
-                            stepsize=jnp.asarray(self.max_stepsize, dtype=dtype),
-                            error=jnp.asarray(jnp.inf, dtype=dtype),
-                            value=value,
-                            grad=grad,
-                            descent_direction=tree_scalar_mul(-1.0, grad),
-                            aux=aux,
-                            num_fun_eval=jnp.asarray(1, base.NUM_EVAL_DTYPE),
-                            num_grad_eval=jnp.asarray(1, base.NUM_EVAL_DTYPE),
-                            num_linesearch_iter=jnp.array(0, base.NUM_EVAL_DTYPE)
-                            )
+                            stepsize=jnp.asarray(
+        self.max_stepsize, dtype=realdtype),
+        error=jnp.asarray(jnp.inf, dtype=realdtype),
+        value=value,
+        grad=grad,
+        descent_direction=tree_scalar_mul(
+        -1.0, tree_conj(grad)),
+        aux=aux,
+        num_fun_eval=jnp.asarray(1, base.NUM_EVAL_DTYPE),
+        num_grad_eval=jnp.asarray(1, base.NUM_EVAL_DTYPE),
+        num_linesearch_iter=jnp.array(
+        0, base.NUM_EVAL_DTYPE)
+    )
 
   def update(self,
              params: Any,
@@ -220,33 +229,38 @@ class NonlinearCG(base.IterativeSolver):
 
     if self.method == "polak-ribiere":
       # See Numerical Optimization, second edition, equation (5.44).
-      gTg = tree_vdot(grad, grad)
+      gTg = tree_vdot_real(grad, grad)
       gTg = jnp.where(gTg >= eps, gTg, eps)
-      new_beta = tree_div(tree_vdot(new_grad, tree_sub(new_grad, grad)), gTg)
+      new_beta = tree_vdot_real(
+        tree_conj(tree_sub(new_grad, grad)), tree_conj(new_grad)) / gTg
       new_beta = jax.nn.relu(new_beta)
     elif self.method == "fletcher-reeves":
       # See Numerical Optimization, second edition, equation (5.41a).
-      gTg = tree_vdot(grad, grad)
+      gTg = tree_vdot_real(grad, grad)
       gTg = jnp.where(gTg >= eps, gTg, eps)
-      new_beta = tree_div(tree_vdot(new_grad, new_grad), gTg)
+      new_beta = tree_vdot_real(new_grad, new_grad) / gTg
+      new_beta = jax.nn.relu(new_beta)
     elif self.method == "hestenes-stiefel":
       # See Numerical Optimization, second edition, equation (5.45).
       grad_diff = tree_sub(new_grad, grad)
-      dTg = tree_vdot(descent_direction, grad_diff)
+      dTg = tree_vdot_real(tree_conj(grad_diff), descent_direction)
       dTg = jnp.where(dTg >= eps, dTg, eps)
-      new_beta = tree_div(tree_vdot(new_grad, grad_diff), dTg)
+      new_beta = tree_vdot_real(
+        tree_conj(grad_diff), tree_conj(new_grad)) / dTg
+      new_beta = jax.nn.relu(new_beta)
     else:
       raise ValueError("method argument should be either 'polak-ribiere', "
                        "'fletcher-reeves', or 'hestenes-stiefel'.")
 
-    new_descent_direction = tree_add_scalar_mul(tree_scalar_mul(-1, new_grad),
+    new_descent_direction = tree_add_scalar_mul(tree_scalar_mul(-1, tree_conj(new_grad)),
                                                 new_beta,
                                                 descent_direction)
     error = tree_l2_norm(grad)
-    dtype = tree_single_dtype(params)
+    realdtype = state.error.dtype
     new_state = NonlinearCGState(iter_num=state.iter_num + 1,
-                                 stepsize=jnp.asarray(new_stepsize, dtype=dtype),
-                                 error=jnp.asarray(error, dtype=dtype),
+                                 stepsize=jnp.asarray(
+                                   new_stepsize, dtype=realdtype),
+                                 error=jnp.asarray(error, dtype=realdtype),
                                  value=new_value,
                                  grad=new_grad,
                                  descent_direction=new_descent_direction,
@@ -269,22 +283,24 @@ class NonlinearCG(base.IterativeSolver):
     return self._value_and_grad_fun(params, *args, **kwargs)[1]
 
   def __post_init__(self):
-    _, _, self._value_and_grad_with_aux = base._make_funs_with_aux(
+    super().__post_init__()
+
+    _fun_with_aux, _, self._value_and_grad_with_aux = base._make_funs_with_aux(
         fun=self.fun, value_and_grad=self.value_and_grad, has_aux=self.has_aux
     )
 
     self.reference_signature = self.fun
 
-    jit, unroll = self._get_loop_options()
+    unroll = self._get_unroll_option()
 
     linesearch_solver = _setup_linesearch(
         linesearch=self.linesearch,
-        fun=self._value_and_grad_with_aux,
-        value_and_grad=True,
+        fun=_fun_with_aux,
+        value_and_grad=self._value_and_grad_with_aux,
         has_aux=True,
         maxlsiter=self.maxls,
         max_stepsize=self.max_stepsize,
-        jit=jit,
+        jit=self.jit,
         unroll=unroll,
         verbose=self.verbose
     )

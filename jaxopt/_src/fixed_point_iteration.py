@@ -55,11 +55,12 @@ class FixedPointIteration(base.IterativeSolver):
       if True, the fixed is computed only with respect to first element of the
       sequence returned. Other elements are carried during computation.
     verbose: whether to print error on every iteration or not.
-      Warning: verbose=True will automatically disable jit.
+
     implicit_diff: whether to enable implicit diff or autodiff of unrolled
       iterations.
     implicit_diff_solve: the linear system solver to use.
-    jit: whether to JIT-compile the optimization loop (default: "auto").
+
+    jit: whether to JIT-compile the optimization loop (default: True).
     unroll: whether to unroll the optimization loop (default: "auto")
   References:
     https://en.wikipedia.org/wiki/Fixed-point_iteration
@@ -71,7 +72,7 @@ class FixedPointIteration(base.IterativeSolver):
   verbose: bool = False
   implicit_diff: bool = True
   implicit_diff_solve: Optional[Callable] = None
-  jit: base.AutoOrBoolean = "auto"
+  jit: bool = True
   unroll: base.AutoOrBoolean = "auto"
 
   def init_state(self,
@@ -89,7 +90,7 @@ class FixedPointIteration(base.IterativeSolver):
     """
     return FixedPointState(iter_num=jnp.asarray(0),
                            error=jnp.asarray(jnp.inf),
-                           aux=None, 
+                           aux=None,
                            num_fun_eval=jnp.asarray(0, base.NUM_EVAL_DTYPE)
                            )
 
@@ -123,6 +124,8 @@ class FixedPointIteration(base.IterativeSolver):
     return tree_sub(new_params, params)
 
   def __post_init__(self):
+    super().__post_init__()
+
     if self.has_aux:
       self._fun = self.fixed_point_fun
     else:

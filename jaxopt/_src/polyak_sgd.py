@@ -87,14 +87,13 @@ class PolyakSGD(base.StochasticSolver):
 
     maxiter: maximum number of solver iterations.
     tol: tolerance to use.
-    verbose: whether to print error on every iteration or not. verbose=True will
-      automatically disable jit.
+    verbose: whether to print error on every iteration or not.
 
     implicit_diff: whether to enable implicit diff or autodiff of unrolled
       iterations.
     implicit_diff_solve: the linear system solver to use.
 
-    jit: whether to JIT-compile the optimization loop (default: "auto").
+    jit: whether to JIT-compile the optimization loop (default: True).
     unroll: whether to unroll the optimization loop (default: "auto").
 
   References:
@@ -126,7 +125,7 @@ class PolyakSGD(base.StochasticSolver):
   implicit_diff: bool = False
   implicit_diff_solve: Optional[Callable] = None
 
-  jit: base.AutoOrBoolean = "auto"
+  jit: bool = True
   unroll: base.AutoOrBoolean = "auto"
 
   def init_state(self,
@@ -142,11 +141,7 @@ class PolyakSGD(base.StochasticSolver):
     Returns:
       state
     """
-    if self.has_aux:
-      value, aux = self.fun(init_params, *args, **kwargs)
-    else:
-      value = self.fun(init_params, *args, **kwargs)
-      aux = None
+    value, aux = self._fun(init_params, *args, **kwargs)
 
     if self.momentum == 0:
       velocity = None
@@ -221,7 +216,9 @@ class PolyakSGD(base.StochasticSolver):
     return hash(self.attribute_values())
 
   def __post_init__(self):
-    _, self._grad_fun, self._value_and_grad_fun = \
+    super().__post_init__()
+
+    self._fun, self._grad_fun, self._value_and_grad_fun = \
       base._make_funs_with_aux(fun=self.fun,
                                value_and_grad=self.value_and_grad,
                                has_aux=self.has_aux)

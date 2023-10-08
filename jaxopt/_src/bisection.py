@@ -57,8 +57,7 @@ class Bisection(base.IterativeSolver):
       If True, the method ``run`` cannot be jitted.
     implicit_diff_solve: the linear system solver to use.
     verbose: whether to print error on every iteration or not.
-      Warning: verbose=True will automatically disable jit.
-    jit: whether to JIT-compile the bisection loop (default: "auto").
+    jit: whether to JIT-compile the bisection loop (default: True).
     unroll: whether to unroll the bisection loop (default: "auto").
 
   """
@@ -71,7 +70,7 @@ class Bisection(base.IterativeSolver):
   verbose: bool = False
   implicit_diff_solve: Optional[Callable] = None
   has_aux: bool = False
-  jit: base.AutoOrBoolean = "auto"
+  jit: bool = True
   unroll: base.AutoOrBoolean = "auto"
 
   def init_state(self,
@@ -162,6 +161,8 @@ class Bisection(base.IterativeSolver):
     return super().run(init_params, *args, **kwargs)
 
   def __post_init__(self):
+    super().__post_init__()
+
     if self.has_aux:
       self._fun_with_aux = self.optimality_fun
     else:
