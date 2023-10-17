@@ -16,7 +16,7 @@ Hardware accelerated, batchable and differentiable optimizers in
 - **Differentiable:** optimization problem solutions can be differentiated with
   respect to their inputs either implicitly or via autodiff of unrolled
   algorithm iterations.
-0
+
 Installation
 ------------
 
