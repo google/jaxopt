@@ -34,7 +34,7 @@ from typing import Tuple
 from typing import Union
 
 import jax
-from jax.config import config
+from jax import config
 import jax.numpy as jnp
 import jax.tree_util as tree_util
 from jax.tree_util import register_pytree_node_class

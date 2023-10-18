@@ -51,7 +51,7 @@ try:
 except (KeyError, RuntimeError):
     print("TPU not found, continuing without it.")
 
-from jax.config import config
+from jax import config
 config.update("jax_enable_x64", True)
 
 import jax
