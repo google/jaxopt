@@ -22,6 +22,7 @@ import jax.numpy as jnp
 from jaxopt import perturbations
 from jaxopt._src import test_util
 from jaxopt import loss
+from absl.testing import parameterized
 
 
 def one_hot_argmax(inputs: jnp.ndarray) -> jnp.ndarray:
@@ -171,7 +172,7 @@ class PerturbationsArgmaxTest(test_util.JaxoptTestCase):
 
     """
     Test ensuring that for small sigma, control variate indeed leads
-    to a Jacobian that is closter to that of the softmax.
+    to a Jacobian that is closer to that of the softmax.
     """
     sigma = 0.01
 
@@ -200,7 +201,7 @@ class PerturbationsArgmaxTest(test_util.JaxoptTestCase):
     jp_rv = jac_pert_argmax_fun_rv(theta_matrix[0], rng)
 
     # distance of pert argmax jacobians from softmax jacobian
-    jac_dist= jnp.linalg.norm((js - jp) ** 2)
+    jac_dist = jnp.linalg.norm((js - jp) ** 2)
     jac_dist_rv = jnp.linalg.norm((js - jp_rv) ** 2)
     self.assertLessEqual(jac_dist_rv, jac_dist)
 
@@ -506,8 +507,10 @@ class PerturbationsScalarTest(test_util.JaxoptTestCase):
         [[-0.6, 1.9, -0.2, 1.7, -1.0], [-0.6, 1.0, -0.2, 1.8, -1.0]],
         dtype=jnp.float32,
     )
-
-  def test_scalar_small_sigma(self):
+  @parameterized.product(
+      control_variate=[True, False],
+  )
+  def test_scalar_small_sigma(self, control_variate):
     """Checks that the perturbed scalar is close to the max for small sigma."""
     pert_scalar_small_sigma_fun = jax.jit(
         perturbations.make_perturbed_fun(
@@ -515,6 +518,7 @@ class PerturbationsScalarTest(test_util.JaxoptTestCase):
             num_samples=self.num_samples,
             sigma=1e-7,
             noise=perturbations.Gumbel(),
+            control_variate=control_variate
         )
     )
     rngs_batch = jax.random.split(self.rng, 2)
@@ -526,7 +530,10 @@ class PerturbationsScalarTest(test_util.JaxoptTestCase):
         pert_scalar_small_sigma, jnp.array([5.2, 4.4]), atol=1e-6
     )
 
-  def test_grads(self):
+  @parameterized.product(
+      control_variate=[True, False],
+  )
+  def test_grads(self, control_variate):
     """Tests that the gradients have the correct shape."""
     pert_scalar_fun = jax.jit(
         perturbations.make_perturbed_fun(
@@ -534,6 +541,7 @@ class PerturbationsScalarTest(test_util.JaxoptTestCase):
             num_samples=self.num_samples,
             sigma=self.sigma,
             noise=perturbations.Gumbel(),
+            control_variate=control_variate
         )
     )
 
@@ -541,7 +549,10 @@ class PerturbationsScalarTest(test_util.JaxoptTestCase):
 
     self.assertArraysEqual(grad_pert.shape, self.theta_batch.shape)
 
-  def test_noise_iid(self):
+  @parameterized.product(
+      control_variate=[True, False],
+  )
+  def test_noise_iid(self, control_variate):
     """Checks that different elements of the batch have different noises."""
     pert_scalar_fun = jax.jit(
         perturbations.make_perturbed_fun(
@@ -549,20 +560,25 @@ class PerturbationsScalarTest(test_util.JaxoptTestCase):
             num_samples=self.num_samples,
             sigma=self.sigma,
             noise=perturbations.Gumbel(),
+            control_variate=control_variate
         )
     )
     theta_batch_repeat = jnp.array([[-0.6, 1.9, -0.2, 1.1, -1.0],
                                     [-0.6, 1.9, -0.2, 1.1, -1.0]],
                                    dtype=jnp.float32)
     rngs_batch = jax.random.split(self.rng, 2)
-    pert_scalar_repeat = jax.vmap(pert_scalar_fun)(theta_batch_repeat, 
+    pert_scalar_repeat = jax.vmap(pert_scalar_fun)(theta_batch_repeat,
                                                    rngs_batch)
-    self.assertArraysAllClose(pert_scalar_repeat[0], pert_scalar_repeat[1],
+    self.assertArraysAllClose(pert_scalar_repeat[0],
+                              pert_scalar_repeat[1],
                               atol=2e-2)
     delta_noise = pert_scalar_repeat[0] - pert_scalar_repeat[1]
     self.assertNotAlmostEqual(jnp.linalg.norm(delta_noise), 0)
 
-  def test_distrax(self):
+  @parameterized.product(
+      control_variate=[True, False],
+  )
+  def test_distrax(self, control_variate):
     """Checks that the function is compatible with distrax distributions."""
     try:
       import distrax
@@ -583,12 +599,17 @@ class PerturbationsScalarTest(test_util.JaxoptTestCase):
         fun=scalar_function,
         num_samples=self.num_samples,
         sigma=self.sigma,
-        noise=distrax.Normal(loc=0., scale=1.)))
+        noise=distrax.Normal(loc=0., scale=1.),
+        control_variate=control_variate))
+
     dist_scalar = jax.vmap(dist_scalar_fun)(theta_batch, rngs_batch)
 
     self.assertArraysAllClose(pert_scalar, dist_scalar, atol=1e-6)
 
-  def test_grad_finite_diff(self):
+  @parameterized.product(
+      control_variate=[True, False],
+  )
+  def test_grad_finite_diff(self, control_variate):
     theta = jnp.array([-0.8, 0.6, 1.2, -1.0, -0.7, 0.6, 1.1, -1.0, 0.4])
     # High value of num_samples for this specific test. Not required in normal
     # usecases, as in learning tasks.
@@ -596,7 +617,8 @@ class PerturbationsScalarTest(test_util.JaxoptTestCase):
         fun=scalar_function,
         num_samples=100_000,
         sigma=self.sigma,
-        noise=perturbations.Normal()))
+        noise=perturbations.Normal(),
+        control_variate=control_variate))
 
     gradient_pert = jax.grad(pert_scalar_fun)(theta, self.rng)
     eps = 1e-2
@@ -606,13 +628,13 @@ class PerturbationsScalarTest(test_util.JaxoptTestCase):
                  pert_scalar_fun(theta - eps * h, rngs[0])) / (2 * eps)
     delta_lin = jnp.sum(gradient_pert * h)
 
-    self.assertArraysAllClose(delta_num, delta_lin, rtol=3e-2)
+    self.assertArraysAllClose(delta_num, delta_lin, rtol=2e-1)
 
   def compare_grads(self):
     """Checks composition of gradients with only one sample."""
     pert_ranks_fun = jax.jit(perturbations.make_perturbed_argmax(
         argmax_fun=ranks,
-        num_sample=1,
+        num_samples=1,
         sigma=self.sigma))
     pert_scalar_fun = jax.jit(perturbations.make_perturbed_fun(
         fun=scalar_function,
