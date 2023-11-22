@@ -79,7 +79,7 @@ def main(argv):
   print("Unrolling:", FLAGS.unrolling)
 
   # Prepare data.
-  X, y = datasets.load_boston(return_X_y=True)
+  X, y = datasets.load_diabetes(return_X_y=True)
   X = preprocessing.normalize(X)
   # data = (X_tr, X_val, y_tr, y_val)
   data = model_selection.train_test_split(X, y, test_size=0.33, random_state=0)

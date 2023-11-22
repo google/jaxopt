@@ -101,7 +101,7 @@ def main(argv):
   del argv
 
   # Prepare data.
-  X, _ = datasets.load_boston(return_X_y=True)
+  X, _ = datasets.load_diabetes(return_X_y=True)
   X = jnp.sqrt(X ** 2)
 
   n_samples = X.shape[0]
