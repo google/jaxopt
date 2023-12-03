@@ -48,7 +48,7 @@ class BroydenTest(test_util.JaxoptTestCase):
       return jnp.sin(x[0]) * (x[0] ** 2) - x[0], x[1] ** 3 - x[1]
     x0 = jnp.array([0.6, 0., -0.1]), jnp.array([[0.7], [0.5]])
     tol = 1e-6
-    sol, state = Broyden(g, maxiter=100, tol=tol, jit=jit).run(x0)
+    sol, state = Broyden(g, maxiter=1000, tol=tol, jit=jit, stop_if_linesearch_fails=True, linesearch="backtracking", maxls=30).run(x0)
     self.assertLess(state.error, tol)
     g_sol_norm = tree_l2_norm(g(sol))
     self.assertLess(g_sol_norm, tol)

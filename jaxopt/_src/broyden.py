@@ -14,6 +14,8 @@
 
 """Limited-memory Broyden method"""
 
+import warnings
+
 from functools import partial
 
 from typing import Any
@@ -28,7 +30,7 @@ import jax
 import jax.numpy as jnp
 
 from jaxopt._src import base
-from jaxopt._src.backtracking_linesearch import BacktrackingLineSearch
+from jaxopt._src.linesearch_util import _setup_linesearch, _init_stepsize
 from jaxopt.tree_util import tree_map
 from jaxopt.tree_util import tree_vdot
 from jaxopt.tree_util import tree_add_scalar_mul
@@ -194,10 +196,11 @@ class Broyden(base.IterativeSolver):
 
   stepsize: Union[float, Callable] = 0.0
   linesearch: str = "backtracking"
+  linesearch_init: str = "increase"
   stop_if_linesearch_fails: bool = False
-  condition: str = "wolfe"
+  condition: Any = None  # deprecated in v0.8
   maxls: int = 15
-  decrease_factor: float = 0.8
+  decrease_factor: Any = None  # deprecated in v0.8
   increase_factor: float = 1.5
   max_stepsize: float = 1.0
   # FIXME: should depend on whether float32 or float64 is used.
@@ -328,45 +331,29 @@ class Broyden(base.IterativeSolver):
 
     use_linesearch = not isinstance(self.stepsize, Callable) and self.stepsize <= 0
     if use_linesearch:
-      if self.linesearch == "backtracking":
-        # we need to build the function used for the line search
-        # which is going to be the squared norm of the original function
-        # as in scipy https://github.com/scipy/scipy/blob/main/scipy/optimize/_nonlin.py#L278
-        # we then need to check if the gradient can be obtained with jax
-        # and if not we can build it in the same fashion as scipy
-        # https://github.com/scipy/scipy/blob/main/scipy/optimize/_nonlin.py#L285
-        def ls_fun_with_aux(params, *args, **kwargs):
-          f, aux = self._value_with_aux(params, *args, **kwargs)
-          norm_squared = tree_l2_norm(f, squared=True)
-          return norm_squared, (f, aux)
-        # here we need a check if the function is not smooth
-        ls_fun_with_aux_and_grad = jax.value_and_grad(ls_fun_with_aux, has_aux=True)
-        ls = BacktrackingLineSearch(fun=ls_fun_with_aux_and_grad,
-                                    value_and_grad=True,
-                                    maxiter=self.maxls,
-                                    decrease_factor=self.decrease_factor,
-                                    max_stepsize=self.max_stepsize,
-                                    condition=self.condition,
-                                    jit=self.jit,
-                                    unroll=self.unroll,
-                                    has_aux=True,
-                                    tol=1e-2)
-        init_stepsize = jnp.where(state.stepsize <= self.min_stepsize,
-                                  # If stepsize became too small, we restart it.
-                                  self.max_stepsize,
-                                  # Else, we increase a bit the previous one.
-                                  state.stepsize * self.increase_factor)
-        new_stepsize, ls_state = ls.run(init_stepsize,
-                                        params, value, None,
-                                        descent_direction,
-                                        fun_args=args, fun_kwargs=kwargs)
-        new_value, new_aux = ls_state.aux
-        new_params = ls_state.params
-        new_num_linesearch_iter = state.num_linesearch_iter + ls_state.iter_num
-        new_num_fun_eval = state.num_fun_eval + ls_state.num_fun_eval
-        failed_linesearch = ls_state.failed
-      else:
-        raise ValueError("Invalid name in 'linesearch' option.")
+      init_stepsize = _init_stepsize(
+        self.linesearch_init,
+        self.max_stepsize,
+        self.min_stepsize,
+        self.increase_factor,
+        state.stepsize,
+      )
+      new_stepsize, ls_state = self.run_ls(
+        init_stepsize,
+        params,
+        value=tree_l2_norm(value),
+        # in the case of Broyden, it's the value that's actually the equivalent
+        # of the gradient in the optimization case.
+        grad=value,
+        descent_direction=descent_direction,
+        fun_args=args,
+        fun_kwargs=kwargs,
+      )
+      new_value, new_aux = ls_state.aux
+      new_params = ls_state.params
+      new_num_linesearch_iter = state.num_linesearch_iter + ls_state.iter_num
+      new_num_fun_eval = state.num_fun_eval + ls_state.num_fun_eval
+      failed_linesearch = ls_state.failed
     else:
       # without line search
       if isinstance(self.stepsize, Callable):
@@ -429,3 +416,36 @@ class Broyden(base.IterativeSolver):
 
     if self.history_size is None:
       self.history_size = self.maxiter
+
+    # we need to build the function used for the line search
+    # which is going to be the squared norm of the original function
+    # as in scipy https://github.com/scipy/scipy/blob/main/scipy/optimize/_nonlin.py#L278
+    # we then need to check if thtree_l2_norme gradient can be obtained with jax
+    # and if not we can build it in the same fashion as scipy
+    # https://github.com/scipy/scipy/blob/main/scipy/optimize/_nonlin.py#L285
+    def ls_fun_with_aux(params, *args, **kwargs):
+      f, aux = self._value_with_aux(params, *args, **kwargs)
+      norm_squared = tree_l2_norm(f, squared=True)
+      return norm_squared, (f, aux)
+    # here we need a check if the function is not smooth
+    ls_fun_with_aux_and_grad = jax.value_and_grad(ls_fun_with_aux, has_aux=True)
+    self.linesearch_solver = _setup_linesearch(
+      linesearch=self.linesearch,
+      fun=ls_fun_with_aux_and_grad,
+      value_and_grad=True,
+      has_aux=True,
+      maxlsiter=self.maxls,
+      max_stepsize=self.max_stepsize,
+      jit=self.jit,
+      unroll=self.unroll,
+      verbose=self.verbose,
+    )
+    self.run_ls = self.linesearch_solver.run
+
+    # FIXME: to remove in future releases
+    if self.condition is not None:
+      warnings.warn("Argument condition is deprecated", DeprecationWarning)
+    if self.decrease_factor is not None:
+      warnings.warn(
+          "Argument decrease_factor is deprecated", DeprecationWarning
+      )
