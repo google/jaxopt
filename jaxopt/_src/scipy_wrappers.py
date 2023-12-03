@@ -34,7 +34,7 @@ from typing import Tuple
 from typing import Union
 
 import jax
-from jax.config import config
+from jax import config
 import jax.numpy as jnp
 import jax.tree_util as tree_util
 from jax.tree_util import register_pytree_node_class
@@ -359,19 +359,21 @@ class ScipyMinimize(ScipyWrapper):
     else:
       hess_inv = None
 
-    try:
-      num_hess_eval = jnp.asarray(res.nhev, base.NUM_EVAL_DTYPE)
-    except AttributeError:
-      num_hess_eval = jnp.array(0, base.NUM_EVAL_DTYPE)
+    nev_dict = {}
+    for attr in ['nfev', 'njev', 'nhev']:
+      try:
+        nev_dict[attr] = jnp.asarray(getattr(res, attr), base.NUM_EVAL_DTYPE)
+      except AttributeError:
+        nev_dict[attr] = jnp.array(0, base.NUM_EVAL_DTYPE)
 
     info = ScipyMinimizeInfo(fun_val=jnp.asarray(res.fun),
                              success=res.success,
                              status=res.status,
                              iter_num=res.nit,
                              hess_inv=hess_inv,
-                             num_fun_eval=jnp.asarray(res.nfev, base.NUM_EVAL_DTYPE),
-                             num_jac_eval=jnp.asarray(res.njev, base.NUM_EVAL_DTYPE),
-                             num_hess_eval=num_hess_eval)
+                             num_fun_eval=nev_dict['nfev'],
+                             num_jac_eval=nev_dict['njev'],
+                             num_hess_eval=nev_dict['nhev'])
     return base.OptStep(params, info)
 
   def run(self,

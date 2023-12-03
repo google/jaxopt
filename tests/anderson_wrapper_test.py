@@ -18,7 +18,7 @@ from absl.testing import parameterized
 
 import jax
 import jax.numpy as jnp
-from jax.config import config
+from jax import config
 from jax.tree_util import tree_map, tree_all
 from jax.test_util import check_grads
 import optax

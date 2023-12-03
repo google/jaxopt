@@ -1,6 +1,21 @@
 Changelog
 =========
 
+Version 0.8.2
+-------------
+
+Bug fixes and enhancements
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- Added SPS+ variant to PolyakSGD, by Fabian Pedregosa.
+- Fixed jax.config import, by Sergei Lebedev.
+- Fixed typos in the doc + upload missing image, by Fabian Pedregosa.
+
+Contributors
+~~~~~~~~~~~~
+
+Fabian Pedregosa, Sergei Lebedev.
+
 Version 0.8.1
 -------------
 
