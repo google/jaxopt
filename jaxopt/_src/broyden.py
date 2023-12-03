@@ -259,15 +259,15 @@ class Broyden(base.IterativeSolver):
         # self.alpha = 0.5*max(norm(x0), 1) / normf0
         normf0 = tree_map(jnp.linalg.norm, value)
         normx0 = tree_map(jnp.linalg.norm, init_params)
-        clipped_normx0 = tree_map(lambda x: - 0.5 * jnp.maximum(x, 1), normx0)
+        clipped_normx0 = tree_map(lambda x: 0.5 * jnp.maximum(x, 1), normx0)
         def safe_divide_by_zero(x, y):
-          # a classical division of x by x
+          # a classical division of x by y
           # when y == 0 then return 1
           return jnp.where(y == 0, 1, x / y)
         gamma = tree_map(safe_divide_by_zero, clipped_normx0, normf0)
       else:
         gamma = self.gamma
-        # repeat gamma as a pytre of the shape of init_params
+        # repeat gamma as a pytree of the shape of init_params
         gamma = tree_map(lambda x: jnp.array(gamma), init_params)
       state_kwargs = dict(
         d_history=init_history(init_params, self.history_size),

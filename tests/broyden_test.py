@@ -133,8 +133,8 @@ class BroydenTest(test_util.JaxoptTestCase):
     b = jax.random.uniform(subkey, shape=(n,))
     def g(x, M, b):
       return M @ x + b - x
-    tol = 5e-6
-    fp = Broyden(g, maxiter=100, tol=tol, implicit_diff=True, gamma=-1)
+    tol = 1e-6
+    fp = Broyden(g, maxiter=5000, tol=tol, implicit_diff=True)
     x0 = jnp.zeros_like(b)
     sol, state = fp.run(x0, M, b)
     self.assertLess(state.error, tol)
