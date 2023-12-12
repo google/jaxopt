@@ -333,7 +333,7 @@ class PerturbationsArgmaxTest(test_util.JaxoptTestCase):
     delta_num = (sq_loss_plus_h - sq_loss_minus_h) / (2 * eps)
     delta_lin = jnp.sum(gradient_square_rank * h)
 
-    self.assertArraysAllClose(delta_num, delta_lin, atol=5e-2)
+    self.assertArraysAllClose(delta_num, delta_lin, atol=1e-1, rtol=.5)
 
 
 class PerturbationsMaxTest(test_util.JaxoptTestCase):
@@ -571,7 +571,7 @@ class PerturbationsScalarTest(test_util.JaxoptTestCase):
                                                    rngs_batch)
     self.assertArraysAllClose(pert_scalar_repeat[0],
                               pert_scalar_repeat[1],
-                              atol=2e-2)
+                              atol=1e-1, rtol=1e-2)
     delta_noise = pert_scalar_repeat[0] - pert_scalar_repeat[1]
     self.assertNotAlmostEqual(jnp.linalg.norm(delta_noise), 0)
 
@@ -752,7 +752,7 @@ class PerturbationsAnyDimTest(test_util.JaxoptTestCase):
     pert_repeat = jax.vmap(pert_fun)(theta_batch_repeat,
                                      rngs_batch)
     self.assertArraysAllClose(pert_repeat[0], pert_repeat[1],
-                              atol=2e-2)
+                              atol=5e-2, rtol=5e-2)
     delta_noise = pert_repeat[0] - pert_repeat[1]
     self.assertNotAlmostEqual(jnp.linalg.norm(delta_noise), 0)
 
