@@ -39,7 +39,7 @@ class BacktrackingLineSearchState(NamedTuple):
   params: Any
   value: float
   grad: Any  # either initial or final for armijo or glodstein
-  value_init: float 
+  value_init: float
   grad_init: Any
   error: float
   done: bool
@@ -260,11 +260,11 @@ class BacktrackingLineSearch(base.IterativeLineSearch):
 
     if self.condition in ["armijo", "goldstein"]:
       # If we are done for the armijo or the goldstein conditions,
-      # we compute the final gradient (we had not computed it before since 
+      # we compute the final gradient (we had not computed it before since
       # these conditions did not require it)
       new_grad = cond(done | failed,
                       self._compute_final_grad,
-                      lambda *_: grad, 
+                      lambda *_: grad,
                       new_params, fun_args, fun_kwargs,
                       jit=self.jit)
       maybe_additional_eval = jnp.asarray(done | failed, dtype=base.NUM_EVAL_DTYPE)
@@ -284,7 +284,7 @@ class BacktrackingLineSearch(base.IterativeLineSearch):
                                num_grad_eval=num_grad_eval)
 
     return base.LineSearchStep(stepsize=new_stepsize, state=new_state)
-  
+
   def _compute_final_grad(self, params, fun_args, fun_kwargs):
     return self._grad_with_aux(params, *fun_args, **fun_kwargs)[0]
 
