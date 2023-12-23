@@ -17,17 +17,78 @@
 from functools import partial
 from typing import Any
 from typing import Callable
+from typing import List
 from typing import Tuple
 
 import jax
 import jax.numpy as jnp
 from jax.scipy.special import logsumexp
 
+from jaxopt._src.fixed_point_iteration import FixedPointIteration
 from jaxopt._src.bisection import Bisection
 from jaxopt._src.eq_qp import EqualityConstrainedQP
 from jaxopt._src.lbfgs import LBFGS
 from jaxopt._src.osqp import OSQP, BoxOSQP
 from jaxopt._src import tree_util
+
+
+def alternating_projections(initial_guess: Any,
+                            projections: List,
+                            hyperparams: List,
+                            **fixed_point_params) -> Any:
+  """Alternating projections algorithm.
+
+  This algorithm returns a point in the intersection of convex sets
+  by projecting onto each set in turn.
+
+  If the sets are not convex, or if their intersection is empty,
+  this algorithm may not converge.
+  
+  If the sets are convex and their intersection is non empty,
+  the algorithm converges to a point `p*` in the intersection of the sets.
+  However this point `p*` is not necessarily the closest to the initial guess,
+  i.e alternating_projections is not a valid projection itself.
+  
+  If the inittial guess lies in the intersection of the sets, then
+  the algorithm converges to this point. Hence this algorithm is a retraction.
+  If the initial guess lies outside the intersection, and if the intersection
+  contains more than one point, then the algorithm converges to an arbitrary
+  point in the intersection.
+
+  Implicit differentiation will measure the sensitivity of `p*`
+  to perturbations in the `hyperparams`, but not to perturbations
+  in the initial guess.
+
+  Args:
+    projections: a sequence of projections, each of which is a function that
+      with signature ``x, hyperparams -> x``.
+    hyperparams: a list of hyperparameters for each projection, each being a
+      pytree.
+    **fixed_point_params: parameters for the fixed point solver.
+  Returns:
+    A Pytree lying in the intersection of the sets.
+
+  References:
+    Escalante, R. and Raydan, M., 2011. Alternating projection methods.
+    Society for Industrial and Applied Mathematics.
+  """
+  assert len(projections) == len(hyperparams)
+
+  def composed_projections(x, hyperparams):  
+    for proj, hparam in zip(projections, hyperparams):
+      x = proj(x, hparam)
+    return x
+  
+  if 'maxiter' not in fixed_point_params:
+    fixed_point_params["maxiter"] = 100
+  if 'tol' not in fixed_point_params:
+    fixed_point_params["tol"] = 1e-5
+  
+  # look for a fixed point of this operator
+  solver = FixedPointIteration(fixed_point_fun=composed_projections,
+                               **fixed_point_params)
+  fixed_point = solver.run(initial_guess, hyperparams).params
+  return fixed_point
 
 
 def projection_non_negative(x: Any, hyperparams=None) -> Any:
