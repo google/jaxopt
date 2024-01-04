@@ -22,7 +22,6 @@ from typing import Union
 
 from dataclasses import dataclass
 
-import jax
 import jax.numpy as jnp
 
 from jaxopt._src import base

@@ -14,31 +14,22 @@
 
 
 from absl.testing import absltest
-from absl.testing import parameterized
 
-import jax
 import jax.numpy as jnp
-from jax import config
-from jax.tree_util import tree_map, tree_all
 from jax.test_util import check_grads
 import optax
 
-from jaxopt.tree_util import tree_l2_norm, tree_scalar_mul, tree_sub
 from jaxopt import objective
 
-from jaxopt import projection
 from jaxopt import prox
 from jaxopt._src import test_util
 
 from jaxopt import AndersonWrapper
 from jaxopt import BlockCoordinateDescent
-from jaxopt import GradientDescent
 from jaxopt import OptaxSolver
 from jaxopt import PolyakSGD
 from jaxopt import ProximalGradient
 
-import numpy as onp
-import scipy
 from sklearn import datasets
 
 

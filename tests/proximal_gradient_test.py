@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import functools
 from typing import Callable
 
 from absl.testing import absltest
@@ -21,16 +20,12 @@ from absl.testing import parameterized
 import jax
 import jax.numpy as jnp
 
-from jaxopt import implicit_diff
 from jaxopt import objective
-from jaxopt import projection
 from jaxopt import prox
 from jaxopt import ProximalGradient
 from jaxopt._src import test_util
-from jaxopt import tree_util as tu
 
 from sklearn import datasets
-from sklearn import preprocessing
 
 
 def make_stepsize_schedule(max_stepsize, n_steps, power=1.0) -> Callable:

@@ -14,14 +14,12 @@
 
 """Benchmark LBFGS implementation."""
 
-import time
 
 from absl import app
 from absl import flags
 
 from sklearn import datasets
 
-import jax
 import jax.numpy as jnp
 import jaxopt
 

@@ -19,18 +19,14 @@ from absl.testing import parameterized
 import jax
 import jax.numpy as jnp
 from jax import scipy as jsp
-from jax.tree_util import tree_map, tree_all
 from jax.test_util import check_grads
 
 import jaxopt
-from jaxopt.tree_util import tree_l2_norm, tree_scalar_mul
-from jaxopt._src.tree_util import tree_average, tree_sub
-from jaxopt import objective
+from jaxopt.tree_util import tree_l2_norm
 from jaxopt import AndersonAcceleration
 from jaxopt._src import test_util
 
 import numpy as onp
-from sklearn import datasets
 
 
 class AndersonAccelerationTest(test_util.JaxoptTestCase):

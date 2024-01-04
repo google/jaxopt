@@ -21,8 +21,6 @@
 #   currently only ScipyMinimize exposes this option.
 """
 
-import abc
-import dataclasses
 from dataclasses import dataclass
 from typing import Any
 from typing import Callable

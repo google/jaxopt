@@ -25,7 +25,6 @@ import numpy as onp
 from typing import Any
 from typing import Callable
 from typing import NamedTuple
-from typing import Optional
 
 import dataclasses
 
@@ -33,12 +32,6 @@ import jax
 import jax.numpy as jnp
 
 from jaxopt._src import base
-from jaxopt.tree_util import tree_add
-from jaxopt.tree_util import tree_add_scalar_mul
-from jaxopt.tree_util import tree_l2_norm
-from jaxopt.tree_util import tree_scalar_mul
-from jaxopt.tree_util import tree_sub
-from jaxopt.tree_util import tree_zeros_like
 
 
 class DummySolverState(NamedTuple):

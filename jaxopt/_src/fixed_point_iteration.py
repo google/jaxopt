@@ -23,7 +23,6 @@ from typing import Union
 from dataclasses import dataclass
 
 import jax.numpy as jnp
-from jax.tree_util import tree_leaves, tree_structure
 
 from jaxopt._src import base
 from jaxopt._src.tree_util import tree_l2_norm, tree_sub
