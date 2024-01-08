@@ -87,7 +87,7 @@ class HagerZhangLineSearch(base.IterativeLineSearch):
     maxiter: maximum number of line search iterations.
     tol: tolerance of the stopping criterion.
 
-    verbose: whether to print error on every iteration or not.
+    verbose: whether to print information on every iteration or not.
 
     jit: whether to JIT-compile the optimization loop (default: "auto").
     unroll: whether to unroll the optimization loop (default: "auto").
@@ -107,7 +107,7 @@ class HagerZhangLineSearch(base.IterativeLineSearch):
   # TODO(vroulet): remove max_stepsize argument as it is not used
   max_stepsize: float = 1.0 
 
-  verbose: int = 0
+  verbose: Union[bool, int] = False
   jit: base.AutoOrBoolean = "auto"
   unroll: base.AutoOrBoolean = "auto"
 
@@ -553,6 +553,16 @@ class HagerZhangLineSearch(base.IterativeLineSearch):
         failed=failed,
         num_fun_eval=new_num_fun_eval,
         num_grad_eval=new_num_grad_eval)
+
+    if self.verbose:
+      self.log_info(
+        new_state,
+        error_name="Minimum Decrease & Curvature Errors",
+        additional_info={
+            "Stepsize": new_stepsize,
+            "Objective Value": new_value
+        }
+      )
 
     return base.LineSearchStep(stepsize=new_stepsize, state=new_state)
 

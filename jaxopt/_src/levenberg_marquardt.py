@@ -122,7 +122,7 @@ class LevenbergMarquardt(base.IterativeSolver):
     contribution_ratio_threshold: float, the threshold for acceleration/velocity
       ratio. We update the parameters in the algorithm only if the ratio is
       smaller than this threshold value.
-    verbose: bool, whether to print error on every iteration or not.
+    verbose: bool, whether to print information on every iteration or not.
     jac_fun: Callable, a function to calculate the Jacobian. If not None, this
       function is used instead of directly calculating it using ``jax.jacfwd``.
     materialize_jac: bool, whether to materialize Jacobian. If this option is
@@ -156,7 +156,7 @@ class LevenbergMarquardt(base.IterativeSolver):
   geodesic: bool = False
   contribution_ratio_threshold = 0.75
 
-  verbose: bool = False
+  verbose: Union[bool, int] = False
   jac_fun: Optional[Callable[..., jnp.ndarray]] = None
   materialize_jac: bool = False
   implicit_diff: bool = True
@@ -433,13 +433,14 @@ class LevenbergMarquardt(base.IterativeSolver):
                                              state.jac, state.jt, state.jtj,
                                              state.hess_res, state.aux, *args, **kwargs))
 
+    new_value = 0.5 * jnp.sum(jnp.square(residual))
     state = LevenbergMarquardtState(
         iter_num=state.iter_num + 1,
         damping_factor=damping_factor,
         increase_factor=increase_factor,
         error=tree_l2_norm(gradient),
         residual=residual,
-        value=0.5 * jnp.sum(jnp.square(residual)),
+        value=new_value,
         delta=delta_params,
         gradient=gradient,
         jac=jac,
@@ -448,6 +449,15 @@ class LevenbergMarquardt(base.IterativeSolver):
         hess_res=hess_res,
         aux=aux)
 
+    if self.verbose:
+      self.log_info(
+          state,
+          error_name="Gradient Norm",
+          additional_info={
+              "Objective Value": new_value,
+              "Damping Factor": damping_factor
+          }
+      )
     return base.OptStep(params=params, state=state)
 
   def __post_init__(self):

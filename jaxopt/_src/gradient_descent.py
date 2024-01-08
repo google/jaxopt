@@ -54,7 +54,7 @@ class GradientDescent(ProximalGradient):
     tol: tolerance to use.
 
     acceleration: whether to use acceleration (also known as FISTA) or not.
-    verbose: whether to print error on every iteration or not.
+    verbose: whether to print information on every iteration or not.
 
     implicit_diff: whether to enable implicit diff or autodiff of unrolled
       iterations.

@@ -19,6 +19,7 @@ from typing import Any
 from typing import Callable
 from typing import NamedTuple
 from typing import Optional
+from typing import Union
 
 import jax.numpy as jnp
 
@@ -115,7 +116,7 @@ class PolyakSGD(base.StochasticSolver):
 
     maxiter: maximum number of solver iterations.
     tol: tolerance to use.
-    verbose: whether to print error on every iteration or not.
+    verbose: whether to print information on every iteration or not.
 
     implicit_diff: whether to enable implicit diff or autodiff of unrolled
       iterations.
@@ -149,7 +150,7 @@ class PolyakSGD(base.StochasticSolver):
 
   maxiter: int = 500
   tol: float = 1e-3
-  verbose: int = 0
+  verbose: Union[bool, int] = False
 
   implicit_diff: bool = False
   implicit_diff_solve: Optional[Callable] = None
@@ -246,6 +247,16 @@ class PolyakSGD(base.StochasticSolver):
                                aux=aux,
                                num_fun_eval=state.num_fun_eval + 1,
                                num_grad_eval=state.num_grad_eval + 1)
+
+    if self.verbose:
+      self.log_info(
+          new_state,
+          error_name="Gradient Norm",
+          additional_info={
+              "Objective Value": value,
+              "Stepsize": stepsize,
+          }
+      )
     return base.OptStep(params=new_params, state=new_state)
 
   def optimality_fun(self, params, *args, **kwargs):

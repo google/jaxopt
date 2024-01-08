@@ -98,7 +98,7 @@ class IterativeRefinement(base.IterativeSolver):
       This solver can be inaccurate and run with low precision.
     maxiter: maximum number of iterations (default: 10).
     tol: absolute tolerance for stoping criterion (default: 1e-7).
-    verbose: If verbose=1, print error at each iteration.
+    verbose: whether to print information on every iteration or not.
     implicit_diff: whether to enable implicit diff or autodiff of unrolled
       iterations.
     implicit_diff_solve: the linear system solver to use.
@@ -118,7 +118,7 @@ class IterativeRefinement(base.IterativeSolver):
   solve: Callable = partial(linear_solve.solve_gmres, ridge=1e-6)
   maxiter: int = 10
   tol: float = 1e-7
-  verbose: int = 0
+  verbose: Union[bool, int] = False
   implicit_diff_solve: Optional[Callable] = None
   jit: bool = True
   unroll: base.AutoOrBoolean = "auto"
@@ -175,6 +175,8 @@ class IterativeRefinement(base.IterativeSolver):
       num_matvec_bar_eval=state.num_matvec_bar_eval + 1,
       num_solve_eval=state.num_solve_eval + 1)
 
+    if self.verbose:
+      self.log_info(state, error_name="Residual Norm")
     return base.OptStep(params, state)
 
   def run(self,

@@ -77,7 +77,7 @@ class BacktrackingLineSearch(base.IterativeLineSearch):
     maxiter: maximum number of line search iterations.
     tol: tolerance of the stopping criterion.
 
-    verbose: whether to print error on every iteration or not.
+    verbose: whether to print information on every iteration or not.
 
     jit: whether to JIT-compile the optimization loop (default: "auto").
     unroll: whether to unroll the optimization loop (default: "auto").
@@ -95,7 +95,7 @@ class BacktrackingLineSearch(base.IterativeLineSearch):
   decrease_factor: float = 0.8
   max_stepsize: float = 1.0
 
-  verbose: int = 0
+  verbose: Union[bool, int] = False
   jit: base.AutoOrBoolean = "auto"
   unroll: base.AutoOrBoolean = "auto"
 
@@ -283,6 +283,18 @@ class BacktrackingLineSearch(base.IterativeLineSearch):
                                num_fun_eval=num_fun_eval,
                                num_grad_eval=num_grad_eval)
 
+    if self.verbose:
+      additional_info = {'Stepsize': stepsize, 'Objective Value': new_value}
+      if self.condition != 'armijo':
+        error_name = "Minimum Decrease & Curvature Errors"
+        additional_info.update({'Decrease Error': error_cond1})
+      else:
+        error_name = "Decrease Error"
+      self.log_info(
+          new_state,
+          error_name=error_name,
+          additional_info=additional_info
+      )
     return base.LineSearchStep(stepsize=new_stepsize, state=new_state)
   
   def _compute_final_grad(self, params, fun_args, fun_kwargs):

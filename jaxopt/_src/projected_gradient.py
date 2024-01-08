@@ -61,7 +61,7 @@ class ProjectedGradient(base.IterativeSolver):
     tol: tolerance to use.
 
     acceleration: whether to use acceleration (also known as FISTA) or not.
-    verbose: whether to print error on every iteration or not.
+    verbose: whether to print information on every iteration or not.
 
     implicit_diff: whether to enable implicit diff or autodiff of unrolled
       iterations.
@@ -85,7 +85,7 @@ class ProjectedGradient(base.IterativeSolver):
 
   acceleration: bool = True
   decrease_factor: float = 0.5
-  verbose: int = 0
+  verbose: Union[bool, int] = False
 
   implicit_diff: bool = True
   implicit_diff_solve: Optional[Callable] = None

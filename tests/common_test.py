@@ -388,25 +388,25 @@ class CommonTest(test_util.JaxoptTestCase):
 
     solvers = (
       # Unconstrained
-      jaxopt.GradientDescent(fun=fun, jit=True, verbose=1, maxiter=4),
-      jaxopt.PolyakSGD(fun=fun, jit=True, verbose=1, maxiter=4),
+      jaxopt.GradientDescent(fun=fun, jit=True, verbose=True, maxiter=4),
+      jaxopt.PolyakSGD(fun=fun, jit=True, verbose=True, maxiter=4),
       jaxopt.Broyden(fun=fixed_point_fun, jit=True, verbose=True, maxiter=4),
       jaxopt.AndersonAcceleration(fixed_point_fun=fixed_point_fun, jit=True, verbose=True, maxiter=4),
-      jaxopt.ArmijoSGD(fun=fun, jit=True, verbose=1, maxiter=4),
-      jaxopt.BFGS(fun, linesearch="zoom", jit=True, verbose=1, maxiter=4),
-      jaxopt.BFGS(fun, linesearch="backtracking", jit=True, verbose=1, maxiter=4),
-      jaxopt.BFGS(fun, linesearch="hager-zhang", jit=True, verbose=1, maxiter=4),
-      jaxopt.LBFGS(fun=fun, jit=True, verbose=1, maxiter=4),
-      jaxopt.ArmijoSGD(fun=fun, jit=True, verbose=1, maxiter=4),
-      jaxopt.NonlinearCG(fun, jit=True, verbose=1, maxiter=4),
+      jaxopt.ArmijoSGD(fun=fun, jit=True, verbose=True, maxiter=4),
+      jaxopt.BFGS(fun, linesearch="zoom", jit=True, verbose=True, maxiter=4),
+      jaxopt.BFGS(fun, linesearch="backtracking", jit=True, verbose=True, maxiter=4),
+      jaxopt.BFGS(fun, linesearch="hager-zhang", jit=True, verbose=True, maxiter=4),
+      jaxopt.LBFGS(fun=fun, jit=True, verbose=True, maxiter=4),
+      jaxopt.ArmijoSGD(fun=fun, jit=True, verbose=True, maxiter=4),
+      jaxopt.NonlinearCG(fun, jit=True, verbose=True, maxiter=4),
       # Unconstrained, nonlinear least-squares
       jaxopt.GaussNewton(residual_fun=fun, jit=True, verbose=True, maxiter=4),
       jaxopt.LevenbergMarquardt(residual_fun=fun, jit=True, verbose=True, maxiter=4),
       # Constrained
       jaxopt.ProjectedGradient(fun=fun,
-        projection=jaxopt.projection.projection_non_negative, jit=True, verbose=1, maxiter=4),
+        projection=jaxopt.projection.projection_non_negative, jit=True, verbose=True, maxiter=4),
       # Optax wrapper
-      jaxopt.OptaxSolver(opt=optax.adam(1e-1), fun=fun, jit=True, verbose=1, maxiter=4),
+      jaxopt.OptaxSolver(opt=optax.adam(1e-1), fun=fun, jit=True, verbose=True, maxiter=4),
     )
 
     @partial(jax.jit, static_argnums=(1,))
@@ -429,10 +429,10 @@ class CommonTest(test_util.JaxoptTestCase):
       return solver.run(p0, hyperparams_prox=1.0, data=data)
 
     for solver in (jaxopt.ProximalGradient(fun=fun, prox=prox.prox_lasso,
-                                           jit=True, verbose=1, maxiter=4),
+                                           jit=True, verbose=True, maxiter=4),
                    jaxopt.BlockCoordinateDescent(fun=fun,
                                                  block_prox=prox.prox_lasso,
-                                                 jit=True, verbose=1, maxiter=4)
+                                                 jit=True, verbose=True, maxiter=4)
     ):
       with redirect_stdout(io.StringIO()):
         run_solver_prox(params0, solver)
@@ -465,7 +465,7 @@ class CommonTest(test_util.JaxoptTestCase):
           stepsize=1e-3,
           maxiter=4,
           jit=True,
-          verbose=1)
+          verbose=True)
       _, state = md.run(b0, None, lam, data)
       return state
 
@@ -486,7 +486,7 @@ class CommonTest(test_util.JaxoptTestCase):
 
     @jax.jit
     def run_box_osqp(params_obj, params_ineq):
-      osqp = BoxOSQP(matvec_Q=matvec_Q, matvec_A=matvec_A, tol=tol, jit=True, verbose=1, maxiter=4)
+      osqp = BoxOSQP(matvec_Q=matvec_Q, matvec_A=matvec_A, tol=tol, jit=True, verbose=True, maxiter=4)
       return osqp.run(None, (None, params_obj), None, (params_ineq, params_ineq))
 
     with redirect_stdout(io.StringIO()):

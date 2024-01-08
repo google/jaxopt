@@ -273,8 +273,8 @@ class LBFGSB(base.IterativeSolver):
     implicit_diff_solve: the linear system solver to use.
     jit: whether to JIT-compile the optimization loop (default: True).
     unroll: whether to unroll the optimization loop (default: "auto").
-    verbose: whether to print error on every iteration or not.
-      Warning: verbose=True will automatically disable jit.
+    verbose: if set to True or 1 prints the information at each step of 
+      the solver, if set to 2, print also the information of the linesearch.
   """
 
   fun: Callable  # pylint: disable=g-bare-generic
@@ -306,12 +306,10 @@ class LBFGSB(base.IterativeSolver):
   jit: bool = True
   unroll: base.AutoOrBoolean = "auto"
 
-  verbose: bool = False
+  verbose: Union[bool, int] = False
 
   def _cond_fun(self, inputs):
     _, state = inputs[0]
-    if self.verbose:
-      print(self.__class__.__name__ + " error:", state.error)
     # We continue the optimization loop while the error tolerance is not met
     # and either failed linesearch is disallowed or linesearch hasn't failed.
     return (state.error > self.tol) & jnp.logical_or(
@@ -558,6 +556,17 @@ class LBFGSB(base.IterativeSolver):
         num_linesearch_iter=new_num_linesearch_iter,
     )
 
+    if self.verbose:
+      self.log_info(
+          new_state,
+          error_name="Projected Gradient Norm",
+          additional_info={
+              "Objective Value": new_value,
+              "Stepsize": new_stepsize,
+              "Number Linesearch Iterations": 
+              new_state.num_linesearch_iter - state.num_linesearch_iter
+          }
+      )
     return base.OptStep(new_params, new_state)
 
   def _fixed_point_fun(self, sol, bounds, args, kwargs):
@@ -609,7 +618,7 @@ class LBFGSB(base.IterativeSolver):
         max_stepsize=self.max_stepsize,
         jit=self.jit,
         unroll=unroll,
-        verbose=self.verbose,
+        verbose=int(self.verbose)-1,
     )
 
     self.run_ls = linesearch_solver.run

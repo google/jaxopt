@@ -68,7 +68,7 @@ class AndersonWrapper(base.IterativeSolver):
     beta: momentum in Anderson updates. (default: 1).
     ridge: ridge regularization in solver.
       Consider increasing this value if the solver returns ``NaN``.
-    verbose: whether to print error on every iteration or not.
+    verbose: whether to print information on every iteration or not.
     implicit_diff: whether to enable implicit diff or autodiff of unrolled
       iterations.
     implicit_diff_solve: the linear system solver to use.
@@ -80,7 +80,7 @@ class AndersonWrapper(base.IterativeSolver):
   mixing_frequency: int = None
   beta: float = 1.
   ridge: float = 1e-5
-  verbose: bool = False
+  verbose: Union[bool, int] = False
   implicit_diff: bool = True
   implicit_diff_solve: Optional[Callable] = None
   jit: bool = True
@@ -161,6 +161,9 @@ class AndersonWrapper(base.IterativeSolver):
                                       params_history=params_history,
                                       residuals_history=residuals_history,
                                       residual_gram=residual_gram)
+    
+    if self.verbose:
+      self.log_info(next_state, error_name="Inner Solver Error")
     return base.OptStep(params=next_params, state=next_state)
 
   def optimality_fun(self, params, *args, **kwargs):

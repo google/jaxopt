@@ -67,7 +67,7 @@ class MirrorDescent(base.IterativeSolver):
       each iteration.
     maxiter: maximum number of mirror descent iterations.
     tol: tolerance to use.
-    verbose: whether to print error on every iteration or not.
+    verbose: whether to print information on every iteration or not.
     implicit_diff: whether to enable implicit diff or autodiff of unrolled
       iterations.
     implicit_diff_solve: the linear system solver to use.
@@ -86,7 +86,7 @@ class MirrorDescent(base.IterativeSolver):
   stepsize: Union[float, Callable]
   maxiter: int = 500
   tol: float = 1e-2
-  verbose: int = 0
+  verbose: Union[bool, int] = False
   implicit_diff: bool = True
   implicit_diff_solve: Optional[Callable] = None
   has_aux: bool = False
@@ -165,6 +165,12 @@ class MirrorDescent(base.IterativeSolver):
       num_fun_eval=state.num_fun_eval + 1,
       num_grad_eval=state.num_grad_eval + 1,
       num_proj_eval=state.num_proj_eval + 1,)
+    
+    if self.verbose:
+      self.log_info(
+          next_state,
+          error_name="Distance btw Iterates"
+      )
     return base.OptStep(params=next_x, state=next_state)
 
   def update(self,

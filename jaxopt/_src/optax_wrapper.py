@@ -18,6 +18,7 @@ from typing import Any
 from typing import Callable
 from typing import NamedTuple
 from typing import Optional
+from typing import Union
 
 from dataclasses import dataclass
 
@@ -67,7 +68,7 @@ class OptaxSolver(base.StochasticSolver):
 
     maxiter: maximum number of solver iterations.
     tol: tolerance to use.
-    verbose: whether to print error on every iteration or not.
+    verbose: whether to print information on every iteration or not.
 
     implicit_diff: whether to enable implicit diff or autodiff of unrolled
       iterations.
@@ -82,7 +83,7 @@ class OptaxSolver(base.StochasticSolver):
   pre_update: Optional[Callable] = None
   maxiter: int = 500
   tol: float = 1e-3
-  verbose: int = 0
+  verbose: Union[bool, int] = False
   implicit_diff: bool = False
   implicit_diff_solve: Optional[Callable] = None
   has_aux: bool = False
@@ -149,6 +150,13 @@ class OptaxSolver(base.StochasticSolver):
                            value=jnp.asarray(value),
                            aux=aux,
                            internal_state=opt_state)
+    
+    if self.verbose:
+      self.log_info(
+          new_state,
+          error_name="Gradient Norm",
+          additional_info={"Objective Value": value}
+      )
     return base.OptStep(params=params, state=new_state)
 
   def optimality_fun(self, params, *args, **kwargs):

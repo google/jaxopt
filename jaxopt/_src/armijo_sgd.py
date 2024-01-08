@@ -21,6 +21,7 @@ from typing import Any
 from typing import Callable
 from typing import NamedTuple
 from typing import Optional
+from typing import Union
 
 import jax
 import jax.lax as lax
@@ -191,7 +192,7 @@ class ArmijoSGD(base.StochasticSolver):
     maxiter: maximum number of solver iterations.
     maxls: maximum number of steps in line search.
     tol: tolerance to use.
-    verbose: whether to print error on every iteration or not.
+    verbose: whether to print information on every iteration or not.
 
     implicit_diff: whether to enable implicit diff or autodiff of unrolled
       iterations.
@@ -224,7 +225,7 @@ class ArmijoSGD(base.StochasticSolver):
   maxiter: int = 500
   maxls: int = 15
   tol: float = 1e-3
-  verbose: int = 0
+  verbose: Union[bool, int] = False
 
   implicit_diff: bool = False
   implicit_diff_solve: Optional[Callable] = None
@@ -315,6 +316,15 @@ class ArmijoSGD(base.StochasticSolver):
                              stepsize=jnp.asarray(stepsize, dtype=dtype),
                              velocity=next_velocity)
 
+    if self.verbose:
+      self.log_info(
+          next_state,
+          error_name="Gradient Norm",
+          additional_info={
+              'Objective Value': next_state.value,
+              'Stepsize': stepsize
+          },
+      )
     return base.OptStep(next_params, next_state)
 
   def optimality_fun(self, params, *args, **kwargs):

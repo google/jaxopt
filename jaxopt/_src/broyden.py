@@ -177,8 +177,8 @@ class Broyden(base.IterativeSolver):
     jit: whether to JIT-compile the optimization loop (default: True).
     unroll: whether to unroll the optimization loop (default: "auto").
 
-    verbose: whether to print error on every iteration or not.
-      Warning: verbose=True will automatically disable jit.
+    verbose: if set to True or 1 prints the information at each step of 
+      the solver, if set to 2, print also the information of the linesearch.
 
   Reference:
     Charles G. Broyden.
@@ -212,12 +212,10 @@ class Broyden(base.IterativeSolver):
   jit: bool = True
   unroll: base.AutoOrBoolean = "auto"
 
-  verbose: bool = False
+  verbose: Union[bool, int] = False
 
   def _cond_fun(self, inputs):
     _, state = inputs[0]
-    if self.verbose:
-      jax.debug.print("Solver: Broyden, Error: {error}", error=state.error)
     # We continue the optimization loop while the error tolerance is not met and,
     # either failed linesearch is disallowed or linesearch hasn't failed.
     return (state.error > self.tol) & jnp.logical_or(not self.stop_if_linesearch_fails, ~state.failed_linesearch)
@@ -330,6 +328,7 @@ class Broyden(base.IterativeSolver):
                                     jit=self.jit,
                                     unroll=self.unroll,
                                     has_aux=True,
+                                    verbose=int(self.verbose)-1,
                                     tol=1e-2)
         init_stepsize = jnp.where(state.stepsize <= self.min_stepsize,
                                   # If stepsize became too small, we restart it.
@@ -382,6 +381,16 @@ class Broyden(base.IterativeSolver):
                              num_linesearch_iter=new_num_linesearch_iter,
                              failed_linesearch=failed_linesearch)
 
+    if self.verbose:
+      self.log_info(
+          new_state,
+          error_name="Norm Output",
+          additional_info={
+              "Stepsize": new_stepsize,
+              "Number Linesearch Iterations": 
+              new_state.num_linesearch_iter - state.num_linesearch_iter
+          }
+      )
     return base.OptStep(params=new_params, state=new_state)
 
   def optimality_fun(self, params, *args, **kwargs):

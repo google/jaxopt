@@ -17,6 +17,7 @@
 from typing import Callable
 from typing import NamedTuple
 from typing import Optional
+from typing import Union
 
 from dataclasses import dataclass
 
@@ -62,7 +63,7 @@ class BoxCDQP(base.IterativeSolver):
   Attributes:
     maxiter: maximum number of coordinate descent iterations.
     tol: tolerance to use.
-    verbose: whether to print error on every iteration or not.
+    verbose: whether to print information on every iteration or not.
 
     implicit_diff: whether to enable implicit diff or autodiff of unrolled
       iterations.
@@ -73,7 +74,7 @@ class BoxCDQP(base.IterativeSolver):
   """
   maxiter: int = 500
   tol: float = 1e-4
-  verbose: int = 0
+  verbose: Union[bool, int] = False
   implicit_diff: bool = True
   implicit_diff_solve: Optional[Callable] = None
   jit: bool = True
@@ -124,6 +125,8 @@ class BoxCDQP(base.IterativeSolver):
 
     state = BoxCDQPState(iter_num=state.iter_num + 1, error=error)
 
+    if self.verbose:
+      self.log_info(state)
     return base.OptStep(params=params, state=state)
 
   def _fixed_point_fun(self,

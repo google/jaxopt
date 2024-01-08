@@ -264,10 +264,22 @@ class IterativeSolver(Solver):
 
   def _cond_fun(self, inputs):
     _, state = inputs[0]
-    if self.verbose:
-      name = self.__class__.__name__
-      jax.debug.print("Solver: %s, Error: {error}" % name, error=state.error)
     return state.error > self.tol
+  
+  def log_info(self, state, error_name='Error', additional_info={}):
+    """Base info at the end of the update."""
+    other_info_kw = ' '.join([key + ":{} " for key in additional_info.keys()])
+    name = self.__class__.__name__
+    jax.debug.print(
+      "INFO: jaxopt." + name + ": " + \
+      "Iter: {} " + \
+      error_name + " (stop. crit.): {} " + \
+      other_info_kw,
+      state.iter_num,
+      state.error,
+      *additional_info.values(),
+      ordered=True
+    )
 
   def _body_fun(self, inputs):
     (params, state), (args, kwargs) = inputs

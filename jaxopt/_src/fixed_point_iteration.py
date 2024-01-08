@@ -18,6 +18,7 @@ from typing import Any
 from typing import Callable
 from typing import NamedTuple
 from typing import Optional
+from typing import Union
 
 from dataclasses import dataclass
 
@@ -54,7 +55,7 @@ class FixedPointIteration(base.IterativeSolver):
     has_aux: wether fixed_point_fun returns additional data. (default: False)
       if True, the fixed is computed only with respect to first element of the
       sequence returned. Other elements are carried during computation.
-    verbose: whether to print error on every iteration or not.
+    verbose: whether to print information on every iteration or not.
 
     implicit_diff: whether to enable implicit diff or autodiff of unrolled
       iterations.
@@ -69,7 +70,7 @@ class FixedPointIteration(base.IterativeSolver):
   maxiter: int = 100
   tol: float = 1e-5
   has_aux: bool = False
-  verbose: bool = False
+  verbose: Union[bool, int] = False
   implicit_diff: bool = True
   implicit_diff_solve: Optional[Callable] = None
   jit: bool = True
@@ -116,6 +117,12 @@ class FixedPointIteration(base.IterativeSolver):
                                  error=error,
                                  aux=aux,
                                  num_fun_eval=state.num_fun_eval + 1)
+    
+    if self.verbose:
+      self.log_info(
+          next_state,
+          error_name="Distance btw Iterates"
+      )
     return base.OptStep(params=next_params, state=next_state)
 
   def optimality_fun(self, params, *args, **kwargs):

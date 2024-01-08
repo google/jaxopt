@@ -232,7 +232,7 @@ class ZoomLinesearchTest(test_util.JaxoptTestCase):
     # Test that the line search fails for p not a descent direction
     # For high maxiter, still finds a decrease error because of 
     # the approximate Wolfe condition so we reduced maxiter
-    ls = ZoomLineSearch(fun, c2=0.5, maxiter=18)
+    ls = ZoomLineSearch(fun, c2=0.5, maxiter=18, verbose=True)
     stdout = io.StringIO()
     with redirect_stdout(stdout):
       s, state = ls.run(init_stepsize=1.0, params=x, descent_direction=p)

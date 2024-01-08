@@ -107,7 +107,8 @@ class BFGS(base.IterativeSolver):
     implicit_diff_solve: the linear system solver to use.
     jit: whether to JIT-compile the optimization loop (default: True).
     unroll: whether to unroll the optimization loop (default: "auto").
-    verbose: whether to print error on every iteration or not.
+    verbose: if set to True or 1 prints the information at each step of 
+      the solver, if set to 2, print also the information of the linesearch.
 
   Reference:
     Jorge Nocedal and Stephen Wright.
@@ -141,7 +142,7 @@ class BFGS(base.IterativeSolver):
   jit: bool = True
   unroll: base.AutoOrBoolean = "auto"
 
-  verbose: bool = False
+  verbose: Union[bool, int] = False
 
   def init_state(self,
                  init_params: Any,
@@ -260,6 +261,17 @@ class BFGS(base.IterativeSolver):
                           num_fun_eval=new_num_fun_eval,
                           num_linesearch_iter=new_num_linesearch_iter)
 
+    if self.verbose:
+      self.log_info(
+          new_state,
+          error_name="Gradient Norm",
+          additional_info={
+              "Objective Value": new_value,
+              "Stepsize": new_stepsize,
+              "Number Linesearch Iterations": 
+              new_state.num_linesearch_iter - state.num_linesearch_iter
+          }
+      )
     return base.OptStep(params=new_params, state=new_state)
 
   def optimality_fun(self, params, *args, **kwargs):
@@ -289,7 +301,7 @@ class BFGS(base.IterativeSolver):
         max_stepsize=self.max_stepsize,
         jit=self.jit,
         unroll=unroll,
-        verbose=self.verbose,
+        verbose=int(self.verbose)-1
     )
     self.run_ls = self.linesearch_solver.run
 
