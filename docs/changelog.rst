@@ -1,6 +1,22 @@
 Changelog
 =========
 
+Version 0.8.3
+-------------
+
+Bug fixes and enhancements
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- Fix fragile tests in perturbation module, by Roy Frostig.
+- Better verbose handling, by Vincent Roulet.
+- Remove boston dataset, by Vincent Roulet.
+- Control variate support in perturbation module, by Quentin Berthet.
+
+Contributors
+~~~~~~~~~~~~
+
+Roy Frostig, Vincent Roulet, Quentin Berthet.
+
 Version 0.8.2
 -------------
 
