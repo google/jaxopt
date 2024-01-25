@@ -409,20 +409,17 @@ class LbfgsTest(test_util.JaxoptTestCase):
       x0 = (onp.asarray(beta_init)), method='BFGS'
     ).x
 
-
-    #jaxopt
+    # using jaxopt
     solver = LBFGS(fun=binary_logit_log_likelihood_jax, maxiter=100,
                    linesearch="zoom", maxls=10, tol=1e-12)
     jaxopt_res = solver.run(beta_init, y, x).params
-    if jax.config.jax_enable_x64:
-      # NOTE(vroulet): simply testing in function values at high precision
-      scipy_val = binary_logit_log_likelihood(scipy_res,
-                                              onp.asarray(y),
-                                              onp.asarray(x))
-      jaxopt_val = binary_logit_log_likelihood(jaxopt_res, y, x)
-      self.assertArraysAllClose(scipy_val, jaxopt_val)
-    else:
-      self.assertArraysAllClose(scipy_res, jaxopt_res)
+
+    # comparison
+    scipy_val = binary_logit_log_likelihood(scipy_res,
+                                            onp.asarray(y),
+                                            onp.asarray(x))
+    jaxopt_val = binary_logit_log_likelihood(jaxopt_res, y, x)
+    self.assertArraysAllClose(scipy_val, jaxopt_val)
     
 
   @parameterized.product(linesearch=['zoom', 'backtracking', 'hager-zhang'])
@@ -502,8 +499,8 @@ class LbfgsTest(test_util.JaxoptTestCase):
 
   @parameterized.product(
     fun_init_and_opt=[
-      ('rosenbrock', onp.zeros(2, dtype='float32'), 0.),
-      ('himmelblau', onp.ones(2, dtype='float32'), 0.),
+      ('rosenbrock', onp.zeros(2), 0.),
+      ('himmelblau', onp.ones(2), 0.),
       ('matyas', onp.ones(2) * 6., 0.),
       ('eggholder', onp.ones(2) * 100., None),  
       ('zakharov', onp.array([600.0, 700.0, 200.0, 100.0, 90.0, 1e4]), 0.),

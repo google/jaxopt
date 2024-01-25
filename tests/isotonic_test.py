@@ -48,8 +48,8 @@ class IsotonicPavTest(test_util.JaxoptTestCase):
     y_min = y_sort[2]
     y_max = y_sort[n-5]
     output = isotonic_l2_pav(y, y_min=y_min, y_max=y_max, increasing=increasing)
-    output_sklearn = jnp.array(isotonic.isotonic_regression(y, y_min=y_min,
-     y_max=y_max, increasing=increasing))
+    output_sklearn = jnp.array(isotonic.isotonic_regression(y, y_min=y_min.item(),
+     y_max=y_max.item(), increasing=increasing))
     self.assertArraysAllClose(output, output_sklearn)
 
   @parameterized.product(increasing=[True, False])
