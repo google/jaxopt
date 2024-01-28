@@ -328,7 +328,7 @@ class Broyden(base.IterativeSolver):
                                     jit=self.jit,
                                     unroll=self.unroll,
                                     has_aux=True,
-                                    verbose=int(self.verbose)-1,
+                                    verbose=max(int(self.verbose)-1, 0),
                                     tol=1e-2)
         init_stepsize = jnp.where(state.stepsize <= self.min_stepsize,
                                   # If stepsize became too small, we restart it.

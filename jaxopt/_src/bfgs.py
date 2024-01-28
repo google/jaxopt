@@ -301,7 +301,7 @@ class BFGS(base.IterativeSolver):
         max_stepsize=self.max_stepsize,
         jit=self.jit,
         unroll=unroll,
-        verbose=int(self.verbose)-1
+        verbose=max(int(self.verbose)-1, 0)
     )
     self.run_ls = self.linesearch_solver.run
 

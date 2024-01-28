@@ -273,7 +273,7 @@ class IterativeSolver(Solver):
     jax.debug.print(
       "INFO: jaxopt." + name + ": " + \
       "Iter: {} " + \
-      error_name + " (stop. crit.): {} " + \
+      error_name + " (stopping criterion): {} " + \
       other_info_kw,
       state.iter_num,
       state.error,

@@ -737,6 +737,9 @@ class BoxOSQP(base.IterativeSolver):
                          dual_residuals=dual_residuals,
                          rho_bar=rho_bar,
                          solver_state=solver_state)
+
+    if self.verbose:
+      self.log_info(state)
     return base.OptStep(params=sol, state=state)
 
   def run(self,
