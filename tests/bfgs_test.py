@@ -187,8 +187,8 @@ class BfgsTest(test_util.JaxoptTestCase):
 
   @parameterized.product(
     fun_init_and_opt=[
-      ('rosenbrock', onp.zeros(2, dtype='float32'), 0.),
-      ('himmelblau', onp.ones(2, dtype='float32'), 0.),
+      ('rosenbrock', onp.zeros(2), 0.),
+      ('himmelblau', onp.ones(2), 0.),
       ('matyas', onp.ones(2) * 6., 0.),
       ('eggholder', onp.ones(2) * 100., None),  
     ],
