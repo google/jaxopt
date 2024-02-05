@@ -5,6 +5,9 @@
 | [**Examples**](https://github.com/google/jaxopt/tree/main/examples)
 | [**Cite us**](#citeus)
 
+
+## ⚠️ We are in the process of merging JAXopt into [Optax](https://github.com/google-deepmind/optax). Because of this, JAXopt is now in maintenance mode and we will not be implementing new features ⚠️
+
 Hardware accelerated, batchable and differentiable optimizers in
 [JAX](https://github.com/google/jax).
 
