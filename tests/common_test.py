@@ -417,7 +417,7 @@ class CommonTest(test_util.JaxoptTestCase):
     for solver in solvers:
       stdout = io.StringIO()
       with redirect_stdout(stdout):
-        run_solver(jnp.arange(2.), solver)
+        jax.block_until_ready(run_solver(jnp.arange(2.), solver))
       printed = len(stdout.getvalue()) > 0
       if verbose:
         self.assertTrue(printed)
@@ -443,7 +443,7 @@ class CommonTest(test_util.JaxoptTestCase):
     ):
       stdout = io.StringIO()
       with redirect_stdout(stdout):
-        run_solver_prox(params0, solver)
+        jax.block_until_ready(run_solver_prox(params0, solver))
       printed = len(stdout.getvalue()) > 0
       if verbose:
         self.assertTrue(printed)
@@ -484,7 +484,7 @@ class CommonTest(test_util.JaxoptTestCase):
 
     stdout = io.StringIO()
     with redirect_stdout(stdout):
-      run_mirror_descent(beta_init)
+      jax.block_until_ready(run_mirror_descent(beta_init))
     printed = len(stdout.getvalue()) > 0
     if verbose:
       self.assertTrue(printed)
@@ -510,7 +510,7 @@ class CommonTest(test_util.JaxoptTestCase):
 
     stdout = io.StringIO()
     with redirect_stdout(stdout):
-      run_box_osqp(q, b)
+      jax.block_until_ready(run_box_osqp(q, b))
     printed = len(stdout.getvalue()) > 0
     if verbose:
       self.assertTrue(printed)
