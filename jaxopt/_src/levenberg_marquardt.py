@@ -14,7 +14,6 @@
 
 """Levenberg-Marquardt algorithm in JAX."""
 
-import math
 from typing import Any
 from typing import Callable
 from typing import Literal
@@ -35,7 +34,7 @@ from jaxopt._src.linear_solve import solve_cholesky
 from jaxopt._src.linear_solve import solve_inv
 from jaxopt._src.linear_solve import solve_lu
 from jaxopt._src.linear_solve import solve_qr
-from jaxopt._src.tree_util import tree_l2_norm, tree_inf_norm, tree_sub, tree_add, tree_mul
+from jaxopt._src.tree_util import tree_l2_norm, tree_inf_norm
 
 
 class LevenbergMarquardtState(NamedTuple):

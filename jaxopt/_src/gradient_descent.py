@@ -15,9 +15,7 @@
 """Implementation of gradient descent in JAX."""
 
 from typing import Any
-from typing import Callable
 from typing import NamedTuple
-from typing import Union
 
 from dataclasses import dataclass
 
