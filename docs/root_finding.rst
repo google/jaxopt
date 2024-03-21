@@ -27,15 +27,18 @@ First, let us consider the case :math:`F(x)`, i.e., without extra argument
 in this interval as long as :math:`F` is continuous.  For instance, suppose
 that we want to find the root of :math:`F(x) = x^3 - x - 2`. We have
 :math:`F(1) = -2` and :math:`F(2) = 4`. Since the function is continuous, there
-must be a :math:`x` between 1 and 2 such that :math:`F(x) = 0`::
+must be a :math:`x` between 1 and 2 such that :math:`F(x) = 0`:
 
-  from jaxopt import Bisection
+.. doctest::
 
-  def F(x):
-    return x ** 3 - x - 2
+  >>> from jaxopt import Bisection
+  >>> def F(x):
+  ...  return x ** 3 - x - 2
 
-  bisec = Bisection(optimality_fun=F, lower=1, upper=2)
-  print(bisec.run().params)
+  >>> bisec = Bisection(optimality_fun=F, lower=1, upper=2)
+  >>> print(bisec.run().params)
+  1.5213814
+
 
 ``Bisection`` successfully finds the root ``x = 1.521``.
 Notice that ``Bisection`` does not require an initialization,
@@ -46,17 +49,23 @@ Differentiation
 
 Now, let us consider the case :math:`F(x, \theta)`.  For instance, suppose that
 ``F`` takes an additional argument ``factor``.  We can easily differentiate
-with respect to ``factor``::
+with respect to ``factor``:
 
-  def F(x, factor):
-    return factor * x ** 3 - x - 2
+.. doctest::
 
-  def root(factor):
-    bisec = Bisection(optimality_fun=F, lower=1, upper=2)
-    return bisec.run(factor=factor).params
+  >>> import jax
+  >>> import jaxopt
 
-  # Derivative of root with respect to factor at 2.0.
-  print(jax.grad(root)(2.0))
+  >>> def F(x, factor):
+  ...  return factor * x ** 3 - x - 2
+
+  >>> def root(factor):
+  ...  bisec = jaxopt.Bisection(optimality_fun=F, lower=1, upper=2)
+  ...  return bisec.run(factor=factor).params
+
+  >>> # Derivative of root with respect to factor at 2.0.
+  >>> print(jax.grad(root)(2.0))
+  -0.22139914
 
 Under the hood, we use the implicit function theorem in order to differentiate the root.
 See the :ref:`implicit differentiation <implicit_diff>` section for more details.
@@ -87,30 +96,36 @@ updates.
 One can control the number of updates with the ``history_size`` argument.
 Furthermore, Broyden's method uses a line search to ensure the rank-one updates are stable.
 
-Example::
+Example:
 
-    import jax.numpy as jnp
-    from jaxopt import Broyden
+.. doctest::
 
-    def F(x):
-      return x ** 3 - x - 2
+    >>> import jax.numpy as jnp
+    >>> from jaxopt import Broyden
 
-    broyden = Broyden(fun=F)
-    print(broyden.run(jnp.array(1.0)).params)
+    >>> def F(x):
+    ...  return x ** 3 - x - 2
+
+    >>> broyden = Broyden(fun=F)
+    >>> print(broyden.run(jnp.array(1.0)).params)
+    1.5213826
 
 
-For implicit differentiation::
+For implicit differentiation:
 
-    import jax
-    import jax.numpy as jnp
-    from jaxopt import Broyden
+.. doctest::
 
-    def F(x, factor):
-      return factor * x ** 3 - x - 2
+    >>> import jax
+    >>> import jax.numpy as jnp
+    >>> from jaxopt import Broyden
 
-    def root(factor):
-      broyden = Broyden(fun=F)
-      return broyden.run(jnp.array(1.0), factor=factor).params
+    >>> def F(x, factor):
+    ...  return factor * x ** 3 - x - 2
 
-    # Derivative of root with respect to factor at 2.0.
-    print(jax.grad(root)(2.0))
+    >>> def root(factor):
+    ...  broyden = Broyden(fun=F)
+    ...  return broyden.run(jnp.array(1.0), factor=factor).params
+
+    >>> # Derivative of root with respect to factor at 2.0.
+    >>> print(jax.grad(root)(2.0))
+    -0.22141123
