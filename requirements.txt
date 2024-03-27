@@ -1,4 +1,5 @@
 jax>=0.2.18
 jaxlib>=0.1.69
 numpy>=1.18.4
+optax>=0.2.2
 scipy>=1.0.0
