@@ -35,7 +35,10 @@ from jaxopt._src.linear_solve import solve_cholesky
 from jaxopt._src.linear_solve import solve_inv
 from jaxopt._src.linear_solve import solve_lu
 from jaxopt._src.linear_solve import solve_qr
-from jaxopt._src.tree_util import tree_l2_norm, tree_inf_norm, tree_sub, tree_add, tree_mul, tree_vdot, tree_zeros_like, tree_scalar_mul
+
+from jaxopt._src.tree_util import tree_l2_norm, tree_inf_norm, tree_sub, tree_add
+from jaxopt._src.tree_util import tree_mul, tree_vdot, tree_zeros_like
+from jaxopt._src.tree_util import tree_scalar_mul, tree_add_scalar_mul
 
 import jax.flatten_util
 
@@ -415,7 +418,7 @@ class LevenbergMarquardt(base.IterativeSolver):
       )
 
     if self.geodesic:
-      contribution_ratio_diff = jnp.linalg.norm(acceleration) / jnp.linalg.norm(
+      contribution_ratio_diff = tree_l2_norm(acceleration) / tree_l2_norm(
           velocity) - self.contribution_ratio_threshold
     else:
       contribution_ratio_diff = 0.0
@@ -558,7 +561,7 @@ class LevenbergMarquardt(base.IterativeSolver):
       rpp = self._d2fvv_op(params, velocity, velocity, *args, **kwargs)
       jtrpp = self._jt_op(params, rpp, *args, **kwargs)
       acceleration = self.solver_fn(matvec, jtrpp, ridge=state.damping_factor)
-      delta_params += 0.5*acceleration
+      delta_params = tree_add_scalar_mul(delta_params, 0.5, acceleration)
     else:
       acceleration = tree_zeros_like(velocity)
 
