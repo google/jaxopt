@@ -330,10 +330,11 @@ class BoxOSQP(base.IterativeSolver):
 
   Dual Eq   variables: :math:`y`
 
-  Dual Ineq variables: :math:`\mu, \phi`
+  Dual Ineq variables: :math:`\\mu, \\phi`
 
 
-  ADMM computes :math:`y` at each iteration. :math:`\mu` and :math:`\phi` can be deduced from :math:`y`.
+  ADMM computes :math:`y` at each iteration. :math:`\\mu` and :math:`\\phi` can be deduced from
+  :math:`y`.
 
   Defaults values for hyper-parameters come from: https://github.com/osqp/osqp/blob/master/include/constants.h
 
