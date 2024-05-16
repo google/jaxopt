@@ -149,7 +149,7 @@ def pmean(fun: Callable[..., Any], axis_name: str = 'b') -> Callable[..., Any]:
   maybe_pmean = lambda t: jax.lax.pmean(t, axis_name) if t is not None else t
   @functools.wraps(fun)
   def wrapper(*args, **kwargs):
-    return jax.tree_map(maybe_pmean, fun(*args, **kwargs))
+    return jax.tree.map(maybe_pmean, fun(*args, **kwargs))
   return wrapper
 ```
 
@@ -235,9 +235,9 @@ def fit(
   # occur in each update. This is true regardless of whether we use distributed
   # or single-device computation.
   if use_pmap:  # Shards data and moves it to device,
-    data = jax.tree_map(shard_array, data)
+    data = jax.tree.map(shard_array, data)
   else:  # Just move data to device.
-    data = jax.tree_map(jax.device_put, data)
+    data = jax.tree.map(jax.device_put, data)
 
   # Pre-compiles update, preventing it from affecting step times.
   tic = time.time()
@@ -251,7 +251,7 @@ def fit(
   for it in range(MAXITER):
     tic = time.time()
     params, state = update(params, state, data)
-    jax.tree_map(lambda t: t.block_until_ready(), (params, state))
+    jax.tree.map(lambda t: t.block_until_ready(), (params, state))
     step_times[it] = time.time() - tic
     errors[it] = (jax_utils.unreplicate(state.error).item()
                   if use_pmap else state.error.item())

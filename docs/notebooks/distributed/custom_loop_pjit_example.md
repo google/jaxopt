@@ -271,7 +271,7 @@ def fit(
       in_axis_resources=PartitionSpec('data'),
       out_axis_resources=PartitionSpec('data'))(*data)
   else:  # Just move data to device.
-    data = jax.tree_map(jax.device_put, data)
+    data = jax.tree.map(jax.device_put, data)
 
   # Pre-compiles update, preventing it from affecting step times.
   tic = time.time()
@@ -285,7 +285,7 @@ def fit(
   for it in range(MAXITER):
     tic = time.time()
     params, state = update(params, state, data)
-    jax.tree_map(lambda t: t.block_until_ready(), (params, state))
+    jax.tree.map(lambda t: t.block_until_ready(), (params, state))
     step_times[it] = time.time() - tic
     errors[it] = state.error.item()
 

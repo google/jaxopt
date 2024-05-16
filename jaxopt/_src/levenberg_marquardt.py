@@ -296,14 +296,14 @@ class LevenbergMarquardt(base.IterativeSolver):
     gain_ratio_test_not_met_ret = gain_ratio_test_false_func(
         *gain_ratio_test_init_state)
 
-    gain_ratio_test_is_met_ret = jax.tree_map(
+    gain_ratio_test_is_met_ret = jax.tree.map(
         lambda x: gain_ratio_test_is_met * x, gain_ratio_test_is_met_ret)
 
-    gain_ratio_test_not_met_ret = jax.tree_map(
+    gain_ratio_test_not_met_ret = jax.tree.map(
         lambda x: (1.0 - gain_ratio_test_is_met) * x,
         gain_ratio_test_not_met_ret)
 
-    params, damping_factor, increase_factor, residual, gradient, jac, jt, jtj, hess_res, aux = jax.tree_map(
+    params, damping_factor, increase_factor, residual, gradient, jac, jt, jtj, hess_res, aux = jax.tree.map(
         lambda x, y: x + y, gain_ratio_test_is_met_ret,
         gain_ratio_test_not_met_ret)
 

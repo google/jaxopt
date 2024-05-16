@@ -489,7 +489,7 @@ def loss_fun(
       mutable=['batch_stats'])
 
   xentropy = cross_entropy_loss(labels=batch['label'], logits=logits)
-  weight_penalty_params = [x for x in jax.tree_leaves(params) if x.ndim > 1]
+  weight_penalty_params = [x for x in jax.tree.leaves(params) if x.ndim > 1]
   weight_l2 = tree_util.tree_l2_norm(weight_penalty_params, squared=True)
   loss = xentropy + weight_decay * 0.5 * weight_l2
 
@@ -647,9 +647,9 @@ def zeros_like_fun_output(
   """Replaces fun, outputting a pytree of zeroes with the original structure."""
   def wrapper(*args, **kwargs):
     pytree = jax.eval_shape(fun, *args, **kwargs)
-    leaves, treedef = jax.tree_flatten(pytree)
+    leaves, treedef = jax.tree.flatten(pytree)
     leaves = [jnp.zeros(shape=leaf.shape, dtype=leaf.dtype) for leaf in leaves]
-    zeros_like_pytree = jax.tree_unflatten(treedef, leaves)
+    zeros_like_pytree = jax.tree.unflatten(treedef, leaves)
     return zeros_like_pytree if index is None else zeros_like_pytree[index]
   return wrapper
 
