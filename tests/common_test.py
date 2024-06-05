@@ -25,7 +25,6 @@ import io
 
 import jax
 import jax.numpy as jnp
-import numpy as onp
 import optax
 from sklearn import datasets
 from sklearn import preprocessing
@@ -39,7 +38,6 @@ from jaxopt._src import test_util
 from jaxopt._src.base import LinearOperator
 from jaxopt._src.objective import LeastSquares, MulticlassLinearSvmDual
 from jaxopt._src.osqp import BoxOSQP
-from jaxopt._src.osqp import OSQP
 
 
 N_CALLS = 0

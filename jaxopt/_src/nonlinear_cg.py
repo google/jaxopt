@@ -25,7 +25,6 @@ from jaxopt._src.linesearch_util import _init_stepsize
 from jaxopt._src.linesearch_util import _setup_linesearch
 from jaxopt._src.tree_util import tree_single_dtype, get_real_dtype
 from jaxopt.tree_util import tree_add_scalar_mul
-from jaxopt.tree_util import tree_div
 from jaxopt.tree_util import tree_l2_norm
 from jaxopt.tree_util import tree_scalar_mul
 from jaxopt.tree_util import tree_sub

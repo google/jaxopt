@@ -38,7 +38,6 @@ learning rate.
 
 from absl import flags
 
-import logging
 import sys
 from timeit import default_timer as timer
 
@@ -49,7 +48,6 @@ from jaxopt import loss
 from jaxopt import ArmijoSGD
 from jaxopt import PolyakSGD
 from jaxopt import OptaxSolver
-from jaxopt.tree_util import tree_l2_norm, tree_sub
 
 import optax
 from flax import linen as nn

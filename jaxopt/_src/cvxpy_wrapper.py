@@ -13,18 +13,14 @@
 # limitations under the License.
 """CVXPY wrappers."""
 
-from typing import Any
 from typing import Callable
 from typing import Optional
-from typing import Tuple
 
 from dataclasses import dataclass
 
-import jax
 import jax.numpy as jnp 
 from jaxopt._src import base
 from jaxopt._src import implicit_diff as idf
-from jaxopt._src import linear_solve
 from jaxopt._src import tree_util
 
 
