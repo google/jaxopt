@@ -66,8 +66,8 @@ jobs:
           set -xe
           pip install --upgrade pip setuptools wheel
           pip install -r docs/requirements.txt
-      - name: Build documentation
+      - name: Test examples and docstrings
         run: |
           set -xe
           python -VV
-          cd docs && make clean && make html
+          make doctest
