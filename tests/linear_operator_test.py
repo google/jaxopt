@@ -15,7 +15,6 @@
 
 from absl.testing import absltest
 
-import jax
 import jax.numpy as jnp
 import numpy as onp
 
