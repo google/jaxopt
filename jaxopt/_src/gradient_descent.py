@@ -79,11 +79,9 @@ class GradientDescent(ProximalGradient):
     """
     return super().init_state(init_params, None, *args, **kwargs)
 
-  def update(self,
-             params: Any,
-             state: NamedTuple,
-             *args,
-             **kwargs) -> base.OptStep:
+  def update(
+      self, params: Any, state: ProxGradState, *args, **kwargs
+  ) -> base.OptStep:
     """Performs one iteration of gradient descent.
 
     Args:
