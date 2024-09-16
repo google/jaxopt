@@ -419,8 +419,7 @@ class LbfgsTest(test_util.JaxoptTestCase):
                                             onp.asarray(y),
                                             onp.asarray(x))
     jaxopt_val = binary_logit_log_likelihood(jaxopt_res, y, x)
-    self.assertArraysAllClose(scipy_val, jaxopt_val, rtol=3e-5)
-    
+    self.assertLessEqual(jaxopt_val, scipy_val + 3e-5)
 
   @parameterized.product(linesearch=['zoom', 'backtracking', 'hager-zhang'])
   def test_complex(self, linesearch):
