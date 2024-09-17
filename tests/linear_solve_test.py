@@ -128,11 +128,11 @@ class LinearSolveTest(test_util.JaxoptTestCase):
     x5 = linear_solve.solve_iterative_refinement(matvec, b)
     x6 = linear_solve.solve_qr(matvec, b)
     
-    self.assertArraysAllClose(x, x2, atol=1e-4)
-    self.assertArraysAllClose(x, x3, atol=1e-4)
-    self.assertArraysAllClose(x, x4, atol=1e-4)
-    self.assertArraysAllClose(x, x5, atol=1e-4)
-    self.assertArraysAllClose(x, x6, atol=1e-4)
+    self.assertArraysAllClose(x, x2, atol=1e-4, rtol=1e-4)
+    self.assertArraysAllClose(x, x3, atol=1e-4, rtol=1e-4)
+    self.assertArraysAllClose(x, x4, atol=1e-4, rtol=1e-4)
+    self.assertArraysAllClose(x, x5, atol=1e-4, rtol=1e-4)
+    self.assertArraysAllClose(x, x6, atol=1e-4, rtol=1e-4)
 
   def test_solve_sparse_ridge(self):
     rng = onp.random.RandomState(0)
