@@ -34,19 +34,16 @@ pp.930-958.
 """
 
 from functools import partial
-from typing import Any, Mapping, Tuple, Callable
+from typing import Any, Tuple, Callable
 
 from absl import app
 from absl import flags
 
-import flax
 from flax import linen as nn
 
 import jax
 import jax.numpy as jnp
-from jax.tree_util import tree_structure
 
-import jaxopt
 from jaxopt import loss
 from jaxopt import OptaxSolver
 from jaxopt import FixedPointIteration
@@ -58,7 +55,6 @@ import optax
 
 import tensorflow_datasets as tfds
 import tensorflow as tf
-from collections import namedtuple
 
 
 dataset_names = [

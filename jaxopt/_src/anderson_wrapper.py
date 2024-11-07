@@ -26,8 +26,7 @@ import jax
 import jax.numpy as jnp
 
 from jaxopt._src import base
-from jaxopt._src.tree_util import tree_l2_norm, tree_sub, tree_map
-from jaxopt._src.anderson import AndersonAcceleration
+from jaxopt._src.tree_util import tree_sub, tree_map
 from jaxopt._src.anderson import anderson_step, update_history
 
 

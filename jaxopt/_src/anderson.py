@@ -17,7 +17,6 @@
 from typing import Any
 from typing import Callable
 from typing import NamedTuple
-from typing import List
 from typing import Union
 
 from typing import Optional
@@ -27,12 +26,10 @@ import jax
 import jax.numpy as jnp
 
 from jaxopt._src import base
-from jaxopt._src import linear_solve
-from jaxopt._src.tree_util import tree_l2_norm, tree_sub
-from jaxopt._src.tree_util import tree_vdot, tree_add
-from jaxopt._src.tree_util import tree_mul, tree_scalar_mul
+from jaxopt._src.tree_util import tree_sub
+from jaxopt._src.tree_util import tree_vdot
 from jaxopt._src.tree_util import tree_average, tree_add_scalar_mul
-from jaxopt._src.tree_util import tree_map, tree_gram
+from jaxopt._src.tree_util import tree_map
 
 
 def minimize_residuals(residual_gram, ridge):

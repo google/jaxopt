@@ -17,16 +17,12 @@ from absl.testing import parameterized
 
 import jax
 import jax.numpy as jnp
-from jax.tree_util import tree_map, tree_all
 from jax.test_util import check_grads
 
-from jaxopt.tree_util import tree_l2_norm, tree_scalar_mul, tree_sub
-from jaxopt import objective
+from jaxopt.tree_util import tree_l2_norm
 from jaxopt import FixedPointIteration
 from jaxopt._src import test_util
 
-import numpy as onp
-from sklearn import datasets
 
 
 class FixedPointIterationTest(test_util.JaxoptTestCase):
