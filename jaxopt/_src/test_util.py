@@ -244,7 +244,7 @@ def tolerance(dtype, tol=None):
 
 
 def device_under_test():
-  return jax.lib.xla_bridge.get_backend().platform
+  return jax.default_backend()
 
 
 def _assert_numpy_allclose(a, b, atol=None, rtol=None, err_msg=''):
