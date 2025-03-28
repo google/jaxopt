@@ -296,7 +296,7 @@ class OSQPLUSolver:
 
 @dataclass(eq=False)
 class BoxOSQP(base.IterativeSolver):
-  """Operator Splitting Solver for Quadratic Programs.
+  r"""Operator Splitting Solver for Quadratic Programs.
 
   Jax implementation of the celebrated GPU-OSQP [1,3] based on ADMM.
   Suppports jit, vmap, matvecs, pytrees and fun.
@@ -308,11 +308,11 @@ class BoxOSQP(base.IterativeSolver):
 
   .. math::
 
-    \\begin{aligned}
-      \\min_{x,z} \\quad & \\frac{1}{2}xQx + c^Tx\\\\
-      \\textrm{s.t.} \\quad & Ax=z\\\\
-        & l\\leq z\\leq u    \\\\
-    \\end{aligned}
+    \begin{aligned}
+      \min_{x,z} \quad & \frac{1}{2}xQx + c^Tx\\
+      \textrm{s.t.} \quad & Ax=z\\
+        & l\leq z\leq u    \\
+    \end{aligned}
 
   Equality constraints are obtained by setting l = u.
   If the inequality is one-sided then ``jnp.inf can be used for u,
@@ -324,7 +324,7 @@ class BoxOSQP(base.IterativeSolver):
 
   .. math::
 
-    \\mathcal{L} = \\frac{1}{2}x^TQx + c^Tx + y^T(Ax-z) + \\mu^T (z-u) + \\phi^T (l-z)
+    \mathcal{L} = \frac{1}{2}x^TQx + c^Tx + y^T(Ax-z) + \mu^T (z-u) + \phi^T (l-z)
 
   Primal    variables: :math:`x, z`
 
@@ -381,7 +381,7 @@ class BoxOSQP(base.IterativeSolver):
     tol: absolute tolerance for stoping criterion (default: 1e-3).
     termination_check_frequency: frequency of termination check. (default: 5).
       One every `termination_check_frequency` the error is computed.
-    verbose: If verbose=1 or True, print error at each iteration. 
+    verbose: If verbose=1 or True, print error at each iteration.
       If verbose=2, also print stepsizes and primal/dual variables.
       If verbose=3, also print primal and dual residuals.
     implicit_diff: whether to enable implicit diff or autodiff of unrolled iterations.
