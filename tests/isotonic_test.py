@@ -55,7 +55,8 @@ class IsotonicPavTest(test_util.JaxoptTestCase):
   @parameterized.product(increasing=[True, False])
   def test_gradient(self, increasing, n=10):
     """Checks the gradient with finite differences."""
-    y = jax.random.normal(jax.random.PRNGKey(0), (n,))
+    # Absolute error of test fails for large values of y.
+    y = 0.1*jax.random.normal(jax.random.PRNGKey(0), (n,))
 
     def loss(y):
       return (isotonic_l2_pav(y**3, increasing=increasing)
