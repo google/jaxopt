@@ -48,7 +48,7 @@ Such sequence converges to the solution of the ODE, i.e.,
 In this example we choose :math:`f(t,y(t))=1+y(t)^2`. We know that the
 analytical solution is :math:`y(t)=\tan{t}` , which we use as a ground truth to
 evaluate our numerical scheme.
-We used ``scipy.integrate.cumtrapz`` to perform
+We used ``scipy.integrate.cumulative_trapezoid`` to perform
 integration, but any other integration method can be used.
 """
 
@@ -78,7 +78,7 @@ def T(phi_cur, ti, y0, dx):
   """Fixed point iteration in the Picard method.
   See: https://en.wikipedia.org/wiki/Picard%E2%80%93Lindel%C3%B6f_theorem"""
   f_phi = f(ti, phi_cur)
-  phi_next = scipy.integrate.cumtrapz(f_phi, initial=y0, dx=dx)
+  phi_next = scipy.integrate.cumulative_trapezoid(f_phi, initial=y0, dx=dx)
   return phi_next
 
 y0 = 0
