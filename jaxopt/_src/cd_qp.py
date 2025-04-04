@@ -26,7 +26,6 @@ import jax.numpy as jnp
 
 from jaxopt._src import base
 from jaxopt._src import projection
-from jaxopt._src import tree_util
 
 
 class BoxCDQPState(NamedTuple):

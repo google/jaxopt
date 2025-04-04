@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """GPU-friendly implementation of OSQP."""
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 from dataclasses import dataclass
 from functools import partial
 
@@ -24,7 +24,6 @@ from typing import Tuple
 from typing import Union
 
 import jax
-import jax.nn as nn
 import jax.numpy as jnp
 from jax.tree_util import tree_reduce
 
