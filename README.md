@@ -5,9 +5,6 @@
 | [**Examples**](https://github.com/google/jaxopt/tree/main/examples)
 | [**Cite us**](#citeus)
 
-
-## ⚠️ We are in the process of merging JAXopt into [Optax](https://github.com/google-deepmind/optax). Because of this, JAXopt is now in maintenance mode and we will not be implementing new features ⚠️
-
 Hardware accelerated, batchable and differentiable optimizers in
 [JAX](https://github.com/google/jax).
 
@@ -57,4 +54,10 @@ Our implicit differentiation framework is described in this
 
 ## Disclaimer
 
-JAXopt is an open source project maintained by a dedicated team in Google Research, but is not an official Google product.
+JAXopt was an open source project maintained by a dedicated team in Google
+Research. It is not an official Google product.
+
+## Status
+
+As of April 2025, JAXopt is archived. We are sincerely grateful for all the
+community contributions the project has garnered over the years.
