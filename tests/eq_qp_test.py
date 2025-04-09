@@ -22,7 +22,6 @@ from jaxopt import projection
 from jaxopt.base import KKTSolution
 from jaxopt import EqualityConstrainedQP
 from jaxopt._src import test_util
-from jaxopt._src.tree_util import tree_negative
 
 import numpy as onp
 

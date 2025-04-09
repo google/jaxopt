@@ -58,12 +58,9 @@ import jax.numpy as jnp
 
 from jaxopt import AndersonAcceleration
 
-from jaxopt import objective
-from jaxopt.tree_util import tree_scalar_mul, tree_sub
 
 import numpy as np
 import matplotlib.pyplot as plt
-from sklearn import datasets
 from matplotlib.pyplot import cm
 import scipy.integrate
 

@@ -19,7 +19,6 @@ from absl.testing import parameterized
 
 import jax
 import jax.numpy as jnp
-import numpy as onp
 
 from jax.test_util import check_grads
 from jaxopt.isotonic import isotonic_l2_pav

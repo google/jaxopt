@@ -16,7 +16,6 @@
 
 import time
 
-from typing import NamedTuple
 from typing import Sequence
 
 from absl import app

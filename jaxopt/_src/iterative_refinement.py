@@ -28,15 +28,11 @@ from typing import Union
 from dataclasses import dataclass
 from functools import partial
 
-import jax
 import jax.numpy as jnp
 
-from jaxopt._src import loop
 from jaxopt._src import base
-from jaxopt._src import implicit_diff as idf
 from jaxopt._src.tree_util import tree_zeros_like, tree_add, tree_sub
-from jaxopt._src.tree_util import tree_add_scalar_mul, tree_scalar_mul
-from jaxopt._src.tree_util import tree_vdot, tree_negative, tree_l2_norm
+from jaxopt._src.tree_util import tree_l2_norm
 from jaxopt._src.linear_operator import _make_linear_operator
 import jaxopt._src.linear_solve as linear_solve
 

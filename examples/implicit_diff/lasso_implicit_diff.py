@@ -20,7 +20,6 @@ Implicit differentiation of lasso.
 from absl import app
 from absl import flags
 
-import jax
 import jax.numpy as jnp
 
 from jaxopt import BlockCoordinateDescent

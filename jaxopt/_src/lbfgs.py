@@ -17,7 +17,6 @@
 import warnings
 
 from dataclasses import dataclass
-from functools import partial
 from typing import Any, Callable, NamedTuple, Optional, Union
 
 import jax

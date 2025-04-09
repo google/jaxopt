@@ -34,7 +34,6 @@ from jaxopt.tree_util import tree_add_scalar_mul
 from jaxopt.tree_util import tree_scalar_mul
 from jaxopt.tree_util import tree_vdot_real
 from jaxopt.tree_util import tree_conj
-from jaxopt.tree_util import tree_l2_norm
 
 # pylint: disable=g-bare-generic
 # pylint: disable=invalid-name

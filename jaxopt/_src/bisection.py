@@ -25,8 +25,6 @@ from dataclasses import dataclass
 import jax.numpy as jnp
 
 from jaxopt._src import base
-from jaxopt._src import implicit_diff as idf
-from jaxopt._src import loop
 
 
 class BisectionState(NamedTuple):

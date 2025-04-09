@@ -14,7 +14,6 @@
 
 """Test utilities."""
 
-from absl.testing import absltest
 from absl.testing import parameterized
 
 import functools
@@ -22,8 +21,6 @@ import functools
 import jax
 import jax.numpy as jnp
 
-from jaxopt._src import base
-from jaxopt._src import loss
 
 import numpy as onp
 import scipy as osp

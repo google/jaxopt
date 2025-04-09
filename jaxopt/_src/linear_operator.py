@@ -16,9 +16,8 @@
 import functools
 import jax
 import jax.numpy as jnp
-import numpy as onp
 
-from jaxopt.tree_util import tree_map, tree_sum, tree_mul
+from jaxopt.tree_util import tree_map
 
 
 class DenseLinearOperator:
