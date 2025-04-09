@@ -3,9 +3,6 @@
 JAXopt
 ======
 
-.. warning::
-      This is the documentation for the development version of JAXopt.
-
 Hardware accelerated, batchable and differentiable optimizers in
 `JAX <https://github.com/google/jax>`_.
 
@@ -16,6 +13,17 @@ Hardware accelerated, batchable and differentiable optimizers in
 - **Differentiable:** optimization problem solutions can be differentiated with
   respect to their inputs either implicitly or via autodiff of unrolled
   algorithm iterations.
+
+
+Status
+------
+
+JAXopt is no longer maintained nor developed. Alternatives may be found
+`here <https://docs.jax.dev/en/latest/>`_. Some of its features (like losses,
+projections, lbfgs optimizer) have been ported into
+`optax <https://github.com/google-deepmind/optax>`_. We are sincerely grateful for
+all the community contributions the project has garnered over the years.
+
 
 Installation
 ------------
