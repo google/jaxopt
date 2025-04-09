@@ -1,6 +1,7 @@
 # JAXopt
 
-[**Installation**](#installation)
+[**Status**](#status)
+| [**Installation**](#installation)
 | [**Documentation**](https://jaxopt.github.io)
 | [**Examples**](https://github.com/google/jaxopt/tree/main/examples)
 | [**Cite us**](#citeus)
@@ -15,6 +16,14 @@ Hardware accelerated, batchable and differentiable optimizers in
 - **Differentiable:** optimization problem solutions can be differentiated with
   respect to their inputs either implicitly or via autodiff of unrolled
   algorithm iterations.
+
+## Status<a id="status"></a>
+
+JAXopt is no longer maintained nor developed. Alternatives may be found
+[here](https://docs.jax.dev/en/latest/). Some of its features (like losses,
+projections, lbfgs optimizer) have been ported into
+[optax](https://github.com/google-deepmind/optax). We are sincerely grateful for
+all the community contributions the project has garnered over the years.
 
 ## Installation<a id="installation"></a>
 
@@ -57,7 +66,3 @@ Our implicit differentiation framework is described in this
 JAXopt was an open source project maintained by a dedicated team in Google
 Research. It is not an official Google product.
 
-## Status
-
-As of April 2025, JAXopt is archived. We are sincerely grateful for all the
-community contributions the project has garnered over the years.
