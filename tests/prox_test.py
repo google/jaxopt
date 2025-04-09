@@ -87,6 +87,13 @@ class ProxTest(test_util.JaxoptTestCase):
     got = prox.prox_lasso(x, alpha)
     self.assertArraysAllClose(jnp.array(expected), jnp.array(got))
 
+    # test that works when regularizer is float and prox jit compiled
+    got = jax.jit(prox.prox_lasso)(x, 0.5)
+    expected0 = [self._prox_l1(x[0][i], 0.5) for i in range(len(x[0]))]
+    expected1 = [self._prox_l1(x[1][i], 0.5) for i in range(len(x[0]))]
+    expected = (jnp.array(expected0), jnp.array(expected1))
+    self.assertArraysAllClose(jnp.array(expected), jnp.array(got))
+
   def _prox_enet(self, x, lam, gamma):
     return (1.0 / (1.0 + lam * gamma)) * self._prox_l1(x, lam)
 

@@ -70,7 +70,7 @@ def prox_lasso(x: Any,
   if l1reg is None:
     l1reg = 1.0
 
-  if type(l1reg) == float:
+  if jnp.isscalar(l1reg):
     l1reg = tree_util.tree_map(lambda y: l1reg*jnp.ones_like(y), x)
 
   def fun(u, v): return jnp.sign(u) * jax.nn.relu(jnp.abs(u) - v * scaling)
