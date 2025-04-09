@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import warnings
+
 from jaxopt import implicit_diff
 from jaxopt import isotonic
 from jaxopt import loss
@@ -53,3 +55,9 @@ from jaxopt._src.scipy_wrappers import ScipyLeastSquares
 from jaxopt._src.scipy_wrappers import ScipyMinimize
 from jaxopt._src.scipy_wrappers import ScipyRootFinding
 from jaxopt._src.zoom_linesearch import ZoomLineSearch
+
+warnings.warn(
+    "JAXopt is no longer maintained. See https://docs.jax.dev/en/latest/ for"
+    " alternatives.",
+    DeprecationWarning,
+)
