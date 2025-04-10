@@ -19,9 +19,9 @@ Hardware accelerated, batchable and differentiable optimizers in
 
 ## Status<a id="status"></a>
 
-JAXopt is no longer maintained nor developed. Alternatives may be found
-[here](https://docs.jax.dev/en/latest/). Some of its features (like losses,
-projections, lbfgs optimizer) have been ported into
+JAXopt is no longer maintained nor developed. Alternatives may be found on the
+JAX [website](https://docs.jax.dev/en/latest/). Some of its features (like
+losses, projections, lbfgs optimizer) have been ported into
 [optax](https://github.com/google-deepmind/optax). We are sincerely grateful for
 all the community contributions the project has garnered over the years.
 
