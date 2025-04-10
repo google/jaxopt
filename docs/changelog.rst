@@ -1,6 +1,26 @@
 Changelog
 =========
 
+Version 0.8.4
+-------------
+
+Bug fixes and enhancements
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- Remove invalid escape patterns using raw docstring by Tom McTiernan.
+- Fix lasso with scalar l1reg by Edoardo Balzani.
+- Remove unused imports by Neil Girdhar.
+- Fix tests, by Vincent Roulet.
+- Fix print for verbose=False in zoom linesearch, by Vincent Roulet.
+- Fix BoxOSQP when using pytrees, by Diego Ferigo.
+- Drop Python 3.8 by Neil Girdhar.
+
+Contributors
+~~~~~~~~~~~~
+
+Diego Ferigo, Neil Girdhar, Vincent Roulet, Edoardo Balzani, Tom McTiernan.
+
+
 Version 0.8.3
 -------------
 
