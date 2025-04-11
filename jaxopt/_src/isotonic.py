@@ -97,7 +97,9 @@ def _isotonic_l2_pav(y):
     )
   # Define the expected shape & dtype of output.
   shape_dtype = jax.ShapeDtypeStruct(shape=y.shape, dtype=y.dtype)
-  sol = jax.pure_callback(_isotonic_l2_pav_numba, shape_dtype, y)
+  sol = jax.pure_callback(
+      _isotonic_l2_pav_numba, shape_dtype, y, vmap_method="sequential"
+  )
   return sol
 
 
