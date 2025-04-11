@@ -1,6 +1,20 @@
 Changelog
 =========
 
+Version 0.8.5
+-------------
+
+Bug fixes and enhancements
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- Migrate uses of jax pure callback by Dan Foreman-Mackey.
+
+Contributors
+~~~~~~~~~~~~
+
+Dan Foreman-Mackey.
+
+
 Version 0.8.4
 -------------
 
