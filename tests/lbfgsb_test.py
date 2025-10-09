@@ -29,6 +29,12 @@ import numpy as onp
 
 from sklearn import datasets
 
+try:
+  # JAX v0.8.0 and later
+  from jax import enable_x64
+except ImportError:
+  from jax.experimental import enable_x64
+
 # Uncomment this line to test in x64 
 # jax.config.update('jax_enable_x64', True)
 
@@ -213,7 +219,7 @@ class LbfgsbTest(test_util.JaxoptTestCase):
     def f(x):
       return jnp.cos(jnp.sum(jnp.exp(-x)) ** 2).astype(out_dtype)
 
-    with jax.experimental.enable_x64():
+    with enable_x64():
       x0 = jnp.ones([5, 5], dtype=jnp.float32)
       lbfgs = LBFGSB(fun=f, tol=1e-3, maxiter=500)
       x, state = lbfgs.run(x0, bounds=None)
