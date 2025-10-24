@@ -38,19 +38,26 @@ For instance, suppose we want to solve the following optimization problem
 
 which corresponds to the choice :math:`g(w, \text{l1reg}) = \text{l1reg} \cdot ||w||_1`.  The
 corresponding ``prox`` operator is :func:`prox_lasso <jaxopt.prox.prox_lasso>`.
-We can therefore write::
+We can therefore write:
 
-  from jaxopt import ProximalGradient
-  from jaxopt.prox import prox_lasso
+.. doctest::
 
-  def least_squares(w, data):
-    X, y = data
-    residuals = jnp.dot(X, w) - y
-    return jnp.mean(residuals ** 2)
+  >>> import jax.numpy as jnp
+  >>> from jaxopt import ProximalGradient
+  >>> from jaxopt.prox import prox_lasso
+  >>> from sklearn import datasets
+  >>> X, y = datasets.make_regression()
 
-  l1reg = 1.0
-  pg = ProximalGradient(fun=least_squares, prox=prox_lasso)
-  pg_sol = pg.run(w_init, hyperparams_prox=l1reg, data=(X, y)).params
+  >>> def least_squares(w, data):
+  ...  inputs, targets = data
+  ...  residuals = jnp.dot(inputs, w) - targets
+  ...  return jnp.mean(residuals ** 2)
+
+  >>> l1reg = 1.0
+  >>> w_init = jnp.zeros(n_features)
+  >>> pg = ProximalGradient(fun=least_squares, prox=prox_lasso)
+  >>> pg_sol = pg.run(w_init, hyperparams_prox=l1reg, data=(X, y)).params
+
 
 Note that :func:`prox_lasso <jaxopt.prox.prox_lasso>` has a hyperparameter
 ``l1reg``, which controls the :math:`L_1` regularization strength.  As shown
@@ -65,13 +72,16 @@ Differentiation
 
 In some applications, it is useful to differentiate the solution of the solver
 with respect to some hyperparameters.  Continuing the previous example, we can
-now differentiate the solution w.r.t. ``l1reg``::
+now differentiate the solution w.r.t. ``l1reg``:
 
-  def solution(l1reg):
-    pg = ProximalGradient(fun=least_squares, prox=prox_lasso, implicit_diff=True)
-    return pg.run(w_init, hyperparams_prox=l1reg, data=(X, y)).params
 
-  print(jax.jacobian(solution)(l1reg))
+.. doctest::
+
+  >>> def solution(l1reg):
+  ...  pg = ProximalGradient(fun=least_squares, prox=prox_lasso, implicit_diff=True)
+  ...  return pg.run(w_init, hyperparams_prox=l1reg, data=(X, y)).params
+
+  >>> print(jax.jacobian(solution)(l1reg))
 
 Under the hood, we use the implicit function theorem if ``implicit_diff=True``
 and autodiff of unrolled iterations if ``implicit_diff=False``.  See the
@@ -95,15 +105,18 @@ Block coordinate descent
 Contrary to other solvers, :class:`jaxopt.BlockCoordinateDescent` only works with
 :ref:`composite linear objective functions <composite_linear_functions>`.
 
-Example::
+Example:
 
-  from jaxopt import objective
-  from jaxopt import prox
+.. doctest::
 
-  l1reg = 1.0
-  w_init = jnp.zeros(n_features)
-  bcd = BlockCoordinateDescent(fun=objective.least_squares, block_prox=prox.prox_lasso)
-  lasso_sol = bcd.run(w_init, hyperparams_prox=l1reg, data=(X, y)).params
+  >>> from jaxopt import objective
+  >>> from jaxopt import prox
+  >>> import jax.numpy as jnp
+
+  >>> l1reg = 1.0
+  >>> w_init = jnp.zeros(n_features)
+  >>> bcd = jaxopt.BlockCoordinateDescent(fun=objective.least_squares, block_prox=prox.prox_lasso)
+  >>> lasso_sol = bcd.run(w_init, hyperparams_prox=l1reg, data=(X, y)).params
 
 .. topic:: Examples
 

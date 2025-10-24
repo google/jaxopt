@@ -50,13 +50,14 @@ extensions = [
     'sphinx.ext.napoleon', # napoleon on top of autodoc: https://stackoverflow.com/a/66930447 might correct some warnings
     'sphinx.ext.autodoc',
     'sphinx.ext.autosummary',
+    'sphinx.ext.doctest',
     'sphinx.ext.intersphinx',
     'sphinx.ext.mathjax',
     'sphinx.ext.viewcode',
     'matplotlib.sphinxext.plot_directive',
     'sphinx_autodoc_typehints',
     'myst_nb',
-    "sphinx_remove_toctrees",
+    'sphinx_remove_toctrees',
     'sphinx_rtd_theme',
     'sphinx_gallery.gen_gallery',
     'sphinx_copybutton',
@@ -70,7 +71,12 @@ sphinx_gallery_conf = {
      "backreferences_dir": os.path.join("modules", "generated"),
 }
 
+# Specify how to identify the prompt when copying code snippets
+copybutton_prompt_text = r">>> |\.\.\. "
+copybutton_prompt_is_regexp = True
+copybutton_exclude = "style"
 
+trim_doctests_flags = True
 source_suffix = ['.rst', '.ipynb', '.md']
 
 autosummary_generate = True
