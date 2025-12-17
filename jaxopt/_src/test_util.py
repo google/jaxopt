@@ -112,7 +112,6 @@ def logreg_skl(X, y, lam, tol=1e-5, fit_intercept=False,
   logreg = linear_model.LogisticRegression(fit_intercept=fit_intercept,
                                            C=1. / (lam * X.shape[0]), tol=tol,
                                            solver=solver, penalty=penalty,
-                                           multi_class=multiclass,
                                            random_state=0)
   logreg = logreg.fit(X, y)
   if fit_intercept:
