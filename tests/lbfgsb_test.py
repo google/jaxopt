@@ -35,7 +35,7 @@ try:
 except ImportError:
   from jax.experimental import enable_x64
 
-# Uncomment this line to test in x64 
+# Uncomment this line to test in x64
 # jax.config.update('jax_enable_x64', True)
 
 class LbfgsbTest(test_util.JaxoptTestCase):
@@ -100,7 +100,8 @@ class LbfgsbTest(test_util.JaxoptTestCase):
     x, _ = lbfgsb.run(x0, bounds=(lower, upper))
 
     # the Rosenbrock function is zero at its minimum
-    self.assertLessEqual(fun(x), 1e-3)
+    # Loosened to 1.5e-3 due to float32 precision limits after dot strength reduction on CPU.
+    self.assertLessEqual(fun(x), 1.5e-3)
 
   @parameterized.parameters(
       ((0., -5., 0), (2., 0., 1)),
@@ -269,7 +270,7 @@ class LbfgsbTest(test_util.JaxoptTestCase):
     data = jnp.array(1.5)
     res = grad_fn(0.5, jnp.array(0.0), (jnp.array(0.0), jnp.array(10.0)), data)
     self.assertEqual(res, data)
-      
+
   def test_linear_in_box(self):
     # Fixing issue #492
     def fun(x):
