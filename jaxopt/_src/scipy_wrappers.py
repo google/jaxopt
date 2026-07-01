@@ -44,6 +44,10 @@ import numpy as onp
 import scipy as osp
 from scipy.optimize import LbfgsInvHessProduct
 
+_SCIPY_METHODS_REQUIRING_HESSIAN = frozenset(
+    {'Newton-CG', 'dogleg', 'trust-ncg', 'trust-krylov', 'trust-exact'}
+)
+
 
 @register_pytree_node_class
 class LbfgsInvHessProductPyTree(LbfgsInvHessProduct):
@@ -334,12 +338,21 @@ class ScipyMinimize(ScipyWrapper):
       value, grads = self._value_and_grad_fun(x_jnp, *args, **kwargs)
       return onp.asarray(value, self.dtype), jnp_to_onp(grads, self.dtype)
 
+    scipy_hess = None
+    if self.method in _SCIPY_METHODS_REQUIRING_HESSIAN:
+      hess_jnp_to_onp = make_jac_jnp_to_onp(pytree_topology, pytree_topology, self.dtype)
+      def scipy_hess(x_onp: onp.ndarray) -> onp.ndarray:
+        x_jnp = onp_to_jnp(x_onp)
+        hess = self._hess_fun(x_jnp, *args, **kwargs)
+        return hess_jnp_to_onp(hess)
+
     if bounds is not None:
       bounds = osp.optimize.Bounds(lb=jnp_to_onp(bounds[0], self.dtype),
                                    ub=jnp_to_onp(bounds[1], self.dtype))
 
     res = osp.optimize.minimize(scipy_fun, jnp_to_onp(init_params, self.dtype),
                                 jac=True,
+                                hess=scipy_hess,
                                 tol=self.tol,
                                 bounds=bounds,
                                 method=self.method,
@@ -400,6 +413,9 @@ class ScipyMinimize(ScipyWrapper):
       self.fun = jax.jit(self.fun)
       self._grad_fun = jax.jit(self._grad_fun)
       self._value_and_grad_fun = jax.jit(self._value_and_grad_fun)
+    self._hess_fun = jax.hessian(self.fun)
+    if self.jit:
+      self._hess_fun = jax.jit(self._hess_fun)
 
     if self.options is None:
       self.options = {}
