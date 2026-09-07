@@ -13,11 +13,11 @@
 # limitations under the License.
 """CVXPY wrappers."""
 
+from dataclasses import dataclass
 from typing import Callable
 from typing import Optional
 
-from dataclasses import dataclass
-
+import jax
 import jax.numpy as jnp 
 from jaxopt._src import base
 from jaxopt._src import implicit_diff as idf
@@ -119,35 +119,68 @@ class CvxpyQP(base.Solver):
     # TODO(lbethune): the interface of CVXPY could easily allow pytrees for constraints,
     # by populating `constraints` list with different Ai x = bi and Gi x <= hi.
     # Pytree support for x could be possible by creating a cp.Variable for each leaf in the pytree c.
-    import cvxpy as cp
-
     del init_params  # no warm start
     _check_params(params_obj, params_eq, params_ineq)
 
-    Q, c = params_obj
-    x = cp.Variable(len(c))
-    objective = 0.5 * cp.quad_form(x, Q) + c.T @ x
+    def _py_solve(params_obj, params_eq, params_ineq):
+      import cvxpy as cp
+      import numpy as np
 
-    constraints = []
-    if params_eq is not None:
-      A, b = params_eq
-      constraints.append(A @ x == b)
-    if params_ineq is not None:
-      G, h = params_ineq
-      constraints.append(G @ x <= h)
+      Q, c = params_obj
+      Q, c = np.asarray(Q), np.asarray(c)
+      x = cp.Variable(len(c))
+      objective = 0.5 * cp.quad_form(x, Q) + c.T @ x
 
-    pb = cp.Problem(cp.Minimize(objective), constraints)
-    pb.solve(solver=self.solver)
+      constraints = []
+      if params_eq is not None:
+        A, b = params_eq
+        constraints.append(np.asarray(A) @ x == np.asarray(b))
+      if params_ineq is not None:
+        G, h = params_ineq
+        constraints.append(np.asarray(G) @ x <= np.asarray(h))
 
-    if pb.status in ["infeasible", "unbounded"]:
-      raise ValueError("The problem is %s." % pb.status)
+      pb = cp.Problem(cp.Minimize(objective), constraints)
+      pb.solve(solver=self.solver)
 
-    dual_eq = None if params_eq is None else jnp.array(pb.constraints[0].dual_value)
-    dual_ineq = None if params_ineq is None else jnp.array(pb.constraints[-1].dual_value)
+      if pb.status in ["infeasible", "unbounded"]:
+        raise ValueError("The problem is %s." % pb.status)
 
-    sol = base.KKTSolution(primal=jnp.array(x.value),
-                           dual_eq=dual_eq,
-                           dual_ineq=dual_ineq)
+      dual_eq = (
+          None
+          if params_eq is None
+          else np.asarray(
+              pb.constraints[0].dual_value, dtype=params_eq[1].dtype
+          )
+      )
+      dual_ineq = (
+          None
+          if params_ineq is None
+          else np.asarray(
+              pb.constraints[-1].dual_value, dtype=params_ineq[1].dtype
+          )
+      )
+
+      return np.asarray(x.value, dtype=c.dtype), dual_eq, dual_ineq
+
+    _, c = params_obj
+    out_primal = jax.ShapeDtypeStruct(c.shape, c.dtype)
+    out_dual_eq = (
+        None
+        if params_eq is None
+        else jax.ShapeDtypeStruct(params_eq[1].shape, params_eq[1].dtype)
+    )
+    out_dual_ineq = (
+        None
+        if params_ineq is None
+        else jax.ShapeDtypeStruct(params_ineq[1].shape, params_ineq[1].dtype)
+    )
+    res_struct = (out_primal, out_dual_eq, out_dual_ineq)
+
+    primal, dual_eq, dual_ineq = jax.pure_callback(
+        _py_solve, res_struct, params_obj, params_eq, params_ineq
+    )
+
+    sol = base.KKTSolution(primal=primal, dual_eq=dual_eq, dual_ineq=dual_ineq)
 
     # TODO(lbethune): pb.solver_stats is a "state" the user might be interested in.
     return base.OptStep(params=sol, state=None)

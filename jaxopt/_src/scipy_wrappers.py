@@ -46,42 +46,39 @@ from scipy.optimize import LbfgsInvHessProduct
 
 
 @register_pytree_node_class
-class LbfgsInvHessProductPyTree(LbfgsInvHessProduct):
-  """
-  Registers the LbfgsInvHessProduct object as a PyTree.
-  This object is typically returned by the L-BFSG-B optimizer to efficiently
-  store the inverse of the Hessian matrix evaluated at the best-fit parameters.
-  """
+class LbfgsInvHessProductPyTree:
+  """Registers the LbfgsInvHessProduct object as a PyTree."""
 
-  def __init__(self, sk, yk):
-    """
-    Construct the operator.
-    This is the same constructor as the original LbfgsInvHessProduct class,
-    except that numpy has been replaced by jax.numpy and no call to the
-    numpy.ndarray constuctor is performed.
-    """
-    if sk.shape != yk.shape or sk.ndim != 2:
-      raise ValueError('sk and yk must have matching shape, (n_corrs, n)')
-    n_corrs, n = sk.shape
-    self.dtype = jnp.float64 if config.jax_enable_x64 is True else jnp.float32
-    self.shape = (n, n)
-    self.sk = sk
-    self.yk = yk
-    self.n_corrs = n_corrs
-    self.rho = 1 / jnp.einsum('ij,ij->i', sk, yk)
+  def __init__(self, mat):
+    self.mat = mat
+    if hasattr(mat, 'shape'):
+      self.shape = mat.shape
+      self.dtype = mat.dtype
+    elif hasattr(mat, 'aval'):
+      self.shape = mat.aval.shape
+      self.dtype = mat.aval.dtype
+    else:
+      self.shape = None
+      self.dtype = None
 
+  def todense(self):
+    return self.mat
+
+  def dot(self, x):
+    return jnp.dot(self.mat, x)
+
+  def __matmul__(self, x):
+    return self.mat @ x
 
   def __repr__(self):
-      return "LbfgsInvHessProduct(sk={}, yk={})".format(self.sk, self.yk)
+    return f'LbfgsInvHessProductPyTree(shape={self.shape})'
 
   def tree_flatten(self):
-      children = (self.sk, self.yk)
-      aux_data = None
-      return (children, aux_data)
+    return ((self.mat,), None)
 
   @classmethod
   def tree_unflatten(cls, aux_data, children):
-      return cls(*children)
+    return cls(*children)
 
 
 class ScipyMinimizeInfo(NamedTuple):
@@ -315,8 +312,78 @@ class ScipyMinimize(ScipyWrapper):
     """Optimality function mapping compatible with `@custom_root`."""
     return self._grad_fun(sol, *args, **kwargs)
 
+  def _run_callback(self, init_params, bounds, args, kwargs):
+    from jax import dtypes
+
+    float_dtype = dtypes.canonicalize_dtype(self.dtype or jnp.float32)
+
+    def _py_run(init_params, bounds, args, kwargs):
+      opt_step = self._run(init_params, bounds, *args, **kwargs)
+      info = opt_step.state
+      return (
+          opt_step.params,
+          info.fun_val,
+          onp.bool_(info.success),
+          onp.int32(info.status),
+          onp.int32(info.iter_num if info.iter_num is not None else 0),
+          info.hess_inv,
+          info.num_fun_eval,
+          info.num_jac_eval,
+          info.num_hess_eval,
+      )
+
+    flat_init_size = sum(
+        int(leaf.size) for leaf in tree_util.tree_leaves(init_params)
+    )
+    if self.method == 'BFGS':
+      hess_inv_struct = jax.ShapeDtypeStruct(
+          (flat_init_size, flat_init_size), float_dtype
+      )
+    elif self.method == 'L-BFGS-B':
+      hess_inv_struct = LbfgsInvHessProductPyTree(
+          jax.ShapeDtypeStruct((flat_init_size, flat_init_size), float_dtype)
+      )
+    else:
+      hess_inv_struct = None
+
+    res_struct = (
+        tree_util.tree_map(
+            lambda x: jax.ShapeDtypeStruct(x.shape, x.dtype), init_params
+        ),
+        jax.ShapeDtypeStruct((), float_dtype),
+        jax.ShapeDtypeStruct((), jnp.bool_),
+        jax.ShapeDtypeStruct((), jnp.int32),
+        jax.ShapeDtypeStruct((), jnp.int32),
+        hess_inv_struct,
+        jax.ShapeDtypeStruct((), base.NUM_EVAL_DTYPE),
+        jax.ShapeDtypeStruct((), base.NUM_EVAL_DTYPE),
+        jax.ShapeDtypeStruct((), base.NUM_EVAL_DTYPE),
+    )
+    params, fun_val, success, status, nit, hess_inv, nfev, njev, nhev = (
+        jax.pure_callback(
+            _py_run, res_struct, init_params, bounds, args, kwargs
+        )
+    )
+    info = ScipyMinimizeInfo(
+        fun_val=fun_val,
+        success=success,
+        status=status,
+        iter_num=nit,
+        hess_inv=hess_inv,
+        num_fun_eval=nfev,
+        num_jac_eval=njev,
+        num_hess_eval=nhev,
+    )
+    return base.OptStep(params, info)
+
   def _run(self, init_params, bounds, *args, **kwargs):
     """Wraps `scipy.optimize.minimize`."""
+    if any(
+        isinstance(x, jax.core.Tracer)
+        for x in tree_util.tree_leaves((init_params, bounds, args, kwargs))
+    ):
+      return self._run_callback(init_params, bounds, args, kwargs)
+
     # Sets up the "JAX-SciPy" bridge.
     pytree_topology = pytree_topology_from_example(init_params)
     onp_to_jnp = make_onp_to_jnp(pytree_topology)
@@ -350,8 +417,12 @@ class ScipyMinimize(ScipyWrapper):
 
     if hasattr(res, 'hess_inv'):
       if isinstance(res.hess_inv, osp.optimize.LbfgsInvHessProduct):
-        hess_inv = LbfgsInvHessProductPyTree(res.hess_inv.sk,
-                                             res.hess_inv.yk)
+        from jax import dtypes
+
+        float_dtype = dtypes.canonicalize_dtype(self.dtype or jnp.float32)
+        hess_inv = LbfgsInvHessProductPyTree(
+            jnp.asarray(res.hess_inv.todense(), dtype=float_dtype)
+        )
       elif isinstance(res.hess_inv, onp.ndarray):
         hess_inv = jnp.asarray(res.hess_inv)
     else:
@@ -497,6 +568,53 @@ class ScipyRootFinding(ScipyWrapper):
   options: Optional[Dict[str, Any]] = None
   use_jacrev: bool = True
 
+  def _run_callback(self, init_params, args, kwargs):
+    from jax import dtypes
+
+    float_dtype = dtypes.canonicalize_dtype(self.dtype or jnp.float32)
+
+    def _py_run(init_params, args, kwargs):
+      opt_step = self.run(init_params, *args, **kwargs)
+      info = opt_step.state
+      iter_num = onp.int32(info.iter_num) if info.iter_num is not None else None
+      return (
+          opt_step.params,
+          info.fun_val,
+          onp.bool_(info.success),
+          onp.int32(info.status),
+          iter_num,
+          info.num_fun_eval if info.num_fun_eval is not None else onp.int32(0),
+      )
+
+    flat_init_size = sum(
+        int(leaf.size) for leaf in tree_util.tree_leaves(init_params)
+    )
+    has_iter_num = not (self.method is None or self.method in ('hybr', 'lm'))
+    iter_num_struct = (
+        jax.ShapeDtypeStruct((), jnp.int32) if has_iter_num else None
+    )
+    res_struct = (
+        tree_util.tree_map(
+            lambda x: jax.ShapeDtypeStruct(x.shape, x.dtype), init_params
+        ),
+        jax.ShapeDtypeStruct((flat_init_size,), float_dtype),
+        jax.ShapeDtypeStruct((), jnp.bool_),
+        jax.ShapeDtypeStruct((), jnp.int32),
+        iter_num_struct,
+        jax.ShapeDtypeStruct((), base.NUM_EVAL_DTYPE),
+    )
+    params, fun_val, success, status, iter_num, num_fun_eval = (
+        jax.pure_callback(_py_run, res_struct, init_params, args, kwargs)
+    )
+    info = ScipyRootInfo(
+        fun_val=fun_val,
+        success=success,
+        status=status,
+        iter_num=iter_num,
+        num_fun_eval=num_fun_eval,
+    )
+    return base.OptStep(params, info)
+
   def run(self,
           init_params: Any,
           *args,
@@ -510,6 +628,12 @@ class ScipyRootFinding(ScipyWrapper):
     Returns:
       (params, info).
     """
+    if any(
+        isinstance(x, jax.core.Tracer)
+        for x in tree_util.tree_leaves((init_params, args, kwargs))
+    ):
+      return self._run_callback(init_params, args, kwargs)
+
     # Sets up the "JAX-SciPy" bridge.
     pytree_topology = pytree_topology_from_example(init_params)
     onp_to_jnp = make_onp_to_jnp(pytree_topology)
@@ -638,8 +762,72 @@ class ScipyLeastSquares(ScipyWrapper):
     """Optimality function mapping compatible with `@custom_root`."""
     return self._grad_cost_fun(sol, *args, **kwargs)
 
+  def _run_callback(self, init_params, bounds, args, kwargs):
+    from jax import dtypes
+
+    float_dtype = dtypes.canonicalize_dtype(self.dtype or jnp.float32)
+
+    def _py_run(init_params, bounds, args, kwargs):
+      opt_step = self._run(init_params, bounds, *args, **kwargs)
+      info = opt_step.state
+      return (
+          opt_step.params,
+          onp.asarray(info.cost_val, dtype=float_dtype),
+          onp.asarray(info.fun_val, dtype=float_dtype),
+          onp.bool_(info.success),
+          onp.int32(info.status),
+          onp.int32(info.num_fun_eval),
+          onp.int32(info.num_jac_eval if info.num_jac_eval is not None else 0),
+          onp.asarray(info.error, dtype=float_dtype),
+      )
+
+    init_output = self.fun(init_params, *args, **kwargs)
+    total_out_size = sum(
+        int(leaf.size) for leaf in tree_util.tree_leaves(init_output)
+    )
+    res_struct = (
+        tree_util.tree_map(
+            lambda x: jax.ShapeDtypeStruct(x.shape, x.dtype), init_params
+        ),
+        jax.ShapeDtypeStruct((), float_dtype),
+        jax.ShapeDtypeStruct((total_out_size,), float_dtype),
+        jax.ShapeDtypeStruct((), jnp.bool_),
+        jax.ShapeDtypeStruct((), jnp.int32),
+        jax.ShapeDtypeStruct((), base.NUM_EVAL_DTYPE),
+        jax.ShapeDtypeStruct((), base.NUM_EVAL_DTYPE),
+        jax.ShapeDtypeStruct((), float_dtype),
+    )
+    (
+        params,
+        cost_val,
+        fun_val,
+        success,
+        status,
+        num_fun_eval,
+        num_jac_eval,
+        error,
+    ) = jax.pure_callback(
+        _py_run, res_struct, init_params, bounds, args, kwargs
+    )
+    info = ScipyLeastSquaresInfo(
+        cost_val=cost_val,
+        fun_val=fun_val,
+        success=success,
+        status=status,
+        num_fun_eval=num_fun_eval,
+        num_jac_eval=num_jac_eval,
+        error=error,
+    )
+    return base.OptStep(params, info)
+
   def _run(self, init_params, bounds, *args, **kwargs):
     """Wraps `scipy.optimize.least_squares`."""
+    if any(
+        isinstance(x, jax.core.Tracer)
+        for x in tree_util.tree_leaves((init_params, bounds, args, kwargs))
+    ):
+      return self._run_callback(init_params, bounds, args, kwargs)
+
     # Sets up the "JAX-SciPy" bridge.
     init_output = self.fun(init_params, *args, **kwargs)
     input_pytree_topology = pytree_topology_from_example(init_params)
