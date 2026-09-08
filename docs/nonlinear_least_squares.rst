@@ -98,3 +98,17 @@ parameters:
 
 where :math:`\mathbf{J}` is the Jacobian of the residual function w.r.t.
 parameters and :math:`\mu` is the damping parameter.
+
+SciPy wrappers
+--------------
+
+.. autosummary::
+  :toctree: _autosummary
+
+    jaxopt.ScipyLeastSquares
+    jaxopt.ScipyBoundedLeastSquares
+
+For users who need SciPy's ``least_squares`` implementation with PyTree and
+implicit differentiation support, :class:`jaxopt.ScipyLeastSquares` wraps
+unconstrained nonlinear least squares problems and
+:class:`jaxopt.ScipyBoundedLeastSquares` handles problems with box constraints.

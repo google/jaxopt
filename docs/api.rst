@@ -98,6 +98,8 @@ Nonlinear least squares
 
     jaxopt.GaussNewton
     jaxopt.LevenbergMarquardt
+    jaxopt.ScipyLeastSquares
+    jaxopt.ScipyBoundedLeastSquares
 
 Root finding
 ------------
