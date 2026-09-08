@@ -109,6 +109,14 @@ The following operators are available.
 Projections always have two arguments: the input to be projected and the
 parameters of the convex set.
 
+Note that a retraction is also provided, that allows to retrieve
+an arbitrary point lying in the intersection of convex sets.
+
+.. autosummary::
+  :toctree: _autosummary
+
+    jaxopt.projection.alternating_projections
+
 Mirror descent
 --------------
 

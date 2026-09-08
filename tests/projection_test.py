@@ -439,6 +439,32 @@ class ProjectionTest(test_util.JaxoptTestCase):
     solution1 = projection.projection_birkhoff(doubly_stochastic_matrix)
     self.assertArraysAllClose(doubly_stochastic_matrix, solution1)
 
+  def test_alternating_projections(self):
+    # x1 + x2 = 1
+    x = jnp.array([-2.0, 1.0, 3.0])
+    a = jnp.array([ 1.0, 1.0,  0.])
+    b = jnp.array(1.0)
+
+    # l2 ball of radius 1.5
+    radius = jnp.array(1.5)
+
+    def retract_on_disk_intercept(b):
+      # The intersection of a ball with an hyperplane is a disk.
+      retract_on_disk = [projection.projection_l2_ball,
+                        projection.projection_hyperplane]
+      hyper_params = [radius, (a, b)]
+      in_disk = projection.alternating_projections(x, retract_on_disk, hyper_params)
+
+      return in_disk
+    
+    in_disk = retract_on_disk_intercept(b)
+    atol = 1e-5
+    self.assertLessEqual(jnp.linalg.norm(in_disk), radius + atol)
+    self.assertArraysAllClose(jnp.dot(a, in_disk), jnp.array(b), atol=atol)
+
+    # test that there is no error.
+    unused_jac = jax.jacrev(retract_on_disk_intercept)(b)
+
   def test_projection_sparse_simplex(self):
     def top_k(x, k):
       """Preserve the top-k entries of the vector x and put -inf values elsewhere.

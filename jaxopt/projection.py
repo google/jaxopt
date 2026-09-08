@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from jaxopt._src.projection import alternating_projections
 from jaxopt._src.projection import projection_non_negative
 from jaxopt._src.projection import projection_box
 from jaxopt._src.projection import projection_hypercube
