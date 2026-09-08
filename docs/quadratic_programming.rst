@@ -195,6 +195,9 @@ Example::
 
 It is also possible to specify only equality constraints or only inequality
 constraints by setting ``params_eq`` or ``params_ineq`` to ``None``.
+Use ``None`` for a missing constraint family rather than empty arrays, such as
+zero-row equality matrices. If both equality and inequality constraints are
+absent, use the unconstrained QP approach below instead of :class:`jaxopt.OSQP`.
 
 OSQP
 ~~~~
@@ -230,6 +233,12 @@ Example::
   print(sol.dual_ineq)
 
 See :class:`jaxopt.BoxOSQP` for a full description of the parameters.
+
+When using :class:`jaxopt.OSQP`, pass ``params_eq=None`` if there are no
+equality constraints, or ``params_ineq=None`` if there are no inequality
+constraints. At least one of these two arguments must be provided. Problems
+without constraints should be solved as unconstrained QPs, for example with
+conjugate gradient.
 
 .. topic:: Example
 

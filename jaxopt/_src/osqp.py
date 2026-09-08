@@ -1058,8 +1058,12 @@ class OSQP(base.Solver):
         a tuple (Q, c) with Q a pytree of matrices,
         or a tuple (params_Q, c) if ``matvec_Q`` is provided,
         or an arbitrary pytree if ``fun`` is provided.
-      params_eq: (A, b) or None if no equality constraints.
-      params_ineq: (G, h) or None if no inequality constraints.
+      params_eq: (A, b) or None if no equality constraints. Use None rather
+        than an empty equality matrix.
+      params_ineq: (G, h) or None if no inequality constraints. Use None
+        rather than an empty inequality matrix. At least one of params_eq or
+        params_ineq must be not None; use an unconstrained QP solver when both
+        constraint families are absent.
     Returns:
       (params, state), ``params = (primal_var, dual_var_eq, dual_var_ineq)``
     """
