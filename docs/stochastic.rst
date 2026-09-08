@@ -26,24 +26,30 @@ Defining an objective function
 
 Objective functions must contain a ``data`` argument corresponding to :math:`D` above.
 
-Example::
+Example:
 
-  def ridge_reg_objective(params, l2reg, data):
-    X, y = data
-    residuals = jnp.dot(X, params) - y
-    return jnp.mean(residuals ** 2) + 0.5 * l2reg * jnp.dot(w ** 2)
+.. doctest::
+  >>> import jax.numpy as jnp
+
+  >>> def ridge_reg_objective(params, l2reg, data):
+  ...  X, y = data
+  ...  residuals = jnp.dot(X, params) - y
+  ...  return jnp.mean(residuals ** 2) + 0.5 * l2reg * jnp.dot(w ** 2)
+
 
 Data iterator
 -------------
 
 Sampling realizations of the random variable :math:`D` can be done using an iterator.
 
-Example::
+Example:
 
-  def data_iterator():
-    for _ in range(n_iter):
-      perm = rng.permutation(n_samples)[:batch_size]
-      yield (X[perm], y[perm])
+.. doctest::
+  >>> def data_iterator():
+  ...  for _ in range(n_iter):
+  ...    perm = rng.permutation(n_samples)[:batch_size]
+  ...    yield (X[perm], y[perm])
+
 
 Solvers
 -------
@@ -59,12 +65,16 @@ Optax solvers
 ~~~~~~~~~~~~~
 
 `Optax <https://optax.readthedocs.io>`_ solvers can be used in JAXopt using
-:class:`OptaxSolver <jaxopt.OptaxSolver>`. Here's an example with Adam::
+:class:`OptaxSolver <jaxopt.OptaxSolver>`.
+Here's an example with Adam:
 
-    from jaxopt import OptaxSolver
+.. doctest::
+  >>> from jaxopt import OptaxSolver
+  >>> import optax
+  >>> opt = optax.adam(0.1)  # adam with a learning rate of 0.1
+  >>> solver = OptaxSolver(opt=opt, fun=ridge_reg_objective, maxiter=1000)
+  ...
 
-    opt = optax.adam(learning_rate)
-    solver = OptaxSolver(opt=opt, fun=ridge_reg_objective, maxiter=1000)
 
 See `common optimizers
 <https://optax.readthedocs.io/en/latest/api.html#common-optimizers>`_ in the
@@ -90,16 +100,19 @@ in classification tasks with separable classes, or on regression tasks without n
 Run iterator vs. manual loop
 ----------------------------
 
-The following::
+The following:
 
-  iterator = data_iterator()
-  solver.run_iterator(init_params, iterator, l2reg=l2reg)
+.. doctest::
+  >>> iterator = data_iterator()
+  >>> solver.run_iterator(init_params, iterator, l2reg=l2reg)
 
-is equivalent to::
+is equivalent to:
 
-  iterator = data_iterator()
-  state = solver.init_state(init_params, l2reg=l2reg)
-  params = init_params
-  for _ in range(maxiter):
-    data = next(iterator)
-    params, state = solver.update(params, state, l2reg=l2reg, data=data)
+.. doctest::
+  >>> iterator = data_iterator()
+  >>> state = solver.init_state(init_params, l2reg=l2reg)
+  >>> params = init_params
+  >>> maxiter = 1000
+  >>> for _ in range(maxiter):
+  ...  data = next(iterator)
+  ...  params, state = solver.update(params, state, l2reg=l2reg, data=data)

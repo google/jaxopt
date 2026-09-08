@@ -16,3 +16,4 @@ dm-haiku
 flax
 jupytext
 scikit-learn
+cvxpy

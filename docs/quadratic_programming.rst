@@ -112,20 +112,25 @@ The problem takes the form:
 This class is optimized for QPs with equality constraints only: it supports jit, pytrees and matvec.  
 It is based on the KKT conditions of the problem.
 
-Example::
+Example:
 
-  from jaxopt import EqualityConstrainedQP
+.. doctest::
 
-  Q = 2 * jnp.array([[2.0, 0.5], [0.5, 1]])
-  c = jnp.array([1.0, 1.0])
-  A = jnp.array([[1.0, 1.0]])
-  b = jnp.array([1.0])
+  >>> import jax.numpy as jnp
+  >>> import jaxopt
 
-  qp = EqualityConstrainedQP()
-  sol = qp.run(params_obj=(Q, c), params_eq=(A, b)).params
+  >>> Q = 2 * jnp.array([[2.0, 0.5], [0.5, 1]])
+  >>> c = jnp.array([1.0, 1.0])
+  >>> A = jnp.array([[1.0, 1.0]])
+  >>> b = jnp.array([1.0])
 
-  print(sol.primal)
-  print(sol.dual_eq)
+  >>> qp = jaxopt.EqualityConstrainedQP()
+  >>> sol = qp.run(params_obj=(Q, c), params_eq=(A, b)).params
+
+  >>> print(sol.primal)
+  [0.2499998  0.74999976]
+  >>> print(sol.dual_eq)
+  [-2.7499995]
 
 Ill-posed problems
 ~~~~~~~~~~~~~~~~~~
@@ -138,19 +143,22 @@ it is possible to enable
 `iterative refinement <https://en.wikipedia.org/wiki/Iterative_refinement>`_.
 This can be done by setting ``refine_regularization`` and ``refine_maxiter``::
 
-  from jaxopt.eq_qp import EqualityConstrainedQP
+.. doctest::
 
-  Q = 2 * jnp.array([[3000., 0.5], [0.5, 1]])
-  c = jnp.array([1.0, 1.0])
-  A = jnp.array([[1.0, 1.0]])
-  b = jnp.array([1.0])
+  >>> Q = 2 * jnp.array([[3000., 0.5], [0.5, 1]])
+  >>> c = jnp.array([1.0, 1.0])
+  >>> A = jnp.array([[1.0, 1.0]])
+  >>> b = jnp.array([1.0])
 
-  qp = EqualityConstrainedQP(tol=1e-5, refine_regularization=3., refine_maxiter=50)
-  sol = qp.run(params_obj=(Q, c), params_eq=(A, b)).params
+  >>> qp = jaxopt.EqualityConstrainedQP(tol=1e-5, refine_regularization=3., refine_maxiter=50)
+  >>> sol = qp.run(params_obj=(Q, c), params_eq=(A, b)).params
 
-  print(sol.primal)
-  print(sol.dual_eq)
-  print(qp.l2_optimality_error(sol, params_obj=(Q, c), params_eq=(A, b)))
+  >>> print(sol.primal)
+  [1.6666646e-04 9.9981850e-01]
+  >>> print(sol.dual_eq)
+  [-2.9998174]
+  >>> print(qp.l2_optimality_error(sol, params_obj=(Q, c), params_eq=(A, b)))
+  2.0285292e-05
 
 
 General QPs
@@ -175,23 +183,29 @@ However, it is not jittable, and does not support matvec and pytrees.
 
     jaxopt.CvxpyQP
 
-Example::
+Example:
 
-  from jaxopt import CvxpyQP
+.. doctest::
 
-  Q = 2 * jnp.array([[2.0, 0.5], [0.5, 1]])
-  c = jnp.array([1.0, 1.0])
-  A = jnp.array([[1.0, 1.0]])
-  b = jnp.array([1.0])
-  G = jnp.array([[-1.0, 0.0], [0.0, -1.0]])
-  h = jnp.array([0.0, 0.0])
+  >>> Q = 2 * jnp.array([[2.0, 0.5], [0.5, 1]])
+  >>> c = jnp.array([1.0, 1.0])
+  >>> A = jnp.array([[1.0, 1.0]])
+  >>> b = jnp.array([1.0])
+  >>> G = jnp.array([[-1.0, 0.0], [0.0, -1.0]])
+  >>> h = jnp.array([0.0, 0.0])
 
-  qp = CvxpyWrapper()
-  sol = qp.run(params_obj=(Q, c), params_eq=(A, b), params_ineq=(G, h)).params
+  >>> qp = jaxopt.CvxpyQP()
+  >>> init_params = jnp.zeros(2)
+  >>> sol = qp.run(
+  ...  init_params=init_params, params_obj=(Q, c),
+  ...  params_eq=(A, b), params_ineq=(G, h)).params
 
-  print(sol.primal)
-  print(sol.dual_eq)
-  print(sol.dual_ineq)
+  >>> print(sol.primal)
+  [0.25 0.75]
+  >>> print(sol.dual_eq)
+  [-2.75]
+  >>> print(sol.dual_ineq)
+  [0. 0.]
 
 It is also possible to specify only equality constraints or only inequality
 constraints by setting ``params_eq`` or ``params_ineq`` to ``None``.
@@ -211,23 +225,27 @@ Hence we recommend to use :class:`BoxOSQP` to avoid a costly problem transformat
 
     jaxopt.OSQP
 
-Example::
+Example:
 
-  from jaxopt import OSQP
+.. doctest::
+  >>> from jaxopt import OSQP
 
-  Q = 2 * jnp.array([[2.0, 0.5], [0.5, 1]])
-  c = jnp.array([1.0, 1.0])
-  A = jnp.array([[1.0, 1.0]])
-  b = jnp.array([1.0])
-  G = jnp.array([[-1.0, 0.0], [0.0, -1.0]])
-  h = jnp.array([0.0, 0.0])
+  >>> Q = 2 * jnp.array([[2.0, 0.5], [0.5, 1]])
+  >>> c = jnp.array([1.0, 1.0])
+  >>> A = jnp.array([[1.0, 1.0]])
+  >>> b = jnp.array([1.0])
+  >>> G = jnp.array([[-1.0, 0.0], [0.0, -1.0]])
+  >>> h = jnp.array([0.0, 0.0])
 
-  qp = OSQP()
-  sol = qp.run(params_obj=(Q, c), params_eq=(A, b), params_ineq=(G, h)).params
+  >>> qp = OSQP()
+  >>> sol = qp.run(params_obj=(Q, c), params_eq=(A, b), params_ineq=(G, h)).params
 
-  print(sol.primal)
-  print(sol.dual_eq)
-  print(sol.dual_ineq)
+  >>> print(sol.primal)
+  [0.24996418 0.7500219 ]
+  >>> print(sol.dual_eq)
+  [-2.750001]
+  >>> print(sol.dual_ineq)
+  [0. 0.]
 
 See :class:`jaxopt.BoxOSQP` for a full description of the parameters.
 
@@ -254,22 +272,27 @@ but accepts problems in the above box-constrained format instead.  The bounds
 ``u`` (resp. ``l``) can be set to ``inf`` (resp. ``-inf``) if required.
 Equality can be enforced with ``l = u``.
 
-Example::
+Example:
 
-  from jaxopt import BoxOSQP
+.. doctests::
 
-  Q = 2 * jnp.array([[2.0, 0.5], [0.5, 1]])
-  c = jnp.array([1.0, 1.0])
-  A = jnp.array([[1.0, 1.0], [-1.0, 0.0], [0.0, -1.0]])
-  l = jnp.array([1.0, -jnp.inf, -jnp.inf])
-  u = jnp.array([1.0, 0.0, 0.0])
+  >>> from jaxopt import BoxOSQP
 
-  qp = BoxOSQP()
-  sol = qp.run(params_obj=(Q, c), params_eq=A, params_ineq=(l, u)).params
+  >>> Q = 2 * jnp.array([[2.0, 0.5], [0.5, 1]])
+  >>> c = jnp.array([1.0, 1.0])
+  >>> A = jnp.array([[1.0, 1.0], [-1.0, 0.0], [0.0, -1.0]])
+  >>> l = jnp.array([1.0, -jnp.inf, -jnp.inf])
+  >>> u = jnp.array([1.0, 0.0, 0.0])
 
-  print(sol.primal)
-  print(sol.dual_eq)
-  print(sol.dual_ineq)
+  >>> qp = BoxOSQP()
+  >>> sol = qp.run(params_obj=(Q, c), params_eq=A, params_ineq=(l, u)).params
+
+  >>> print(sol.primal)
+  (Array([0.25004143, 0.7500388 ], dtype=float32), Array([ 1.        , -0.2500382 , -0.75000846], dtype=float32))
+  >>> print(sol.dual_eq)
+  [-2.7502570e+00  1.5411481e-09  0.0000000e+00]
+  >>> print(sol.dual_ineq)
+  (Array([0.0000000e+00, 1.5411481e-09, 0.0000000e+00], dtype=float32), Array([ 2.750257,  0.      , -0.      ], dtype=float32))
 
 If required the algorithm can be sped up by setting
 ``check_primal_dual_infeasability`` to ``False``, and by setting
@@ -304,20 +327,23 @@ The problem takes the form:
 :class:`jaxopt.BoxCDQP` uses a coordinate descent solver. The solver returns only
 the primal solution.
 
-Example::
+Example:
 
-  from jaxopt import BoxCDQP
+.. doctest::
+  >>> from jaxopt import BoxCDQP
 
-  Q = 2 * jnp.array([[2.0, 0.5], [0.5, 1]])
-  c = jnp.array([1.0, -1.0])
-  l = jnp.array([0.0, 0.0])
-  u = jnp.array([1.0, 1.0])
+  >>> Q = 2 * jnp.array([[2.0, 0.5], [0.5, 1]])
+  >>> c = jnp.array([1.0, -1.0])
+  >>> l = jnp.array([0.0, 0.0])
+  >>> u = jnp.array([1.0, 1.0])
 
-  qp = BoxCDQP()
-  init = jnp.zeros(2)
-  sol = qp.run(init, params_obj=(Q, c), params_ineq=(l, u)).params
+  >>> qp = BoxCDQP()
+  >>> init = jnp.zeros(2)
+  >>> sol = qp.run(init, params_obj=(Q, c), params_ineq=(l, u)).params
 
-  print(sol)
+  >>> print(sol)
+  [0.  0.5]
+
 
 Unconstrained QPs
 -----------------
@@ -332,17 +358,18 @@ quadratics of the form:
 The optimality condition rewrites :math:`\nabla \frac{1}{2} x^\top Q x + c^\top
 x=Qx+c=0`.  Therefore, this is equivalent to solving the linear system
 :math:`Qx=-c`.  Since the matrix :math:`Q` is assumed PSD, one of the best
-algorithms is *conjugate gradient*.  In JAXopt, this can be done as follows::
+algorithms is *conjugate gradient*.  In JAXopt, this can be done as follows:
 
-  from jaxopt.linear_solve import solve_cg
+.. doctest::
+  >>> from jaxopt.linear_solve import solve_cg
 
-  Q = 2 * jnp.array([[2.0, 0.5], [0.5, 1]])
-  c = jnp.array([1.0, 1.0])
-  matvec = lambda x: jnp.dot(Q, x)
+  >>> Q = 2 * jnp.array([[2.0, 0.5], [0.5, 1]])
+  >>> c = jnp.array([1.0, 1.0])
+  >>> matvec = lambda x: jnp.dot(Q, x)
 
-  sol = solve_cg(matvec, b=-c)
-
-  print(sol)
+  >>> sol = solve_cg(matvec, b=-c)
+  >>> print(sol)
+  [-0.14285713 -0.42857143]
 
 Pytree of matrices API
 ----------------------
@@ -360,30 +387,34 @@ It offers several advantages:
   * The tolerance is globally defined and shared by all the problems,
     and the number of iterations is the same for all the problems. 
 
-We illustrate below the parallel solving of two problems with different shapes::
+We illustrate below the parallel solving of two problems with different shapes:
 
-  Q1 = jnp.array([[1.0, -0.5],
-                  [-0.5, 1.0]])
-  Q2 = jnp.array([[2.0]])
-  Q = {'problem1': Q1, 'problem2': Q2}
+.. doctest::
 
-  c1 = jnp.array([-0.4, 0.3])
-  c2 = jnp.array([0.1])
-  c = {'problem1': c1, 'problem2': c2}
+  >>> Q1 = jnp.array([[1.0, -0.5],
+  ...                 [-0.5, 1.0]])
+  >>> Q2 = jnp.array([[2.0]])
+  >>> Q = {'problem1': Q1, 'problem2': Q2}
 
-  a1 = jnp.array([[-0.5, 1.5]])
-  a2 = jnp.array([[10.0]])
-  A = {'problem1': a1, 'problem2': a2}
+  >>> c1 = jnp.array([-0.4, 0.3])
+  >>> c2 = jnp.array([0.1])
+  >>> c = {'problem1': c1, 'problem2': c2}
 
-  b1 = jnp.array([0.3])
-  b2 = jnp.array([5.0])
-  b = {'problem1': b1, 'problem2': b2}
+  >>> a1 = jnp.array([[-0.5, 1.5]])
+  >>> a2 = jnp.array([[10.0]])
+  >>> A = {'problem1': a1, 'problem2': a2}
 
-  qp = EqualityConstrainedQP(tol=1e-3)
-  hyperparams = dict(params_obj=(Q, c), params_eq=(A, b))
-  # Solve the two problems in parallel with a single call.
-  sol = qp.run(**hyperparams).params
-  print(sol.primal['problem1'], sol.primal['problem2'])
+  >>> b1 = jnp.array([0.3])
+  >>> b2 = jnp.array([5.0])
+  >>> b = {'problem1': b1, 'problem2': b2}
+
+  >>> qp = jaxopt.EqualityConstrainedQP(tol=1e-3)
+  >>> hyperparams = dict(params_obj=(Q, c), params_eq=(A, b))
+  >>> # Solve the two problems in parallel with a single call.
+  >>> sol = qp.run(**hyperparams).params
+  >>> print(sol.primal['problem1'], sol.primal['problem2'])
+  [0.42857167 0.34285742] [0.5]
+
 
 Matvec API
 ----------
@@ -401,8 +432,9 @@ It offers several advantages:
 
 This is the recommended API to use when the matrices are not block diagonal operators,
 especially when there are other sparsity patterns involved, or in conjunction with
-implicit differentiation::
+implicit differentiation:
 
+.. doctest::
   # Objective:
   #     min ||data @ x - targets||_2^2 + 2 * n * lam ||x||_1
   #
@@ -412,27 +444,30 @@ implicit differentiation::
   #     under       targets = data @ x - y
   #           0         <= x + t <= infinity
   #           -infinity <= x - t <= 0
-  data, targets = datasets.make_regression(n_samples=10, n_features=3, random_state=0)
-  lam = 10.0
+  >>> from sklearn import datasets
+  >>> n = 10
+  >>> data, targets = datasets.make_regression(n_samples=n, n_features=3, random_state=0)
+  >>> lam = 10.0
 
-  def matvec_Q(params_Q, xyt):
-    del params_Q  # unused
-    x, y, t = xyt
-    return jnp.zeros_like(x), 2 * y, jnp.zeros_like(t)
+  >>> def matvec_Q(params_Q, xyt):
+  ...  del params_Q  # unused
+  ...  x, y, t = xyt
+  ...  return jnp.zeros_like(x), 2 * y, jnp.zeros_like(t)
 
-  c = jnp.zeros(data.shape[1]), jnp.zeros(data.shape[0]), 2*n*lam * jnp.ones(data.shape[1])
+  >>> c = jnp.zeros(data.shape[1]), jnp.zeros(data.shape[0]), 2*n*lam * jnp.ones(data.shape[1])
 
-  def matvec_A(params_A, xyt):
-    x, y, t = xyt
-    residuals = params_A @ x - y
-    return residuals, x + t, x - t
+  >>> def matvec_A(params_A, xyt):
+  ...  x, y, t = xyt
+  ...  residuals = params_A @ x - y
+  ...  return residuals, x + t, x - t
 
-  l = targets, jnp.zeros_like(c[0]), jnp.full(data.shape[1], -jnp.inf)
-  u = targets, jnp.full(data.shape[1], jnp.inf), jnp.zeros_like(c[0])
+  >>> l = targets, jnp.zeros_like(c[0]), jnp.full(data.shape[1], -jnp.inf)
+  >>> u = targets, jnp.full(data.shape[1], jnp.inf), jnp.zeros_like(c[0])
 
-  hyper_params = dict(params_obj=(None, c), params_eq=data, params_ineq=(l, u))
-  osqp = BoxOSQP(matvec_Q=matvec_Q, matvec_A=matvec_A, tol=1e-2)
-  sol, state = osqp.run(None, **hyper_params)
+  >>> hyper_params = dict(params_obj=(None, c), params_eq=data, params_ineq=(l, u))
+  >>> osqp = BoxOSQP(matvec_Q=matvec_Q, matvec_A=matvec_A, tol=1e-2)
+  >>> sol, state = osqp.run(None, **hyper_params)
+
 
 Quadratic function API
 ----------------------
@@ -452,87 +487,88 @@ Take care that this API also have drawbacks:
   * to extract `x -> Qx` and `c` from the function, we need to compute the Hessian-vector product and the gradient of ``fun``, which may be expensive.
   * for this API `init_params` must be provided to `run`, contrary to the other APIs.
 
-We illustrate this API with Non Negative Least Squares (NNLS)::
+We illustrate this API with Non Negative Least Squares (NNLS):
 
+.. doctest::
   #  min_W \|Y-UW\|_F^2
   #  s.t. W>=0
-  n, m, rank = 20, 10, 3
-  onp.random.seed(654)
-  U = jax.nn.relu(onp.random.randn(n, rank))
-  W_0 = jax.nn.relu(onp.random.randn(rank, m))
-  Y = U @ W_0
+  >>> import numpy as onp
+  >>> import jax.numpy as jnp
+  >>> import jax
+  >>> n, m, rank = 20, 10, 3
+  >>> onp.random.seed(654)
+  >>> U = jax.nn.relu(onp.random.randn(n, rank))
+  >>> W_0 = jax.nn.relu(onp.random.randn(rank, m))
+  >>> Y = U @ W_0
 
-  def fun(W, params_obj):
-    Y, U = params_obj
-    # Write the objective as an implicit quadratic polynomial
-    return jnp.sum(jnp.square(Y - U @ W))
+  >>> def fun(W, params_obj):
+  ...  Y, U = params_obj
+  ...  # Write the objective as an implicit quadratic polynomial
+  ...  return jnp.sum(jnp.square(Y - U @ W))
 
-  def matvec_G(params_G, W):
-    del params_G  # unused
-    return -W
+  >>> def matvec_G(params_G, W):
+  ...  del params_G  # unused
+  ...  return -W
 
-  zeros = jnp.zeros_like(W_0)
-  hyper_params = dict(params_obj=(Y, U), params_eq=None, params_ineq=(None, zeros))
+  >>> zeros = jnp.zeros_like(W_0)
+  >>> hyper_params = dict(params_obj=(Y, U), params_eq=None, params_ineq=(None, zeros))
 
-  solver = OSQP(fun=fun, matvec_G=matvec_G)
+  >>> solver = jaxopt.OSQP(fun=fun, matvec_G=matvec_G)
 
-  init_W = jnp.zeros_like(W_0)  # mandatory with `fun` API.
-  init_params = solver.init_params(init_W, **hyper_params)
-  W_sol = solver.run(init_params=init_params, **hyper_params).params.primal
+  >>> init_W = jnp.zeros_like(W_0)  # mandatory with `fun` API.
+  >>> init_params = solver.init_params(init_W, **hyper_params)
+  >>> W_sol = solver.run(init_params=init_params, **hyper_params).params.primal
 
-This API is not recommended for large-scale problems or nested differentiations, use matvec API instead.
+This API is not recommended for large-scale problems or nested differentiations. For these cases use the matvec API instead.
 
 Implicit differentiation pitfalls
 ---------------------------------
 
 When using implicit differentiation, the parameters w.r.t which we differentiate
 must be passed to `params_obj`, `params_eq` or `params_ineq`. They should not be captured
-from the global scope by `fun` or `matvec`. We illustrate below this common mistake::
+from the global scope by `fun` or `matvec`. We illustrate below this common mistake:
 
-  def wrong_solver(Q):  # don't do this!
+.. doctest::
 
-    def matvec_Q(params_Q, x):
-      del params_Q  # unused
-      # error! Q is captured from the global scope.
-      # it does not fail now, but it will fail later.
-      return jnp.dot(Q, x)
-    
-    c = jnp.zeros(Q.shape[0])
+  >>> def wrong_solver(Q):  # don't do this!
+  ...  # matvec where Q is captured from the outer scope
+  ...   _matvec_Q = lambda params_Q, x: jnp.dot(Q, x)
+  ...   c = jnp.zeros(Q.shape[0])
+  ...   A = jnp.array([[1.0, 2.0]])
+  ...   b = jnp.array([1.0])
+  ...   eq_qp = jaxopt.EqualityConstrainedQP(matvec_Q=_matvec_Q)
+  ...   sol = eq_qp.run(None, params_obj=(None, c), params_eq=(A, b)).params
+  ...   loss = jnp.sum(sol.primal)
+  ...   return loss
 
-    A = jnp.array([[1.0, 2.0]])
-    b = jnp.array([1.0])
+  >>> Q = jnp.array([[1.0, 0.5], [0.5, 4.0]])
+  >>> _ = wrong_solver(Q)  # no error... but it will fail later.
+  >>> jax.grad(wrong_solver)(Q) 
+  Traceback (most recent call last): ...
 
-    eq_qp = EqualityConstrainedQP(matvec_Q=matvec_Q)
-    sol = eq_qp.run(None, params_obj=(None, c), params_eq=(A, b)).params
-    loss = jnp.sum(sol.primal)
-    return loss
-
-  Q = jnp.array([[1.0, 0.5], [0.5, 4.0]])
-  _ = wrong_solver(Q)  # no error... but it will fail later.
-  _ = jax.grad(wrong_solver)(Q)  # raise CustomVJPException
 
 Also, notice that since the problems are convex, the optimum is independent of the
 starting point `init_params`. Hence, derivatives w.r.t `init_params` are always
 zero (mathematically).
 
-The correct implementation is given below::
+The correct implementation is given below:
 
-  def correct_solver(Q):
+.. doctest::
 
-    def matvec_Q(params_Q, x):
-      return jnp.dot(params_Q, x)
-    
-    c = jnp.zeros(Q.shape[0])
+  >>> def correct_solver(Q):  # do this instead
+  ...   _matvec_Q2 = lambda params_Q, x: jnp.dot(params_Q, x)    
+  ...   c = jnp.zeros(Q.shape[0])
 
-    A = jnp.array([[1.0, 2.0]])
-    b = jnp.array([1.0])
+  ...   A = jnp.array([[1.0, 2.0]])
+  ...   b = jnp.array([1.0])
 
-    eq_qp = EqualityConstrainedQP(matvec_Q=matvec_Q)
-    # Q is passed as a parameter, not captured from the global scope.
-    sol = eq_qp.run(None, params_obj=(Q, c), params_eq=(A, b)).params
-    loss = jnp.sum(sol.primal)
-    return loss
+  ...   eq_qp = jaxopt.EqualityConstrainedQP(matvec_Q=_matvec_Q2)
+  ...   # Q is passed as a parameter, not captured from the global scope.
+  ...   sol = eq_qp.run(None, params_obj=(Q, c), params_eq=(A, b)).params
+  ...   loss = jnp.sum(sol.primal)
+  ...   return loss
 
-  Q = jnp.array([[1.0, 0.5], [0.5, 4.0]])
-  _ = correct_solver(Q)  # no error
-  _ = jax.grad(correct_solver)(Q)  # no error
+  >>> Q = jnp.array([[1.0, 0.5], [0.5, 4.0]])
+  >>> print(correct_solver(Q))  # no error
+  0.74999994
+  >>> _ = jax.grad(correct_solver)(Q)  # no error
