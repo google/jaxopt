@@ -61,6 +61,14 @@ with respect to ``factor``::
 Under the hood, we use the implicit function theorem in order to differentiate the root.
 See the :ref:`implicit differentiation <implicit_diff>` section for more details.
 
+The bracketing values ``lower`` and ``upper`` are solver hyperparameters, not
+arguments of ``optimality_fun``.  Implicit differentiation therefore computes
+derivatives with respect to the arguments passed to ``run``, such as
+``factor`` above, but not with respect to ``lower`` or ``upper`` themselves.
+If the bracketing interval is computed from differentiable JAX values and is
+intended only to define the algorithm's search interval, stop its gradients
+before constructing ``Bisection``, for example with ``jax.lax.stop_gradient``.
+
 Scipy wrapper
 -------------
 
