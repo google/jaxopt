@@ -12,8 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import jax
+sparse_plus = jax.nn.sparse_plus
+spase_sigmoid = jax.nn.sparse_sigmoid
+
 from jaxopt._src.loss import binary_logistic_loss
-from jaxopt._src.loss import binary_sparsemax_loss, sparse_plus, sparse_sigmoid
+from jaxopt._src.loss import binary_sparsemax_loss
 from jaxopt._src.loss import huber_loss
 from jaxopt._src.loss import make_fenchel_young_loss
 from jaxopt._src.loss import multiclass_logistic_loss
