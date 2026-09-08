@@ -42,6 +42,8 @@ from jaxopt._src.lbfgs import LBFGS
 from jaxopt._src.lbfgsb import LBFGSB
 from jaxopt._src.levenberg_marquardt import LevenbergMarquardt
 from jaxopt._src.mirror_descent import MirrorDescent
+from jaxopt._src.nmf import NMF
+from jaxopt._src.nmf import NNLS
 from jaxopt._src.nonlinear_cg import NonlinearCG
 from jaxopt._src.optax_wrapper import OptaxSolver
 from jaxopt._src.osqp import BoxOSQP
