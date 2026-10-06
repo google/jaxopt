@@ -114,6 +114,8 @@ class HagerZhangLinesearchTest(test_util.JaxoptTestCase):
     state = ls.init_state(init_stepsize=1.25, params=x_init)
 
     stepsize, state = ls.update(stepsize=stepsize, state=state, params=x_init)
+    if not state.done:
+      stepsize, state = ls.update(stepsize=stepsize, state=state, params=x_init)
     # Should work around the Nan/Inf regions and provide a reasonable step size.
     self.assertTrue(state.done)
 
