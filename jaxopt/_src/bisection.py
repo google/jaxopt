@@ -48,8 +48,12 @@ class Bisection(base.IterativeSolver):
     optimality_fun: a function ``optimality_fun(x, *args, **kwargs)``
       where ``x`` is a 1d variable. The function should have opposite signs
       when evaluated at ``lower`` and at ``upper``.
-    lower: the lower end of the bracketing interval.
-    upper: the upper end of the bracketing interval.
+    lower: the lower end of the bracketing interval. This is a solver
+      hyperparameter, not an argument of ``optimality_fun``; implicit
+      differentiation is not with respect to this value.
+    upper: the upper end of the bracketing interval. This is a solver
+      hyperparameter, not an argument of ``optimality_fun``; implicit
+      differentiation is not with respect to this value.
     maxiter: maximum number of iterations.
     tol: tolerance.
     check_bracket: whether to check correctness of the bracketing interval.
