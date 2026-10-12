@@ -1,6 +1,14 @@
 API at a glance
 ===============
 
+Base containers
+---------------
+
+.. autosummary::
+  :toctree: _autosummary
+
+    jaxopt.OptStep
+
 Optimization
 ------------
 
@@ -180,4 +188,3 @@ Tree utilities
     jaxopt.tree_util.tree_sum
     jaxopt.tree_util.tree_l2_norm
     jaxopt.tree_util.tree_zeros_like
-

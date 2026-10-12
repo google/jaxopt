@@ -46,6 +46,12 @@ ArrayPair = Tuple[jnp.ndarray, jnp.ndarray]
 NUM_EVAL_DTYPE = 'int32'
 
 class OptStep(NamedTuple):
+  """Container returned by solvers.
+
+  Attributes:
+    params: solution parameters returned by the solver.
+    state: solver-specific state associated with ``params``.
+  """
   params: Any
   state: Any
 
