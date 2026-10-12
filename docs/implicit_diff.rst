@@ -25,6 +25,14 @@ All solvers in JAXopt support implicit differentiation **out-of-the-box**.
 Most solvers have an ``implicit_diff=True|False`` option. When set to ``False``,
 autodiff of unrolled iterates is used instead of implicit differentiation.
 
+The ``jit`` and ``unroll`` options control how iterative solvers stage their
+optimization loops. With the default ``jit=True``, the solver loop is compiled
+with JAX. With ``unroll=True``, loop iterations are expanded so that autodiff can
+differentiate through each iteration directly; this may increase compilation time
+and memory use for large ``maxiter`` values. With ``unroll=False``, solvers keep
+the loop as a JAX control-flow loop. The default ``unroll="auto"`` unrolls when
+``implicit_diff=False`` or ``jit=False`` and otherwise keeps the loop rolled.
+
 Using the ridge regression example from the :ref:`unconstrained optimization
 <unconstrained_optim>` section, we can write::
 
