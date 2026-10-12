@@ -390,7 +390,7 @@ class ScipyMinimize(ScipyWrapper):
 
     # wrap the callback so its arguments are of the same kind as fun
     if self.callback is not None:
-      def scipy_callback(x_onp: onp.ndarray):
+      def scipy_callback(x_onp: onp.ndarray, *unused_args):
         x_jnp = onp_to_jnp(x_onp)
         return self.callback(x_jnp)
     else:
