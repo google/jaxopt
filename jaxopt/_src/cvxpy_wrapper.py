@@ -122,6 +122,19 @@ class CvxpyQP(base.Solver):
     del init_params  # no warm start
     _check_params(params_obj, params_eq, params_ineq)
 
+    _, c = params_obj
+    c_dtype = jax.dtypes.canonicalize_dtype(c.dtype)
+    eq_dtype = (
+        None
+        if params_eq is None
+        else jax.dtypes.canonicalize_dtype(params_eq[1].dtype)
+    )
+    ineq_dtype = (
+        None
+        if params_ineq is None
+        else jax.dtypes.canonicalize_dtype(params_ineq[1].dtype)
+    )
+
     def _py_solve(params_obj, params_eq, params_ineq):
       import cvxpy as cp
       import numpy as np
@@ -148,31 +161,26 @@ class CvxpyQP(base.Solver):
       dual_eq = (
           None
           if params_eq is None
-          else np.asarray(
-              pb.constraints[0].dual_value, dtype=params_eq[1].dtype
-          )
+          else np.asarray(pb.constraints[0].dual_value, dtype=eq_dtype)
       )
       dual_ineq = (
           None
           if params_ineq is None
-          else np.asarray(
-              pb.constraints[-1].dual_value, dtype=params_ineq[1].dtype
-          )
+          else np.asarray(pb.constraints[-1].dual_value, dtype=ineq_dtype)
       )
 
-      return np.asarray(x.value, dtype=c.dtype), dual_eq, dual_ineq
+      return np.asarray(x.value, dtype=c_dtype), dual_eq, dual_ineq
 
-    _, c = params_obj
-    out_primal = jax.ShapeDtypeStruct(c.shape, c.dtype)
+    out_primal = jax.ShapeDtypeStruct(c.shape, c_dtype)
     out_dual_eq = (
         None
         if params_eq is None
-        else jax.ShapeDtypeStruct(params_eq[1].shape, params_eq[1].dtype)
+        else jax.ShapeDtypeStruct(params_eq[1].shape, eq_dtype)
     )
     out_dual_ineq = (
         None
         if params_ineq is None
-        else jax.ShapeDtypeStruct(params_ineq[1].shape, params_ineq[1].dtype)
+        else jax.ShapeDtypeStruct(params_ineq[1].shape, ineq_dtype)
     )
     res_struct = (out_primal, out_dual_eq, out_dual_ineq)
 
