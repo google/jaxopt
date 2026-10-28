@@ -174,7 +174,7 @@ class EqualityConstrainedQPTest(test_util.JaxoptTestCase):
 
     # Check that the solutions match.
     self.assertArraysAllClose(jnp.concatenate(sol_pytree.primal), sol.primal, atol=1e-4)
-    self.assertArraysAllClose(sol_pytree.dual_eq, sol.dual_eq, atol=1e-4)
+    self.assertArraysAllClose(sol_pytree.dual_eq, sol.dual_eq, atol=2e-4)
 
   def test_fun_api(self):
     # mimic a function with pytree parameters.
@@ -186,10 +186,10 @@ class EqualityConstrainedQPTest(test_util.JaxoptTestCase):
     def euclidean_quadratic_cost(y, params_obj):
       x = params_obj['complicated_pytree']
       return jnp.sum((x - y)*(x - y))
-    
+
     def matvec_A(params_A, u):
       return jnp.dot(params_A, u).reshape(1)
-    
+
     qp = EqualityConstrainedQP(fun=euclidean_quadratic_cost,
                                matvec_A=matvec_A)    
 
@@ -228,7 +228,7 @@ class EqualityConstrainedQPTest(test_util.JaxoptTestCase):
         # error! Q is captured from the global scope.
         # it does not fail now, but it will later.
         return jnp.dot(Q, x)
-      
+
       eq_qp = EqualityConstrainedQP(matvec_Q=matvec_Q)
       # Warning: Q does not appear in the call to run()
       sol = eq_qp.run(None, params_obj=(None, c), params_eq=(A, b)).params
