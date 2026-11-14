@@ -1,83 +1,43 @@
+# -*- coding: utf-8 -*-
+import inspect
+import os
+from typing import Callable
+
 import jax
 import jax.numpy as jnp
-from typing import Callable, Iterable
 
-def wolfe(fun: Callable,
-          res0, 
-          x_0: Iterable, 
-          dk, 
-          c1: float=0.3, 
-          c2: float=0.5, 
-          alphas: float=0., 
-          alphae: float=2.,
-          eps: float=1e-3) -> float:
-    assert c1 > 0
-    assert c1 < 1
-    assert c2 > 0
-    assert c2 < 1
-    assert c1 < c2
-    assert alphas >= 0
-    assert alphas < alphae
-    assert eps > 0
-    alpha = 1
-    f0 = fun(x_0)
-    while alphas < alphae:
-        x = x_0 + (alpha*dk)[0]
-        f1 = fun(x)
-        if f1 <= f0 + c1*alpha*res0.dot(dk.T):
-            res1 = jax.grad(fun)(x)
-            if res1.dot(dk.T) >= c2*res0.dot(dk.T):
-                break
-            else:
-                alphas = alpha
-                alpha = 0.5 * (alphas + alphae)
-        else:
-            alphae = alpha
-            alpha = 0.5 * (alphas + alphae)
-        if jax.numpy.abs(alphas - alphae) < eps:
-            break
-    return alpha
+import jaxopt
+jax.config.update("jax_enable_x64", True)
 
-def h2h(hessian):
-    l = hessian.shape[0] # hessian.shape = (l, l)
-    while 1:
-        rank = jnp.linalg.matrix_rank(hessian)
-        if rank == l:
-            break
-        else:
-            hessian += jnp.identity(l)
-    return hessian
+def make_solver(fun: Callable,
+                method: str = 'lbfgs',
+                maxiter: int = 30,
+                tol: float = 1e-1,
+                c1: float = 0.3,
+                c2: float = 0.5,
+                maxls: int = 20,
+                verbose: bool = False):
+    solvers = {'lbfgs': jaxopt.LBFGS, 'bfgs': jaxopt.BFGS}
+    if method not in solvers:
+        raise ValueError(f"method must be one of {list(solvers)}, got {method!r}")
+    cls = solvers[method]
 
-def bfgs(fun: Callable, 
-         x_0: Iterable,
-         verbose: bool=False,
-         epsilon: float=1e-6, 
-         k: int=0):
-    hessian = jax.hessian(fun)(x_0)
-    hessian = h2h(hessian)
-    while 1:
-        gradient = jax.grad(fun)(x_0)
-        dk = -jax.numpy.linalg.inv(hessian).dot(gradient.T).reshape(1, -1)
-        if verbose:
-            print('{}\t{}\t{}'.format(x_0, fun(x_0), k))
-        if jax.numpy.linalg.norm(dk) >= epsilon:
-            alpha = wolfe(fun, gradient, x_0, dk)
-            delta = alpha * dk # sk, same as learning_date * grad(corrected by hessian and jax.grad)
-            x_0 += delta[0]
-            yk = jax.grad(fun)(x_0) - gradient
-            s = delta.reshape(-1)                    
-            sTy = float(s.dot(yk))                   
-            if jnp.all(jnp.isfinite(yk)) and jnp.isfinite(sTy) and sTy > 1e-12:
-                Hs = hessian.dot(delta.T)
-                sTHs = float(s.dot(Hs.reshape(-1)))
-                if jnp.isfinite(sTHs) and sTHs > 1e-12:
-                    hessian += jnp.outer(yk, yk) / sTy - Hs.dot(Hs.T) / sTHs
-            else:
-                hessian = h2h(jnp.eye(hessian.shape[0], dtype=hessian.dtype))
-            k += 1
-        else:
-            break
-    return x_0
+    allowed = set(inspect.signature(cls.__init__).parameters)
+    opts = dict(fun=fun,
+                maxiter=maxiter,
+                tol=tol,
+                linesearch='zoom',
+                maxls=maxls,
+                jit=True,
+                verbose=verbose)
+
+    if 'c1' in allowed:
+        opts.update(c1=c1, c2=c2, condition='strong-wolfe')
+    elif c1 is not None and c2 is not None and hasattr(jaxopt, 'ZoomLineSearch'):
+        opts['linesearch'] = jaxopt.ZoomLineSearch(
+            fun=fun, c1=c1, c2=c2, maxiter=maxls, jit=True)
+    opts = {k: v for k, v in opts.items() if k in allowed}
+    return cls(**opts)
 
 def xavier_normal(layer_dims, key, dtype=jnp.float64):
     layer_dims = [int(d) for d in layer_dims]
@@ -88,6 +48,7 @@ def xavier_normal(layer_dims, key, dtype=jnp.float64):
         chunks.append(jax.random.normal(sub, (fan_in * fan_out,), dtype=dtype) * std)
         chunks.append(jnp.zeros((fan_out,), dtype=dtype))
     return jnp.concatenate(chunks)
+
 
 def gen_nn(X_data, y_data, hidden_dims=(), task='classification', key=None, seed=0):
     if key is None:
@@ -167,19 +128,19 @@ def gen_nn(X_data, y_data, hidden_dims=(), task='classification', key=None, seed
     def f_fun(theta):
         return loss(theta, X_data, y_full)
 
-    def make_f_fun(Xb, yb):
+    def loss_fn(theta, Xb, yb):
         Xb = jnp.asarray(Xb).astype(dtype)
-        yb_e = encode_y(yb)
-        def f_batch(theta):
-            return loss(theta, Xb, yb_e)
-        return f_batch
+        return loss(theta, Xb, encode_y(yb))
 
-    return f_fun, theta0, make_f_fun
+    return f_fun, theta0, loss_fn
 
-def train_epochs(make_f_fun, f_fun, theta, X, y,
+def train_epochs(loss_fn, f_fun, theta, X, y,
                  epochs=3, batch_size=128, epsilon=1e-1,
                  seed=0, verbose=True,
-                 patience=10, min_delta=1e-8, monitor='batch'):
+                 patience=10, min_delta=1e-8, monitor='batch',
+                 method='lbfgs', maxiter=30,
+                 c1=0.3, c2=0.5, maxls=20,
+                 solver_verbose=False):
     if monitor not in ('batch', 'full'):
         raise ValueError("monitor must be 'batch' or 'full'.")
 
@@ -190,6 +151,11 @@ def train_epochs(make_f_fun, f_fun, theta, X, y,
     early_stopped = False
     n_batches = (n + batch_size - 1) // batch_size
 
+    solver = make_solver(loss_fn, method=method, maxiter=maxiter, tol=epsilon,
+                         c1=c1, c2=c2, maxls=maxls, verbose=solver_verbose)
+    eval_loss = jax.jit(loss_fn)
+    full_loss = jax.jit(f_fun)
+
     for epoch in range(int(epochs)):
         perm = jax.random.permutation(jax.random.PRNGKey(seed + epoch), n)
         n_updated = 0
@@ -198,12 +164,13 @@ def train_epochs(make_f_fun, f_fun, theta, X, y,
 
         for b, start in enumerate(range(0, n, batch_size)):
             idx = perm[start:start + batch_size]
-            f_batch = make_f_fun(X[idx], y[idx])
+            Xb, yb = X[idx], y[idx]
 
-            loss_before = float(f_batch(theta))
-            theta = bfgs(f_batch, theta, verbose=False, epsilon=epsilon)
-            loss_after = float(f_batch(theta))
-            loss_full = float(f_fun(theta))
+            loss_before = float(eval_loss(theta, Xb, yb))
+            step = solver.run(theta, Xb, yb)
+            theta = step.params
+            loss_after = float(eval_loss(theta, Xb, yb))
+            loss_full = float(full_loss(theta))
 
             if monitor == 'full':
                 decreased = loss_full < prev_full - min_delta
@@ -219,9 +186,10 @@ def train_epochs(make_f_fun, f_fun, theta, X, y,
                             loss_before, loss_after, loss_full))
             if verbose:
                 print('epoch {} | batch {:>2d} | n={:<3d} | batch loss '
-                      '{:.6f} -> {:.6f} | full loss {:.6f}'
+                      '{:.6f} -> {:.6f} | full loss {:.6f} | {} iters | grad norm {:.3e}'
                       .format(epoch, b, int(idx.shape[0]),
-                              loss_before, loss_after, loss_full))
+                              loss_before, loss_after, loss_full,
+                              int(step.state.iter_num), float(step.state.error)))
 
             if patience and no_decrease >= patience:
                 early_stopped = True
@@ -233,7 +201,7 @@ def train_epochs(make_f_fun, f_fun, theta, X, y,
 
         if verbose and not early_stopped:
             print('epoch {} done | full loss {:.6f} | updated {}/{} batches\n'
-                  .format(epoch, float(f_fun(theta)), n_updated, n_batches))
+                  .format(epoch, float(full_loss(theta)), n_updated, n_batches))
         if early_stopped:
             break
 
@@ -242,34 +210,36 @@ def train_epochs(make_f_fun, f_fun, theta, X, y,
 
 if __name__ == '__main__':
     from sklearn.preprocessing import StandardScaler
-    import pandas, numpy
-    df = pandas.read_csv('https://raw.githubusercontent.com/linjing-lab/easy-pytorch/main/released_box/data/bitcoin_heist_data.csv', engine="pyarrow")
-    df = df.to_numpy()
-    labels = df[:,-1]
-    X = df[:,1:-1].astype(numpy.float64)
+    import pandas
+    import numpy
+    df = pandas.read_csv("https://raw.githubusercontent.com/linjing-lab/easy-pytorch/main/released_box/data/bitcoin_heist_data.csv", engine="pyarrow").to_numpy()
+    labels = df[:, -1]
+    X = df[:, 1:-1].astype(numpy.float64)
     unique = numpy.unique(labels)
     indices = dict(zip(unique, range(len(unique))))
     y = numpy.array([indices[value] for value in labels], dtype=numpy.int8)
 
-    jax.config.update("jax_enable_x64", True)
     EPOCHS = 1
     BATCH_SIZE = 512
     EPSILON = 0.1
     SEED = 42
     X = StandardScaler().fit_transform(X)
-    hidden = [40,]
+    hidden = [40, ]
     print(X.shape, y.shape)
 
-    f_fun, theta0, make_f_fun = gen_nn(X, y, hidden_dims=hidden, task="classification", seed=SEED)
+    f_fun, theta0, loss_fn = gen_nn(
+        X, y, hidden_dims=hidden, task="classification", seed=SEED)
 
     f_jit = jax.jit(f_fun)
     print('init:', f_jit(theta0), jax.grad(f_jit)(theta0).shape)
 
     theta, hist = train_epochs(
-        make_f_fun, f_fun, theta0, X, y,
+        loss_fn, f_fun, theta0, X, y,
         epochs=EPOCHS, batch_size=BATCH_SIZE,
         epsilon=EPSILON, seed=SEED, verbose=True,
-        patience=10, monitor='batch')
+        patience=10, monitor='batch',
+        method='lbfgs',
+        maxiter=30, c1=0.3, c2=0.5)
 
     print('after {} epochs, full loss = {}'.format(EPOCHS, float(f_fun(theta))))
     per_epoch = {}
